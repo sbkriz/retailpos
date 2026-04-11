@@ -30,9 +30,11 @@ export class SyliusSearchService extends BaseSearchService {
       this.config.apiUrl = this.config.apiUrl || process.env.SYLIUS_API_URL || '';
       this.config.apiKey = this.config.apiKey || process.env.SYLIUS_API_KEY || '';
       this.config.apiSecret = this.config.apiSecret || process.env.SYLIUS_API_SECRET || '';
+      this.config.accessToken = (this.config as any).accessToken || process.env.SYLIUS_ACCESS_TOKEN || '';
 
-      if (!this.config.apiUrl || !this.config.apiKey || !this.config.apiSecret) {
-        this.logger.warn({ message: 'Missing Sylius API configuration' });
+      // accessToken alone is sufficient; apiKey+apiSecret are optional OAuth credentials
+      if (!this.config.apiUrl || (!this.config.accessToken && (!this.config.apiKey || !this.config.apiSecret))) {
+        this.logger.warn({ message: 'Missing Sylius API configuration — need apiUrl and either accessToken or apiKey+apiSecret' });
         return false;
       }
 
@@ -42,7 +44,7 @@ export class SyliusSearchService extends BaseSearchService {
           storeUrl: this.config.apiUrl as string,
           apiKey: this.config.apiKey as string,
           apiSecret: this.config.apiSecret as string,
-          accessToken: this.config.accessToken as string,
+          accessToken: (this.config as any).accessToken as string,
         });
         await this.apiClient.initialize();
       }
@@ -147,11 +149,11 @@ export class SyliusSearchService extends BaseSearchService {
       const data = await this.apiClient.get<any>(`products?${queryParams.toString()}`);
 
       return {
-        products: data['hydra:member'] || [],
+        products: data['hydra:member'] || data.items || (data._embedded && data._embedded.items) || [],
         pagination: {
           currentPage: options.page || 1,
-          totalPages: Math.ceil((data['hydra:totalItems'] || 0) / (options.limit || 30)),
-          totalItems: data['hydra:totalItems'] || 0,
+          totalPages: Math.ceil((data['hydra:totalItems'] || data.totalItems || 0) / (options.limit || 30)),
+          totalItems: data['hydra:totalItems'] || data.totalItems || 0,
           perPage: options.limit || 30,
         },
       };
@@ -179,9 +181,7 @@ export class SyliusSearchService extends BaseSearchService {
 
     try {
       const data = await this.apiClient.get<any>('taxons');
-      return (data['hydra:member'] || [])
-        .filter((taxon: any) => taxon.level > 0) // Filter out root taxons
-        .map((taxon: any) => taxon.name);
+      return (data['hydra:member'] || data.items || []).filter((taxon: any) => taxon.level > 0).map((taxon: any) => taxon.name);
     } catch (error) {
       this.logger.error({ message: 'Error fetching categories from Sylius' }, error instanceof Error ? error : new Error(String(error)));
       return [];

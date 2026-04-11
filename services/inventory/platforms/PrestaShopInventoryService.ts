@@ -113,9 +113,13 @@ export class PrestaShopInventoryService extends BaseInventoryService {
         const stockItems = searchData.stock_availables || [];
 
         // Find the right stock item (by variant or default)
+        // Note: id_product_attribute === 0 means the base product (no variant)
         let stockItem =
-          stockItems.find((s: any) => (update.variantId ? String(s.id_product_attribute) === update.variantId : !s.id_product_attribute)) ||
-          stockItems[0];
+          stockItems.find((s: any) =>
+            update.variantId
+              ? String(s.id_product_attribute) === update.variantId
+              : s.id_product_attribute === 0 || s.id_product_attribute === '0' || s.id_product_attribute === null
+          ) || stockItems[0];
 
         if (!stockItem) {
           throw new Error('Stock record not found');

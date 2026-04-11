@@ -353,4 +353,15 @@ export class CategoryServiceFactory {
     });
     return service;
   }
+
+  /**
+   * Reset the cached service instance for a platform so the next getService()
+   * call re-creates it with fresh credentials.
+   */
+  public resetService(platform: ECommercePlatform): void {
+    if (platform in this.serviceInstances) {
+      this.serviceInstances[platform] = null;
+      this.logger.info({ message: `CategoryService cache cleared for platform: ${platform}` });
+    }
+  }
 }

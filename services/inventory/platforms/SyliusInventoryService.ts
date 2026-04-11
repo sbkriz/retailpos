@@ -127,7 +127,10 @@ export class SyliusInventoryService extends BaseInventoryService {
           }
         }
 
-        await this.apiClient.put(`product-variants/${variantCode}`, { onHand: newQuantity, tracked: true });
+        await this.apiClient.put(`product-variants/${variantCode}`, {
+          onHand: newQuantity,
+          tracked: true,
+        });
         result.successful++;
       } catch (error) {
         result.failed++;

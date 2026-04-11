@@ -4,6 +4,8 @@ import { ECommercePlatform } from '../../utils/platforms';
 import { ShopifySyncService } from './platforms/ShopifySyncService';
 import { WooCommerceSyncService } from './platforms/WooCommerceSyncService';
 import { BigCommerceSyncService } from './platforms/BigCommerceSyncService';
+import { MagentoSyncService } from './platforms/MagentoSyncService';
+import { SyliusSyncService } from './platforms/SyliusSyncService';
 import { OfflineSyncService } from './platforms/OfflineSyncService';
 import { PrestaShopSyncService } from './platforms/PrestaShopSyncService';
 import { SquarespaceSyncService } from './platforms/SquarespaceSyncService';
@@ -135,9 +137,16 @@ export class SyncServiceFactory {
         service = this.createCommerceFullSyncService();
         break;
 
-      // These platforms use the offline sync service (no dedicated sync implementation)
+      // Magento and Sylius have dedicated (stub) sync services — use them
       case ECommercePlatform.MAGENTO:
+        service = this.createMagentoSyncService();
+        break;
+
       case ECommercePlatform.SYLIUS:
+        service = this.createSyliusSyncService();
+        break;
+
+      // Wix falls back to offline sync (no dedicated implementation)
       case ECommercePlatform.WIX:
         service = this.createOfflineSyncService();
         break;
@@ -182,8 +191,8 @@ export class SyncServiceFactory {
     // Initialize with environment variables
     const config: PlatformSyncConfig = {
       storeUrl: process.env.WOOCOMMERCE_URL,
-      apiKey: process.env.WOOCOMMERCE_KEY,
-      apiSecret: process.env.WOOCOMMERCE_SECRET,
+      apiKey: process.env.WOOCOMMERCE_CONSUMER_KEY || process.env.WOOCOMMERCE_KEY,
+      apiSecret: process.env.WOOCOMMERCE_CONSUMER_SECRET || process.env.WOOCOMMERCE_SECRET,
       webhookUrl: process.env.WOOCOMMERCE_WEBHOOK_URL,
       version: process.env.WOOCOMMERCE_API_VERSION || 'v3',
       batchSize: process.env.WOOCOMMERCE_SYNC_BATCH_SIZE ? parseInt(process.env.WOOCOMMERCE_SYNC_BATCH_SIZE, 10) : 50,
@@ -231,6 +240,28 @@ export class SyncServiceFactory {
       this.logger.error({ message: 'Failed to initialize Offline sync service' }, err instanceof Error ? err : new Error(String(err)));
     });
 
+    return service;
+  }
+
+  /**
+   * Create a Magento-specific sync service
+   */
+  private createMagentoSyncService(): SyncServiceInterface {
+    const service = new MagentoSyncService();
+    service.initialize().catch(err => {
+      this.logger.error({ message: 'Failed to initialize Magento sync service' }, err instanceof Error ? err : new Error(String(err)));
+    });
+    return service;
+  }
+
+  /**
+   * Create a Sylius-specific sync service
+   */
+  private createSyliusSyncService(): SyncServiceInterface {
+    const service = new SyliusSyncService();
+    service.initialize().catch(err => {
+      this.logger.error({ message: 'Failed to initialize Sylius sync service' }, err instanceof Error ? err : new Error(String(err)));
+    });
     return service;
   }
 
@@ -431,9 +462,32 @@ export class SyncServiceFactory {
         break;
       }
 
-      // These platforms use the offline sync service (no dedicated sync implementation)
-      case ECommercePlatform.MAGENTO:
-      case ECommercePlatform.SYLIUS:
+      // Magento and Sylius have dedicated sync services
+      case ECommercePlatform.MAGENTO: {
+        const magentoService = new MagentoSyncService();
+        magentoService.initialize().catch(err => {
+          this.logger.error(
+            { message: 'Failed to initialize Magento sync service with config' },
+            err instanceof Error ? err : new Error(String(err))
+          );
+        });
+        this.serviceInstances[platform] = magentoService;
+        break;
+      }
+
+      case ECommercePlatform.SYLIUS: {
+        const syliusService = new SyliusSyncService();
+        syliusService.initialize().catch(err => {
+          this.logger.error(
+            { message: 'Failed to initialize Sylius sync service with config' },
+            err instanceof Error ? err : new Error(String(err))
+          );
+        });
+        this.serviceInstances[platform] = syliusService;
+        break;
+      }
+
+      // Wix falls back to offline sync
       case ECommercePlatform.WIX: {
         this.serviceInstances[platform] = new OfflineSyncService();
         break;

@@ -139,6 +139,8 @@ export class ServiceConfigBridge {
     this.configureOrderService(platform, config);
     this.configureSearchService(platform, config);
     this.configureInventoryService(platform, config);
+    this.configureCategoryService(platform, config);
+    this.configureCustomerService(platform);
     this.configureSyncService(platform, config);
     this.configureRefundService(platform, config);
   }
@@ -178,8 +180,8 @@ export class ServiceConfigBridge {
 
       case ECommercePlatform.WOOCOMMERCE:
         return {
-          apiKey: settings.woocommerce.apiKey || settings.apiKey,
-          apiSecret: settings.woocommerce.apiSecret,
+          consumerKey: settings.woocommerce.apiKey || settings.apiKey,
+          consumerSecret: settings.woocommerce.apiSecret,
           storeUrl: settings.woocommerce.storeUrl || settings.apiUrl,
         };
 
@@ -200,7 +202,9 @@ export class ServiceConfigBridge {
       case ECommercePlatform.SYLIUS:
         return {
           apiToken: settings.sylius.apiToken || settings.apiKey,
+          accessToken: settings.sylius.apiToken || settings.apiKey,
           storeUrl: settings.sylius.storeUrl || settings.apiUrl,
+          apiUrl: settings.sylius.storeUrl || settings.apiUrl,
           apiVersion: settings.sylius.apiVersion,
         };
 
@@ -277,6 +281,40 @@ export class ServiceConfigBridge {
 
     factory.configureService(searchConfigs);
     this.logger.info(`SearchService configured for ${platform}`);
+  }
+
+  /**
+   * Configure CategoryServiceFactory — invalidates cached instance so next
+   * getService() call picks up the new env-based config.
+   */
+  private configureCategoryService(platform: ECommercePlatform, config: Record<string, unknown>): void {
+    try {
+      const { CategoryServiceFactory } = require('../category/CategoryServiceFactory');
+      const factory = CategoryServiceFactory.getInstance();
+      // Reset the cached instance for this platform so it re-initialises with
+      // the correct credentials on next access.
+      if (typeof factory.resetService === 'function') {
+        factory.resetService(platform);
+      }
+      this.logger.info(`CategoryService cache cleared for ${platform}`);
+    } catch (err) {
+      this.logger.warn({ message: `Could not reset CategoryService for ${platform}` });
+    }
+    void config; // config used by the service's own initialize() via process.env
+  }
+
+  /**
+   * Warm up CustomerServiceFactory for the active platform so the first
+   * customer lookup doesn't pay the initialisation cost.
+   */
+  private configureCustomerService(platform: ECommercePlatform): void {
+    try {
+      const { CustomerServiceFactory } = require('../customer/CustomerServiceFactory');
+      CustomerServiceFactory.getInstance().getService(platform);
+      this.logger.info(`CustomerService warmed up for ${platform}`);
+    } catch (err) {
+      this.logger.warn({ message: `Could not warm up CustomerService for ${platform}` });
+    }
   }
 
   /**

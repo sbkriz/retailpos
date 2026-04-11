@@ -111,7 +111,7 @@ export class CheckoutService implements CheckoutServiceInterface {
     try {
       await this.orderRepo.updatePayment(orderId, paymentMethod, transactionId ?? null);
 
-      // Clear basket and prepare for next transaction
+      // Only clear basket after the order is successfully recorded
       await this.basketService.clearBasket();
 
       // Signal the UI to open the drawer when paying with cash

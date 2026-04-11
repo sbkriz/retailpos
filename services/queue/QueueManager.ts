@@ -29,17 +29,20 @@ class QueueManager {
       }
     });
 
-    // 3. Exponential backoff retry — check every 30 seconds
+    // 3. Exponential backoff retry — check every 30 seconds, skip if offline
     this.retryIntervalId = setInterval(() => {
-      const { queue, processQueue } = useSyncStore.getState();
-      const now = new Date();
+      NetInfo.fetch().then(state => {
+        if (!state.isConnected || !state.isInternetReachable) return;
 
-      const hasReadyRequests = queue.some(request => request.nextRetryAt && request.nextRetryAt <= now);
+        const { queue, processQueue } = useSyncStore.getState();
+        const now = new Date();
+        const hasReadyRequests = queue.some(request => request.nextRetryAt && request.nextRetryAt <= now);
 
-      if (hasReadyRequests) {
-        this.logger.debug('Retryable requests found, processing...');
-        processQueue();
-      }
+        if (hasReadyRequests) {
+          this.logger.debug('Retryable requests found, processing...');
+          processQueue();
+        }
+      });
     }, 30000);
 
     this.initialized = true;

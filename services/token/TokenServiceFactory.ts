@@ -92,20 +92,36 @@ export class TokenServiceFactory {
   }
 
   /**
-   * Setup Magento token provider
-   * This function registers a provider that knows how to authenticate with Magento
+   * Setup Magento token provider.
+   * Reads credentials from secrets store first, falls back to env vars.
    */
   private setupMagentoTokenProvider(): void {
     this.service.registerTokenProvider(ECommercePlatform.MAGENTO, async (_platform, tokenType) => {
       const secretsService = SecretsServiceFactory.getInstance().getService();
 
       try {
+        let username: string | undefined;
+        let password: string | undefined;
+        let apiUrl: string | undefined;
+
+        // Try secrets store first
         const credentials = await secretsService.getSecret('magento_api_credentials');
-        if (!credentials) {
-          throw new Error('Magento API credentials not found');
+        if (credentials) {
+          const parsed = JSON.parse(credentials);
+          username = parsed.username;
+          password = parsed.password;
+          apiUrl = parsed.apiUrl;
         }
 
-        const { username, password, apiUrl } = JSON.parse(credentials);
+        // Fall back to environment variables
+        username = username || process.env.MAGENTO_USERNAME;
+        password = password || process.env.MAGENTO_PASSWORD;
+        apiUrl = apiUrl || process.env.MAGENTO_STORE_URL;
+
+        if (!username || !password || !apiUrl) {
+          throw new Error('Magento credentials not found in secrets store or environment variables');
+        }
+
         const token = await MagentoApiClient.getInstance().fetchAdminToken(apiUrl, username, password);
 
         const expiresAt =
@@ -191,22 +207,38 @@ export class TokenServiceFactory {
   }
 
   /**
-   * Setup Sylius token provider
+   * Setup Sylius token provider.
+   * Calls the Sylius shop authentication-token endpoint to get a real JWT.
+   * Falls back to env var SYLIUS_ACCESS_TOKEN if credentials aren't available.
    */
   private setupSyliusTokenProvider(): void {
-    this.service.registerTokenProvider(ECommercePlatform.SYLIUS, async (_platform, tokenType) => {
+    this.service.registerTokenProvider(ECommercePlatform.SYLIUS, async (_platform, _tokenType) => {
       const secretsService = SecretsServiceFactory.getInstance().getService();
 
       try {
-        const credentials = await secretsService.getSecret('sylius_api_credentials');
-        if (!credentials) {
-          throw new Error('Sylius API credentials not found');
+        // 1. Try a pre-stored access token from env (set by fetch-credentials.sh)
+        const envToken = process.env.SYLIUS_ACCESS_TOKEN;
+        if (envToken) {
+          return { token: envToken, expiresAt: Date.now() + 3600 * 1000 };
         }
 
-        return {
-          token: `sylius-${tokenType}-${Date.now()}`,
-          expiresAt: Date.now() + 3600 * 1000,
-        };
+        // 2. Try credentials from secrets store
+        const credentials = await secretsService.getSecret('sylius_api_credentials');
+        if (credentials) {
+          const { email, password, storeUrl } = JSON.parse(credentials);
+          const baseUrl = (storeUrl || process.env.SYLIUS_API_URL || '').replace(/\/+$/, '');
+          const response = await fetch(`${baseUrl}/api/v2/shop/authentication-token`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+          });
+          if (!response.ok) throw new Error(`Sylius auth failed: ${response.status}`);
+          const data = (await response.json()) as { token?: string };
+          if (!data.token) throw new Error('Sylius auth response missing token');
+          return { token: data.token, expiresAt: Date.now() + 3600 * 1000 };
+        }
+
+        throw new Error('Sylius credentials not found in secrets store or SYLIUS_ACCESS_TOKEN env var');
       } catch (error) {
         this.logger.error({ message: 'Failed to obtain Sylius token' }, error instanceof Error ? error : new Error(String(error)));
         throw error;

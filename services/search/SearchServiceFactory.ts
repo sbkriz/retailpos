@@ -152,11 +152,13 @@ export class SearchServiceFactory {
     }
 
     // Check for WooCommerce configuration
-    const hasWooCommerceConfig = process.env.WOOCOMMERCE_KEY && process.env.WOOCOMMERCE_SECRET;
+    const hasWooCommerceConfig =
+      (process.env.WOOCOMMERCE_CONSUMER_KEY || process.env.WOOCOMMERCE_KEY) &&
+      (process.env.WOOCOMMERCE_CONSUMER_SECRET || process.env.WOOCOMMERCE_SECRET);
     if (hasWooCommerceConfig) {
       const wooCommerceConfig = {
-        consumerKey: process.env.WOOCOMMERCE_KEY || '',
-        consumerSecret: process.env.WOOCOMMERCE_SECRET || '',
+        consumerKey: process.env.WOOCOMMERCE_CONSUMER_KEY || process.env.WOOCOMMERCE_KEY || '',
+        consumerSecret: process.env.WOOCOMMERCE_CONSUMER_SECRET || process.env.WOOCOMMERCE_SECRET || '',
         storeUrl: process.env.WOOCOMMERCE_URL || '',
       };
       platformServices.push(new WooCommerceSearchService(wooCommerceConfig));
@@ -173,11 +175,12 @@ export class SearchServiceFactory {
       platformServices.push(new WixSearchService(wixConfig));
     }
 
-    // Check for Sylius configuration
-    const hasSyliusConfig = process.env.SYLIUS_API_URL && process.env.SYLIUS_API_KEY && process.env.SYLIUS_API_SECRET;
+    // Check for Sylius configuration — access token alone is sufficient
+    const hasSyliusConfig = process.env.SYLIUS_API_URL && (process.env.SYLIUS_ACCESS_TOKEN || process.env.SYLIUS_API_KEY);
     if (hasSyliusConfig) {
       const syliusConfig = {
         apiUrl: process.env.SYLIUS_API_URL || '',
+        accessToken: process.env.SYLIUS_ACCESS_TOKEN || '',
         apiKey: process.env.SYLIUS_API_KEY || '',
         apiSecret: process.env.SYLIUS_API_SECRET || '',
       };

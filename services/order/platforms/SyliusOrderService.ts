@@ -93,7 +93,9 @@ export class SyliusOrderService extends BaseOrderService {
    * Create a cart
    */
   private async createCart(): Promise<string> {
-    const data = await this.apiClient.post<any>('orders', { localeCode: 'en_US', channelCode: 'default' });
+    const localeCode = process.env.SYLIUS_LOCALE || 'en_US';
+    const channelCode = process.env.SYLIUS_CHANNEL_CODE || 'FASHION_WEB';
+    const data = await this.apiClient.post<any>('orders', { localeCode, channelCode });
     return data.tokenValue || data.token;
   }
 

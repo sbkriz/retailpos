@@ -24,8 +24,9 @@ export class WooCommerceOrderService extends BaseOrderService {
   async initialize(): Promise<boolean> {
     try {
       // Set up configuration from constructor or environment variables
-      this.config.consumerKey = this.config.consumerKey || process.env.WOOCOMMERCE_KEY || '';
-      this.config.consumerSecret = this.config.consumerSecret || process.env.WOOCOMMERCE_SECRET || '';
+      this.config.consumerKey = this.config.consumerKey || process.env.WOOCOMMERCE_CONSUMER_KEY || process.env.WOOCOMMERCE_KEY || '';
+      this.config.consumerSecret =
+        this.config.consumerSecret || process.env.WOOCOMMERCE_CONSUMER_SECRET || process.env.WOOCOMMERCE_SECRET || '';
       this.config.storeUrl = this.config.storeUrl || process.env.WOOCOMMERCE_URL || '';
 
       if (!this.config.consumerKey || !this.config.consumerSecret || !this.config.storeUrl) {

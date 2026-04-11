@@ -77,7 +77,7 @@ export class MagentoRefundService implements PlatformRefundServiceInterface {
     try {
       this.logger.info(`Processing Magento refund for order ${orderId}`);
 
-      const data = await this.apiClient.post<string | number>(`order/${orderId}/refund`, {
+      const data = await this.apiClient.post<string | number>(`orders/${orderId}/refunds`, {
         items:
           refundData.items?.map(item => ({
             order_item_id: item.lineItemId,

@@ -5,6 +5,7 @@ import { lightColors, spacing, typography, borderRadius } from '../../utils/them
 import { useBasketContext, CartItem } from '../../contexts/BasketProvider';
 import { formatMoney } from '../../utils/money';
 import { CheckoutModal, PaymentMethod } from '../../components/CheckoutModal';
+import { cashDrawerServiceFactory } from '../../services/drawer/CashDrawerServiceFactory';
 import { StatusBadge } from '../../components/StatusBadge';
 import { ECommercePlatform } from '../../utils/platforms';
 import { useCurrency } from '../../hooks/useCurrency';
@@ -84,6 +85,13 @@ export const BasketContent: React.FC<BasketContentProps> = ({ platform, onChecko
       const result = await completePayment(currentOrderId, paymentMethod);
 
       if (result.success) {
+        // Open cash drawer if the service flagged it (cash payment + drawer configured)
+        if (result.openDrawer) {
+          cashDrawerServiceFactory
+            .getService()
+            .open()
+            .catch(() => {});
+        }
         setCheckoutModalVisible(false);
         setCurrentOrderId(null);
         onCheckout?.();

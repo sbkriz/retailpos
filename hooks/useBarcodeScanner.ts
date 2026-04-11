@@ -45,6 +45,8 @@ export const useBarcodeScanner = ({ scannerSettings, products, onScanSuccess }: 
   const scannerServiceRef = useRef<ScannerServiceInterface | null>(null);
   const scanListenerRef = useRef<string | null>(null);
   const scanCallbackRef = useRef<((data: string) => void) | null>(null);
+  // Ref mirror of `scanned` so the external scanner callback always reads the latest value
+  const scannedRef = useRef(false);
 
   // Get scanner factory instance
   const scannerFactory = ScannerServiceFactory.getInstance();
@@ -104,6 +106,7 @@ export const useBarcodeScanner = ({ scannerSettings, products, onScanSuccess }: 
         setScanResult({ status: 'found_local', name: product.name, price: product.price });
         onScanSuccess(product.id);
         setTimeout(() => {
+          scannedRef.current = false;
           setScanned(false);
           setScanResult(null);
         }, 1500);
@@ -119,6 +122,7 @@ export const useBarcodeScanner = ({ scannerSettings, products, onScanSuccess }: 
           setScanResult({ status: 'found_variant', name: displayName, price: variant.price });
           onScanSuccess(variant.product_id);
           setTimeout(() => {
+            scannedRef.current = false;
             setScanned(false);
             setScanResult(null);
           }, 1500);
@@ -138,6 +142,7 @@ export const useBarcodeScanner = ({ scannerSettings, products, onScanSuccess }: 
             setScanResult({ status: 'found_online', name: onlineProduct.name, price: onlineProduct.price });
             onScanSuccess(onlineProduct.id);
             setTimeout(() => {
+              scannedRef.current = false;
               setScanned(false);
               setScanResult(null);
             }, 1500);
@@ -154,6 +159,7 @@ export const useBarcodeScanner = ({ scannerSettings, products, onScanSuccess }: 
         {
           text: 'Scan Again',
           onPress: () => {
+            scannedRef.current = false;
             setScanned(false);
             setScanResult(null);
           },
@@ -173,7 +179,8 @@ export const useBarcodeScanner = ({ scannerSettings, products, onScanSuccess }: 
 
       // Create the scan callback and save it in a ref to avoid stale closures
       const scanCallback = (data: string) => {
-        if (scanned) return;
+        if (scannedRef.current) return;
+        scannedRef.current = true;
         setScanned(true);
         processBarcodeData(data);
       };
@@ -233,7 +240,7 @@ export const useBarcodeScanner = ({ scannerSettings, products, onScanSuccess }: 
     } finally {
       setConnecting(false);
     }
-  }, [disconnectScanner, executeScannerOperation, processBarcodeData, scannerSettings, scanned, showScannerAlert, scannerFactory]);
+  }, [disconnectScanner, executeScannerOperation, processBarcodeData, scannerSettings, showScannerAlert, scannerFactory]);
 
   // Handle camera barcode scanning
   const handleBarCodeScanned = useCallback(

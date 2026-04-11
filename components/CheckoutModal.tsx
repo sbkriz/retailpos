@@ -1,12 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, Modal, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { lightColors, spacing, borderRadius, typography, elevation, semanticColors } from '../utils/theme';
 import { formatMoney } from '../utils/money';
 import { Button } from './Button';
+import PinKeypad from './PinKeypad';
 import { useCurrency } from '../hooks/useCurrency';
 import { useTranslate } from '../hooks/useTranslate';
 
 export type PaymentMethod = 'cash' | 'card' | 'terminal';
+
+export interface PaymentSelection {
+  method: PaymentMethod;
+  /** Only set for cash payments — amount the customer handed over */
+  tenderedAmount?: number;
+}
 
 interface CheckoutModalProps {
   visible: boolean;
@@ -15,12 +22,14 @@ interface CheckoutModalProps {
   orderSubtotal: number;
   orderTax: number;
   itemCount: number;
-  onSelectPayment: (method: PaymentMethod) => void;
+  onSelectPayment: (selection: PaymentSelection) => void;
   onCancel: () => void;
   onPrintReceipt?: () => void;
   isProcessing?: boolean;
   terminalConnected?: boolean;
 }
+
+type ModalStep = 'method' | 'cash_tender';
 
 const PAYMENT_METHOD_KEYS: { id: PaymentMethod; labelKey: string; icon: string; descriptionKey: string }[] = [
   { id: 'cash', labelKey: 'checkout.cash', icon: '💵', descriptionKey: 'checkout.cashDescription' },
@@ -44,12 +53,167 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = props => {
     isProcessing = false,
     terminalConnected = false,
   } = props;
+
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>('cash');
+  const [step, setStep] = useState<ModalStep>('method');
+  // Cash tendering — stored as a string so the keypad can build it digit by digit
+  const [tenderedStr, setTenderedStr] = useState('');
 
-  const handleConfirm = () => {
-    onSelectPayment(selectedMethod);
-  };
+  // Reset to method selection whenever the modal opens
+  const handleCancel = useCallback(() => {
+    setStep('method');
+    setTenderedStr('');
+    onCancel();
+  }, [onCancel]);
 
+  // "Pay" button on the method selection step
+  const handleMethodConfirm = useCallback(() => {
+    if (selectedMethod === 'cash') {
+      setTenderedStr('');
+      setStep('cash_tender');
+    } else {
+      onSelectPayment({ method: selectedMethod });
+    }
+  }, [selectedMethod, onSelectPayment]);
+
+  // Keypad handlers for cash tendering
+  const handleKeyPress = useCallback((key: string) => {
+    if (key === 'biometric') return;
+    setTenderedStr(prev => {
+      // Prevent more than two decimal places
+      const dotIdx = prev.indexOf('.');
+      if (dotIdx !== -1 && prev.length - dotIdx > 2) return prev;
+      // Prevent leading zeros (except "0.")
+      if (prev === '0' && key !== '.') return key;
+      // Only one decimal point
+      if (key === '.' && prev.includes('.')) return prev;
+      return prev + key;
+    });
+  }, []);
+
+  const handleDelete = useCallback(() => {
+    setTenderedStr(prev => prev.slice(0, -1));
+  }, []);
+
+  // Quick-tender shortcuts: exact, round up to nearest dollar, +$5, +$10, +$20
+  const quickAmounts = useCallback(() => {
+    const ceil = Math.ceil(orderTotal);
+    return [
+      { label: t('checkout.exact'), value: orderTotal },
+      ...(ceil !== orderTotal ? [{ label: formatMoney(ceil, currency.code), value: ceil }] : []),
+      { label: formatMoney(Math.ceil(orderTotal / 5) * 5, currency.code), value: Math.ceil(orderTotal / 5) * 5 },
+      { label: formatMoney(Math.ceil(orderTotal / 10) * 10, currency.code), value: Math.ceil(orderTotal / 10) * 10 },
+      { label: formatMoney(Math.ceil(orderTotal / 20) * 20, currency.code), value: Math.ceil(orderTotal / 20) * 20 },
+    ].filter((v, i, arr) => arr.findIndex(x => x.value === v.value) === i); // dedupe
+  }, [orderTotal, currency.code, t]);
+
+  const tenderedAmount = parseFloat(tenderedStr) || 0;
+  const changeDue = tenderedAmount - orderTotal;
+  const isTenderValid = tenderedAmount >= orderTotal;
+
+  const handleCashConfirm = useCallback(() => {
+    if (!isTenderValid) return;
+    onSelectPayment({ method: 'cash', tenderedAmount });
+  }, [isTenderValid, tenderedAmount, onSelectPayment]);
+
+  // ── Cash tendering step ──────────────────────────────────────────────────
+  if (step === 'cash_tender') {
+    return (
+      <Modal visible={visible} animationType="slide" transparent statusBarTranslucent>
+        <View style={styles.overlay}>
+          <View style={styles.modal}>
+            {/* Header */}
+            <View style={styles.header}>
+              <TouchableOpacity
+                onPress={() => setStep('method')}
+                style={styles.backButton}
+                disabled={isProcessing}
+                accessibilityLabel={t('common.back')}
+                accessibilityRole="button"
+              >
+                <Text style={styles.backText}>←</Text>
+              </TouchableOpacity>
+              <Text style={styles.headerTitle}>{t('checkout.cashPayment')}</Text>
+              <TouchableOpacity
+                onPress={handleCancel}
+                style={styles.closeButton}
+                disabled={isProcessing}
+                accessibilityLabel={t('checkout.cancelCheckout')}
+                accessibilityRole="button"
+              >
+                <Text style={styles.closeText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+              {/* Amount due */}
+              <View style={styles.amountDueRow}>
+                <Text style={styles.amountDueLabel}>{t('checkout.amountDue')}</Text>
+                <Text style={styles.amountDueValue}>{formatMoney(orderTotal, currency.code)}</Text>
+              </View>
+
+              {/* Tendered display */}
+              <View style={styles.tenderedDisplay}>
+                <Text style={styles.tenderedLabel}>{t('checkout.cashTendered')}</Text>
+                <Text style={[styles.tenderedValue, !tenderedStr && styles.tenderedPlaceholder]}>
+                  {tenderedStr ? formatMoney(tenderedAmount, currency.code) : formatMoney(0, currency.code)}
+                </Text>
+              </View>
+
+              {/* Change due */}
+              <View style={[styles.changeRow, isTenderValid ? styles.changePositive : styles.changeInsufficient]}>
+                <Text style={styles.changeLabel}>{isTenderValid ? t('checkout.changeDue') : t('checkout.amountShort')}</Text>
+                <Text style={styles.changeValue}>
+                  {isTenderValid ? formatMoney(changeDue, currency.code) : formatMoney(orderTotal - tenderedAmount, currency.code)}
+                </Text>
+              </View>
+
+              {/* Quick-tender shortcuts */}
+              <View style={styles.quickAmounts}>
+                {quickAmounts().map(qa => (
+                  <TouchableOpacity
+                    key={qa.value}
+                    style={styles.quickAmountButton}
+                    onPress={() => setTenderedStr(qa.value.toFixed(2))}
+                    accessibilityRole="button"
+                    accessibilityLabel={qa.label}
+                  >
+                    <Text style={styles.quickAmountText}>{qa.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Keypad */}
+              <View style={styles.keypadWrapper}>
+                <PinKeypad onKeyPress={handleKeyPress} onDeletePress={handleDelete} disableBiometric />
+              </View>
+            </ScrollView>
+
+            {/* Confirm */}
+            <View style={styles.actions}>
+              <Button
+                title={
+                  isProcessing
+                    ? t('common.processing')
+                    : isTenderValid
+                      ? t('checkout.confirmCash', { change: formatMoney(changeDue, currency.code) })
+                      : t('checkout.enterAmount')
+                }
+                variant="success"
+                size="lg"
+                fullWidth
+                onPress={handleCashConfirm}
+                loading={isProcessing}
+                disabled={isProcessing || !isTenderValid}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+    );
+  }
+
+  // ── Method selection step ────────────────────────────────────────────────
   return (
     <Modal visible={visible} animationType="slide" transparent statusBarTranslucent>
       <View style={styles.overlay}>
@@ -58,7 +222,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = props => {
           <View style={styles.header}>
             <Text style={styles.headerTitle}>{t('checkout.completeOrder')}</Text>
             <TouchableOpacity
-              onPress={onCancel}
+              onPress={handleCancel}
               style={styles.closeButton}
               disabled={isProcessing}
               accessibilityLabel={t('checkout.cancelCheckout')}
@@ -135,11 +299,17 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = props => {
               />
             )}
             <Button
-              title={isProcessing ? t('common.processing') : t('checkout.pay', { amount: formatMoney(orderTotal, currency.code) })}
+              title={
+                isProcessing
+                  ? t('common.processing')
+                  : selectedMethod === 'cash'
+                    ? t('checkout.enterCashAmount')
+                    : t('checkout.pay', { amount: formatMoney(orderTotal, currency.code) })
+              }
               variant="success"
               size="lg"
               fullWidth
-              onPress={handleConfirm}
+              onPress={handleMethodConfirm}
               loading={isProcessing}
               disabled={isProcessing}
             />
@@ -175,9 +345,24 @@ const styles = StyleSheet.create({
     borderBottomColor: lightColors.border,
   },
   headerTitle: {
+    flex: 1,
     fontSize: typography.fontSize.xl,
     fontWeight: '700',
     color: lightColors.textPrimary,
+    textAlign: 'center',
+  },
+  backButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: lightColors.inputBackground,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backText: {
+    fontSize: 18,
+    color: lightColors.textSecondary,
+    fontWeight: '600',
   },
   closeButton: {
     width: 32,
@@ -295,6 +480,93 @@ const styles = StyleSheet.create({
   },
   printButton: {
     marginBottom: spacing.xs,
+  },
+  // ── Cash tendering ──────────────────────────────────────────────────────
+  amountDueRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: lightColors.inputBackground,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  amountDueLabel: {
+    fontSize: typography.fontSize.md,
+    color: lightColors.textSecondary,
+    fontWeight: '600',
+  },
+  amountDueValue: {
+    fontSize: typography.fontSize.xl,
+    fontWeight: '700',
+    color: lightColors.textPrimary,
+  },
+  tenderedDisplay: {
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: lightColors.border,
+    marginBottom: spacing.sm,
+  },
+  tenderedLabel: {
+    fontSize: typography.fontSize.sm,
+    color: lightColors.textSecondary,
+    marginBottom: spacing.xs,
+  },
+  tenderedValue: {
+    fontSize: 40,
+    fontWeight: '700',
+    color: lightColors.textPrimary,
+  },
+  tenderedPlaceholder: {
+    color: lightColors.textHint,
+  },
+  changeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  changePositive: {
+    backgroundColor: lightColors.success + '20',
+  },
+  changeInsufficient: {
+    backgroundColor: lightColors.error + '15',
+  },
+  changeLabel: {
+    fontSize: typography.fontSize.md,
+    fontWeight: '600',
+    color: lightColors.textPrimary,
+  },
+  changeValue: {
+    fontSize: typography.fontSize.xl,
+    fontWeight: '700',
+    color: lightColors.textPrimary,
+  },
+  quickAmounts: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  quickAmountButton: {
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: lightColors.primary,
+    backgroundColor: lightColors.surface,
+  },
+  quickAmountText: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: '600',
+    color: lightColors.primary,
+  },
+  keypadWrapper: {
+    alignItems: 'center',
+    marginBottom: spacing.sm,
   },
 });
 

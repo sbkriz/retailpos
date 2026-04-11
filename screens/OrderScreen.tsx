@@ -17,6 +17,8 @@ import { useProductsForDisplay } from '../hooks/useProducts';
 import { useResponsive, getProductColumns, getSidebarWidths } from '../hooks/useResponsive';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import type { MainTabParamList } from '../navigation/types';
+import { PlatformServiceRegistry } from '../services/platform/PlatformServiceRegistry';
+import { ECommercePlatform } from '../utils/platforms';
 
 interface OrderScreenProps {
   username?: string;
@@ -63,23 +65,70 @@ const OrderScreen: React.FC<OrderScreenProps> = ({ username = 'User' }) => {
   // Auto-add product when arriving from a barcode scan
   useEffect(() => {
     const scannedId = route.params?.scannedProductId;
-    if (!scannedId || scannedId === handledScanRef.current || products.length === 0) return;
-    const product = products.find(p => p.id === scannedId);
-    if (!product) return;
+    if (!scannedId || scannedId === handledScanRef.current) return;
+
+    // Mark as handled immediately to prevent double-adds
     handledScanRef.current = scannedId;
-    const cartProduct: CartProduct = {
-      id: product.id,
-      name: product.name,
-      price: product.price,
-      image: product.image,
-      isEcommerceProduct: product.isEcommerceProduct,
-      variantId: product.variantId,
-      sku: product.sku,
-      platformId: product.platformId,
-      platform: product.platform,
+
+    const tryAdd = async () => {
+      // 1. Fast path — product already in the loaded list
+      let product = products.find(p => p.id === scannedId);
+
+      // 2. Slow path — fetch by ID for online products not yet in the catalogue page
+      if (!product) {
+        try {
+          const registry = PlatformServiceRegistry.getInstance();
+          const service = registry.getProductService(currentPlatform || ECommercePlatform.OFFLINE);
+          const result = await service?.getProductById?.(scannedId);
+          if (result) {
+            const { getDefaultVariant } = await import('../services/product/types');
+            const { mapToUnifiedProducts } = await import('../services/product/mappers');
+            const unified = mapToUnifiedProducts([result], currentPlatform || ECommercePlatform.OFFLINE);
+            const u = unified[0];
+            if (u) {
+              const dv = getDefaultVariant(u);
+              const img = u.images.find(i => i.isPrimary) || u.images[0];
+              product = {
+                id: u.id,
+                platformId: u.platformId,
+                name: u.title,
+                price: dv?.price || 0,
+                image: img?.url ? { uri: img.url } : null,
+                categoryId: u.categoryIds[0] || u.productType || '',
+                categoryName: u.productType,
+                description: u.description,
+                sku: dv?.sku,
+                barcode: dv?.barcode,
+                stock: dv?.inventoryQuantity || 0,
+                isEcommerceProduct: u.platform !== ECommercePlatform.OFFLINE,
+                variantId: dv?.id,
+                platform: u.platform,
+              };
+            }
+          }
+        } catch {
+          // fall through — product stays undefined
+        }
+      }
+
+      if (!product) return;
+
+      const cartProduct: CartProduct = {
+        id: product.id,
+        name: product.name,
+        price: product.price,
+        image: product.image,
+        isEcommerceProduct: product.isEcommerceProduct,
+        variantId: product.variantId,
+        sku: product.sku,
+        platformId: product.platformId,
+        platform: product.platform,
+      };
+      addToCart(cartProduct, 1).catch(() => {});
     };
-    addToCart(cartProduct, 1).catch(() => {});
-  }, [route.params?.scannedProductId, products, addToCart]);
+
+    tryAdd();
+  }, [route.params?.scannedProductId, products, addToCart, currentPlatform]);
 
   // Function to handle adding/updating a product in the cart
   const handleAddToCart = useCallback(

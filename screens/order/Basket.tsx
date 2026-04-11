@@ -7,7 +7,9 @@ import { formatMoney } from '../../utils/money';
 import { ECommercePlatform } from '../../utils/platforms';
 import { useCurrency } from '../../hooks/useCurrency';
 import { useTranslate } from '../../hooks/useTranslate';
-import { CheckoutModal, PaymentMethod } from '../../components/CheckoutModal';
+import { CheckoutModal, PaymentMethod, PaymentSelection } from '../../components/CheckoutModal';
+import { usePayment } from '../../hooks/usePayment';
+import { cashDrawerServiceFactory } from '../../services/drawer/CashDrawerServiceFactory';
 
 interface BasketProps {
   onCheckout?: () => void;
@@ -18,6 +20,7 @@ interface BasketProps {
 export const Basket: React.FC<BasketProps> = ({ onCheckout, onPrintReceipt, platform }) => {
   const currency = useCurrency();
   const { t } = useTranslate();
+  const { processPayment, isTerminalConnected } = usePayment();
   const {
     isRightPanelOpen,
     setIsRightPanelOpen,
@@ -77,15 +80,37 @@ export const Basket: React.FC<BasketProps> = ({ onCheckout, onPrintReceipt, plat
   };
 
   // Handle payment method selection from CheckoutModal
-  const handlePayment = async (method: PaymentMethod) => {
+  const handlePayment = async (selection: PaymentSelection) => {
     if (!currentOrderId) return;
 
     setIsProcessing(true);
     try {
       await markPaymentProcessing(currentOrderId);
-      const paymentMethod = method === 'terminal' ? 'card_terminal' : method;
+
+      // Card and terminal payments go through the payment service first
+      if (selection.method === 'card' || selection.method === 'terminal') {
+        const paymentResponse = await processPayment({
+          amount: total,
+          reference: currentOrderId,
+          orderId: currentOrderId,
+          itemCount,
+        });
+        if (!paymentResponse.success) {
+          Alert.alert(t('common.error'), paymentResponse.errorMessage || t('basket.paymentFailed'));
+          return;
+        }
+      }
+
+      const paymentMethod = selection.method === 'terminal' ? 'card_terminal' : selection.method;
       const result = await completePayment(currentOrderId, paymentMethod);
       if (result.success) {
+        // Open cash drawer if the service flagged it (cash payment + drawer configured)
+        if (result.openDrawer) {
+          cashDrawerServiceFactory
+            .getService()
+            .open()
+            .catch(() => {});
+        }
         setCheckoutModalVisible(false);
         setCurrentOrderId(null);
         setIsRightPanelOpen(false);
@@ -254,6 +279,7 @@ export const Basket: React.FC<BasketProps> = ({ onCheckout, onPrintReceipt, plat
         onSelectPayment={handlePayment}
         onCancel={handleCancelCheckout}
         isProcessing={isProcessing}
+        terminalConnected={isTerminalConnected()}
       />
     </SwipeablePanel>
   );

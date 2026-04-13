@@ -15,6 +15,7 @@ import ReportModal from './order-history/ReportModal';
 import ReceiptModal from './order-history/ReceiptModal';
 import { useCurrency } from '../hooks/useCurrency';
 import { useLogger } from '../hooks/useLogger';
+import { PrinterServiceFactory } from '../services/printer/PrinterServiceFactory';
 
 interface OrderHistoryScreenProps extends MoreStackScreenProps<'OrderHistory'> {}
 
@@ -40,7 +41,7 @@ const formatDate = (timestamp: number): string => {
 const OrderHistoryScreen: React.FC<OrderHistoryScreenProps> = () => {
   const { getLocalOrders, syncOrderToPlatform, getSyncQueueStatus, unsyncedOrdersCount } = useBasketContext();
   const { user } = useAuthContext();
-  const { currentShift, openShift, closeShift, generateReport, getReportLines, getReceiptLines } = useDailyReport();
+  const { currentShift, openShift, closeShift, generateReport, getReportLines } = useDailyReport();
   const logger = useLogger('OrderHistoryScreen');
 
   const currency = useCurrency();
@@ -158,13 +159,33 @@ const OrderHistoryScreen: React.FC<OrderHistoryScreenProps> = () => {
     setShowReceiptModal(true);
   }, []);
 
-  const handlePrintReceiptConfirm = useCallback(() => {
+  const handlePrintReceiptConfirm = useCallback(async () => {
     if (!selectedOrder) return;
-    const lines = getReceiptLines(selectedOrder);
-    logger.info('=== RECEIPT ===');
-    lines.forEach(line => logger.info(line));
-    Alert.alert('Print', 'Receipt sent to printer. Check console for preview.');
-  }, [selectedOrder, getReceiptLines, logger]);
+    const printerService = PrinterServiceFactory.getInstance();
+    if (!printerService.isConnectedToPrinter()) {
+      Alert.alert('No Printer', 'No printer connected. Please connect a printer in Settings → Printer.');
+      return;
+    }
+    try {
+      const receiptData = {
+        orderId: selectedOrder.id.slice(-8),
+        items: selectedOrder.items.map(item => ({ name: item.name, quantity: item.quantity, price: item.price })),
+        subtotal: selectedOrder.subtotal,
+        tax: selectedOrder.tax,
+        total: selectedOrder.total,
+        paymentMethod: selectedOrder.paymentMethod ?? 'Unknown',
+        date: selectedOrder.createdAt,
+        cashierName: selectedOrder.cashierName ?? 'Unknown',
+        customerName: selectedOrder.customerName,
+        currencySymbol: currency.symbol,
+      };
+      const success = await printerService.printReceipt(receiptData);
+      if (!success) Alert.alert('Print Failed', 'Could not print the receipt.');
+    } catch (err) {
+      logger.error({ message: 'Failed to print receipt' }, err instanceof Error ? err : new Error(String(err)));
+      Alert.alert('Print Error', err instanceof Error ? err.message : 'Failed to print receipt.');
+    }
+  }, [selectedOrder, currency.symbol, logger]);
 
   // ============ Shift Actions ============
 
@@ -218,13 +239,34 @@ const OrderHistoryScreen: React.FC<OrderHistoryScreenProps> = () => {
     }
   }, [generateReport, orders]);
 
-  const handlePrintReport = useCallback(() => {
+  const handlePrintReport = useCallback(async () => {
     if (!currentReport) return;
-    const lines = getReportLines(currentReport);
-    logger.info('=== DAILY REPORT ===');
-    lines.forEach(line => logger.info(line));
-    Alert.alert('Print', 'Report sent to printer. Check console for preview.');
-  }, [currentReport, getReportLines, logger]);
+    const printerService = PrinterServiceFactory.getInstance();
+    if (!printerService.isConnectedToPrinter()) {
+      Alert.alert('No Printer', 'No printer connected. Please connect a printer in Settings → Printer.');
+      return;
+    }
+    try {
+      const lines = getReportLines(currentReport);
+      // Build a minimal ReceiptData from the report lines as plain text
+      const receiptData = {
+        orderId: `REPORT-${currentReport.date.toISOString().slice(0, 10)}`,
+        items: lines.map(line => ({ name: line, quantity: 1, price: 0 })),
+        subtotal: currentReport.summary.netSales,
+        tax: currentReport.summary.totalTax,
+        total: currentReport.summary.totalSales,
+        paymentMethod: 'Report',
+        date: currentReport.date,
+        cashierName: currentReport.shift.cashierName,
+        currencySymbol: currency.symbol,
+      };
+      const success = await printerService.printReceipt(receiptData);
+      if (!success) Alert.alert('Print Failed', 'Could not print the report.');
+    } catch (err) {
+      logger.error({ message: 'Failed to print report' }, err instanceof Error ? err : new Error(String(err)));
+      Alert.alert('Print Error', err instanceof Error ? err.message : 'Failed to print report.');
+    }
+  }, [currentReport, getReportLines, currency.symbol, logger]);
 
   // ============ Date Navigation ============
 

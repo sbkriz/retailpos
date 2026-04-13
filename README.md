@@ -1,4 +1,4 @@
-# RetailPOS - Point of Sale System for E-commerce Platforms
+# RetailPOS — Point of Sale System for E-commerce Platforms
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![CI](https://github.com/n17foo/retailpos/workflows/CI/badge.svg)](https://github.com/n17foo/retailpos/actions)
@@ -7,255 +7,246 @@ A modern, cross-platform (mobile, tablet and desktop) Point of Sale (POS) system
 
 Website: [retailpos.org](https://retailpos.org)
 
-## 🚀 Features
+---
 
-✅ **All Planned Features Complete** — Clean TypeScript compile, 198/198 tests pass
+## Features
 
-- **Multi-Platform Support**: Shopify, WooCommerce, BigCommerce, Magento, Sylius, Wix, PrestaShop, Squarespace, Offline
-- **Customer Management**: Search, attach customers from platform APIs during checkout
-- **Discounts & Coupons**: Validate platform coupons, apply percentage/fixed discounts
-- **Gift Cards**: Check balances, redeem via platform APIs
-- **Offline Operation**: Full POS functionality without internet, with background sync
-- **Multi-Register Sync**: Shared offline API with event-driven sync across devices
-- **Product Variants**: Option-based variants with inventory tracking
-- **Tax Profiles**: Configurable tax rates and rules
-- **Returns Processing**: Stock adjustments with optional platform refunds
-- **Reporting Dashboard**: Sales analytics, cashier performance, CSV export
-- **Sync Queue Management**: Retry/cancel failed orders with detailed error tracking
-- **Notifications System**: Real-time alerts for sync events, inventory, returns
-- **Audit Logging**: Complete audit trail for all user actions and system events
-- **Error Boundary**: Crash recovery with retry UI and basket persistence
-- **Accessibility**: Full screen reader support with a11y labels and hints
-- **Hardware Integration**: Receipt printers, barcode scanners, payment terminals, cash drawers
-- **Payment Providers**: Worldpay, Stripe, Square (4 total)
-- **Cross-Platform**: iOS, Android, Web, Desktop (Electron)
-- **Multi-Language**: English, Spanish, French, German
-- **Role-Based Access**: Admin, Manager, Cashier permissions
+- **Multi-Platform Support** — Shopify, WooCommerce, BigCommerce, Magento, Sylius, Wix, PrestaShop, Squarespace, CommerceFull, Offline
+- **Offline-First** — Full POS functionality without internet; background sync with retry and exponential backoff
+- **Multi-Register** — Server/client mode over LAN with event-driven sync (SyncEventBus + SyncPoller)
+- **Product Variants** — Option-based variants with inventory tracking and barcode lookup
+- **Tax Profiles** — Configurable tax rates; platform-authoritative tax for online orders
+- **Checkout Flow** — Draft order creation, payment recording, cash drawer integration
+- **Returns & Refunds** — Return recording with optional platform monetary refund (10 platforms)
+- **Customer Management** — Search and attach customers from platform APIs during checkout
+- **Reporting Dashboard** — Sales analytics, cashier performance, payment breakdown, CSV export
+- **Sync Queue** — Retry/discard failed orders with detailed error tracking
+- **Notifications** — Real-time alerts for sync events and returns
+- **Audit Logging** — Append-only event log for orders, payments, refunds, and auth
+- **Hardware Integration** — Receipt printers (ESC/POS), barcode scanners (camera/BT/USB/QR), payment terminals, cash drawers
+- **Payment Providers** — Worldpay, Stripe, Stripe NFC, Square, Electron Stripe
+- **Authentication** — PIN, biometric, password, magstripe, RFID/NFC, platform auth
+- **Role-Based Access** — Admin, Manager, Cashier with least-privilege defaults
+- **Cross-Platform** — iOS, Android, Web, Desktop (Electron)
+- **Multi-Language** — English, Spanish, French, German
 
-## 🏗️ Architecture
+---
 
-RetailPOS follows a clean architecture pattern with separation of concerns:
+## Architecture
 
-- **Presentation Layer**: React Native components with Expo
-- **Business Logic**: Service layer with platform abstractions
-- **Data Layer**: SQLite repositories with TypeORM-like patterns
-- **Infrastructure**: Hardware integrations and external APIs
+RetailPOS follows a clean layered architecture:
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed technical documentation.
+- **Presentation** — React Native + Expo screens and components
+- **Business Logic** — Service layer with constructor injection and platform abstractions
+- **Repository Layer** — Interface-based repositories with SQLite (offline) and HTTP (multi-register) implementations
+- **Infrastructure** — Hardware drivers, external platform APIs, local HTTP server
 
-## 🛠️ Tech Stack
+Key architectural decisions are documented in [`docs/adr/`](docs/adr/) and the full technical reference is in [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
-- **Framework**: React Native with Expo
-- **Language**: TypeScript
-- **State Management**: Zustand + React Context
-- **Database**: SQLite (expo-sqlite)
-- **Styling**: Custom theme system
-- **Internationalization**: react-i18next
-- **Testing**: Jest
-- **Linting**: ESLint + Prettier
+---
 
-## 📋 Prerequisites
+## Tech Stack
 
-- Node.js 22.x or later
-- Yarn package manager
-- Expo CLI (`npm install -g @expo/cli`)
+| Layer      | Technology                           |
+| ---------- | ------------------------------------ |
+| Framework  | React Native + Expo SDK 53           |
+| Language   | TypeScript 5.x                       |
+| Navigation | React Navigation 7.x                 |
+| State      | React Context + Zustand (sync queue) |
+| Database   | SQLite via `expo-sqlite`             |
+| Desktop    | Electron                             |
+| i18n       | react-i18next + expo-localization    |
+| Testing    | Jest                                 |
+| Linting    | ESLint + Prettier                    |
 
-## 🚀 Quick Start
+---
 
-1. **Clone the repository**
+## Prerequisites
 
-   ```bash
-   git clone https://github.com/n17foo/retailpos.git
-   cd retailpos
-   ```
+- Node.js 22.x
+- Yarn 1.x
+- Expo CLI — `npm install -g @expo/cli`
 
-2. **Install dependencies**
+---
 
-   ```bash
-   yarn install
-   ```
-
-3. **Setup environment**
-
-   ```bash
-   cp .env.example .env
-   # Edit .env with your configuration
-   ```
-
-4. **Start development server**
-
-   ```bash
-   yarn ios        # iOS simulator
-   yarn android    # Android emulator
-   yarn web        # Web browser
-   yarn desktop    # Electron desktop app
-   ```
-
-5. **Run the onboarding**
-   - Open the app and follow the setup wizard
-   - Choose your e-commerce platform or offline mode
-   - Create admin account and configure hardware
-
-## 🧪 Testing
+## Quick Start
 
 ```bash
-# Run tests
-yarn test
-
-# Run tests in watch mode
-yarn test:watch
-
-# Run tests with coverage
-yarn test:coverage
+git clone https://github.com/n17foo/retailpos.git
+cd retailpos
+yarn install
+cp .env.example .env
 ```
 
-## 📁 Project Structure
-
-```
-retailpos/
-├── components/        # Reusable UI components
-├── contexts/          # React contexts for global state
-├── hooks/            # Custom React hooks
-├── locales/          # Internationalization files
-├── repositories/     # Data access layer (SQLite)
-├── screens/          # Screen components
-├── services/         # Business logic and external APIs
-│   ├── audit/        # Audit logging service
-│   ├── auth/         # Authentication providers
-│   ├── basket/       # Shopping basket management
-│   ├── checkout/     # Order checkout flow
-│   ├── config/       # Configuration and service bridging
-│   ├── customer/     # Platform customer services (8 platforms)
-│   ├── discount/     # Platform discount/coupon services (8 platforms)
-│   ├── giftcard/     # Platform gift card services (8 platforms)
-│   ├── inventory/    # Inventory management
-│   ├── localapi/     # Multi-register offline API
-│   ├── logger/       # Logging infrastructure
-│   ├── notifications/# Real-time notification system
-│   ├── order/        # Order processing and sync
-│   ├── product/      # Product management and variants
-│   ├── reporting/    # Analytics and reporting
-│   ├── returns/      # Return processing + refunds (10 platforms)
-│   ├── search/       # Product search functionality
-│   ├── sync/         # Data synchronization
-│   ├── tax/          # Tax profile management
-│   └── token/        # Platform API token management
-└── utils/            # Utility functions and helpers
+```bash
+yarn ios        # iOS simulator
+yarn android    # Android emulator
+yarn web        # Web browser
+yarn desktop    # Electron desktop
 ```
 
-## 🔧 Configuration
+On first launch, follow the onboarding wizard to choose your platform, configure hardware, and create an admin account.
 
-### Environment Variables
+---
 
-Create a `.env` file based on `.env.example`:
+## Testing
+
+```bash
+yarn test              # Run all tests
+yarn test:watch        # Watch mode
+yarn test:coverage     # With coverage report
+yarn lint              # ESLint + type check
+yarn lint:fix          # Auto-fix
+yarn format            # Prettier
+```
+
+---
+
+## Environment Variables
+
+Copy `.env.example` to `.env`. Key flags:
 
 ```env
-# Development mode
-APP_ENV=development
-
-# Mock services for development
+# Mock services for development (no real hardware or API calls)
 USE_MOCK_SCANNER=true
 USE_MOCK_PAYMENT=true
 USE_MOCK_PRINTERS=true
+USE_MOCK_SECRETS=true
 
-# Platform-specific settings
+# Platform credentials (set per platform as needed)
 SHOPIFY_STORE_URL=your-shop.myshopify.com
 SHOPIFY_API_VERSION=2024-01
 WOOCOMMERCE_URL=https://yourstore.com
-# ... other platform configs
 ```
-
-### Platform Configuration
-
-RetailPOS supports multiple e-commerce platforms. Each platform has its own service implementation with consistent interfaces.
-
-For platform-specific setup instructions, see [ARCHITECTURE.md](ARCHITECTURE.md).
-
-## 🚀 Builds
-
-Electron desktop installers are built automatically for Windows, macOS, and Linux on every push to the main branch. Download the latest builds from the [GitHub Actions](https://github.com/n17foo/retailpos/actions) page.
-
-## 🤝 Contributing
-
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
-
-### Development Workflow
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/your-feature`
-3. Make your changes following our coding standards
-4. Add tests for new functionality
-5. Ensure all tests pass: `yarn test`
-6. Submit a pull request
-
-### Code Standards
-
-- **TypeScript**: Strict type checking enabled
-- **Linting**: ESLint with React Native rules
-- **Formatting**: Prettier with custom configuration
-- **Commits**: Conventional commit format
-- **Testing**: Jest with React Native testing library
-
-## 📚 Documentation
-
-- **[FEATURES.md](FEATURES.md)**: Complete feature roadmap with implementation details — all phases now complete ✅
-- **[ARCHITECTURE.md](ARCHITECTURE.md)**: Technical architecture and design decisions
-- **[CONTRIBUTING.md](CONTRIBUTING.md)**: Contribution guidelines and development setup
-- **[CHANGELOG.md](CHANGELOG.md)**: Version history and release notes
-- **[SECURITY.md](SECURITY.md)**: Security policy and vulnerability reporting
-
-## 📈 Recent Updates
-
-**All Planned Features Complete** (Feb 2026):
-
-- ✅ Platform service extensions: BigCommerce, Magento, Sylius, Wix, PrestaShop, Squarespace (24 new service implementations)
-- ✅ UI integrations: Customer search modal, notification system, error boundary
-- ✅ Service wiring: Audit logging, notifications, returns + refund orchestration
-- ✅ Accessibility audit: Full screen reader support across all components
-- ✅ Logging refactor: All `console` calls replaced with structured `LoggerFactory` logging
-- ✅ Security hardening: Role access defaults to least privilege; iOS Face ID permission added
-- ✅ Clean compile + 198/198 tests passing
-
-## 🔒 Security
-
-See [SECURITY.md](SECURITY.md) for our security policy and how to report vulnerabilities.
-
-## 📄 License
-
-Licensed under the Apache License 2.0. See [LICENSE](LICENSE) for details.
-
-## 🙏 Acknowledgments
-
-- Built with [Expo](https://expo.dev/) and [React Native](https://reactnative.dev/)
-- Icons from [Lucide React](https://lucide.dev/)
-- UI components inspired by modern design systems
-
-## 📞 Support
-
-- **Issues**: [GitHub Issues](https://github.com/n17foo/retailpos/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/n17foo/retailpos/discussions)
 
 ---
 
-## 🏢 Need Help Integrating RetailPOS?
+## Project Structure
+
+```
+retailpos/
+├── App.tsx                    # Root — providers, startup init
+├── repositories/              # Data access layer
+│   ├── OrderRepository.ts     # Interface + factory
+│   ├── OfflineOrderRepository.ts  # SQLite implementation
+│   ├── LocalApiOrderRepository.ts # HTTP implementation (multi-register)
+│   └── ...
+├── services/
+│   ├── audit/                 # Audit log (KV-backed, append-only)
+│   ├── auth/                  # Pluggable auth providers
+│   ├── basket/                # Cart CRUD + service wiring factory
+│   ├── checkout/              # Checkout flow + order queries
+│   ├── config/                # POSConfigService + ServiceConfigBridge
+│   ├── customer/              # Platform customer lookup (9 platforms)
+│   ├── drawer/                # Cash drawer peripheral
+│   ├── inventory/             # Inventory queries + updates
+│   ├── localapi/              # Multi-register local HTTP API
+│   ├── logger/                # Pluggable structured logger
+│   ├── notifications/         # In-app notification event bus
+│   ├── order/                 # Platform order services (9 platforms)
+│   ├── payment/               # Payment terminal providers
+│   ├── printer/               # Receipt printing + daily reports
+│   ├── product/               # Product management (9 platforms)
+│   ├── refunds/               # Returns + refund orchestration
+│   ├── reporting/             # Sales analytics
+│   ├── scanner/               # Barcode/QR scanner abstraction
+│   ├── search/                # Product search
+│   ├── sync/                  # Order sync + background sync
+│   └── tax/                   # Tax profile management
+├── screens/
+│   ├── settings/              # Settings tab screens
+│   ├── order/                 # Order screen sub-components
+│   ├── order-history/         # Order history sub-components
+│   └── onboarding/            # Onboarding wizard steps
+├── hooks/                     # Custom React hooks
+├── contexts/                  # React Context providers
+├── navigation/                # React Navigation setup
+├── components/                # Shared UI components
+├── locales/                   # i18n translation files
+├── utils/                     # Theme, money math, platform helpers
+└── docs/
+    ├── adr/                   # Architecture Decision Records
+    └── specs/                 # EARS requirements specs
+```
+
+---
+
+## Documentation
+
+| Document                                               | Purpose                                           |
+| ------------------------------------------------------ | ------------------------------------------------- |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md)                   | Technical architecture, patterns, database schema |
+| [`AGENT.md`](AGENT.md)                                 | Coding conventions and development guidelines     |
+| [`docs/adr/`](docs/adr/)                               | Architecture Decision Records (14 ADRs)           |
+| [`docs/specs/`](docs/specs/)                           | EARS requirements specs for all features          |
+| [`docs/specs/EARS-GUIDE.md`](docs/specs/EARS-GUIDE.md) | How to write EARS specs                           |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md)                   | Contribution guidelines                           |
+| [`CHANGELOG.md`](CHANGELOG.md)                         | Version history                                   |
+| [`SECURITY.md`](SECURITY.md)                           | Security policy                                   |
+
+### Architecture Decision Records
+
+| ADR                                                                   | Decision                                                   |
+| --------------------------------------------------------------------- | ---------------------------------------------------------- |
+| [ADR-001](docs/adr/ADR-001-service-split.md)                          | Service split — Basket, Checkout, OrderSync                |
+| [ADR-002](docs/adr/ADR-002-repository-interface-pattern.md)           | Repository interface pattern — no I-prefix                 |
+| [ADR-003](docs/adr/ADR-003-multi-register-repository-injection.md)    | Multi-register — repository injection at wiring time       |
+| [ADR-004](docs/adr/ADR-004-offline-first-sqlite.md)                   | Offline-first SQLite with async platform sync              |
+| [ADR-005](docs/adr/ADR-005-platform-abstraction-factory.md)           | Platform abstraction via Factory + Interface               |
+| [ADR-006](docs/adr/ADR-006-money-integer-cent-math.md)                | Money arithmetic — integer-cent math                       |
+| [ADR-007](docs/adr/ADR-007-pluggable-logger.md)                       | Pluggable logger with transport pattern                    |
+| [ADR-008](docs/adr/ADR-008-authentication-pluggable-multi-method.md)  | Authentication — pluggable multi-method with PIN fallback  |
+| [ADR-009](docs/adr/ADR-009-tax-calculation-platform-authoritative.md) | Tax calculation — platform-authoritative for online orders |
+| [ADR-010](docs/adr/ADR-010-cash-drawer-ui-driven.md)                  | Cash drawer — UI-driven, service-decided                   |
+| [ADR-011](docs/adr/ADR-011-notification-singleton-event-bus.md)       | Notification system — singleton event bus                  |
+| [ADR-012](docs/adr/ADR-012-audit-log-kv-append-only.md)               | Audit log — KV-backed append-only                          |
+| [ADR-013](docs/adr/ADR-013-scanner-hardware-abstraction.md)           | Scanner hardware abstraction — four types, one interface   |
+| [ADR-014](docs/adr/ADR-014-spec-first-development.md)                 | Spec-first development with EARS format                    |
+
+---
+
+## Builds
+
+Electron desktop installers (Windows, macOS, Linux) are built automatically on every push to `main`. Download from [GitHub Actions](https://github.com/n17foo/retailpos/actions).
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). In brief:
+
+1. Fork and create a feature branch
+2. Follow the patterns in [AGENT.md](AGENT.md)
+3. Run `yarn lint` and `yarn test` before submitting
+4. Submit a pull request
+
+---
+
+## Security
+
+See [SECURITY.md](SECURITY.md). Known gap: PINs are currently stored as plaintext in SQLite — hash with bcrypt/Argon2 before production deployment.
+
+---
+
+## License
+
+Apache License 2.0 — see [LICENSE](LICENSE).
+
+---
+
+## Need Help?
 
 RetailPOS is built and maintained by **[N17](https://n17.foo)** — a software studio specialising in retail and commerce infrastructure.
 
-If you need help with any of the following, get in touch:
+- **Platform integration** — Shopify, WooCommerce, BigCommerce, Magento, and more
+- **Custom hardware setup** — scanners, printers, cash drawers, card terminals
+- **Multi-register deployment** — server/client mode across multiple registers
+- **Custom feature development** — loyalty, custom reporting, bespoke payment flows
+- **Production hardening** — PIN hashing, encrypted credentials, PCI guidance
+- **Staff training & onboarding**
 
-- **Platform integration** — connecting RetailPOS to your Shopify, WooCommerce, BigCommerce, Magento, or other e-commerce platform
-- **Custom hardware setup** — configuring barcode scanners, receipt printers, cash drawers, or card terminals for your specific hardware
-- **Multi-register deployment** — setting up server/client mode across multiple registers in your store
-- **Custom feature development** — extending RetailPOS with features specific to your business (loyalty programmes, custom reporting, bespoke payment flows)
-- **Production hardening** — security review, PIN hashing, encrypted credential storage, PCI compliance guidance
-- **Hosted deployment** — managed hosting and ongoing maintenance so you don't have to run it yourself
-- **Staff training & onboarding** — getting your team up and running quickly
-
-### Get in touch
-
-- 🌐 **Website**: [N17](https://n17.foo)
-- 📧 **Email**: [hello@n17.foo](mailto:hello@n17.foo)
+🌐 [n17.foo](https://n17.foo) · 📧 [hello@n17.foo](mailto:hello@n17.foo)
 
 ---
 
-**RetailPOS** — Bridging the gap between physical and digital retail experiences.
+**RetailPOS** — Bridging the gap between physical and digital retail.

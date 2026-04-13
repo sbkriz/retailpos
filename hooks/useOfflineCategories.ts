@@ -78,9 +78,9 @@ export const useOfflineCategories = (): UseOfflineCategoriesReturn => {
       setIsLoading(true);
       setError(null);
       try {
-        const result = await offlineCategoryService.deleteCategory(id);
+        await offlineCategoryService.deleteCategory(id);
         await loadCategories();
-        return result;
+        return true;
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to delete category');
         return false;

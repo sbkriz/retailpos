@@ -78,9 +78,9 @@ export const useOfflineProducts = (): UseOfflineProductsReturn => {
       setIsLoading(true);
       setError(null);
       try {
-        const result = await offlineProductService.deleteProduct(id);
+        await offlineProductService.deleteProduct(id);
         await loadProducts();
-        return result;
+        return true;
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to delete product');
         return false;

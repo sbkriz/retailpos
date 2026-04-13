@@ -5,7 +5,7 @@ import { CheckoutServiceInterface } from '../checkout/CheckoutServiceInterface';
 import { OrderSyncService } from '../sync/OrderSyncService';
 import { OrderSyncServiceInterface } from '../sync/OrderSyncServiceInterface';
 import { BasketRepository } from '../../repositories/BasketRepository';
-import { OrderRepository } from '../../repositories/OrderRepository';
+import { OrderRepository, getOrderRepository } from '../../repositories/OrderRepository';
 import { OrderItemRepository } from '../../repositories/OrderItemRepository';
 import { OrderServiceFactory } from '../order/OrderServiceFactory';
 import { LoggerFactory } from '../logger/LoggerFactory';
@@ -83,9 +83,9 @@ export class BasketServiceFactory {
   // ── Wiring ──────────────────────────────────────────────────────────
 
   private buildContainer(): ServiceContainer {
-    // Repositories
+    // Repositories — factory selects the right implementation for the current mode
     const basketRepo = new BasketRepository();
-    const orderRepo = new OrderRepository();
+    const orderRepo: OrderRepository = getOrderRepository();
     const orderItemRepo = new OrderItemRepository();
 
     // Shared dependencies
@@ -101,6 +101,13 @@ export class BasketServiceFactory {
       orderServiceFactory,
       loggerFactory.createLogger('OrderSyncService')
     );
+
+    // Inject the right return repository into RefundService
+    import('../../repositories/ReturnRepository').then(({ getReturnRepository }) => {
+      import('../refunds/RefundService').then(({ returnService }) => {
+        returnService.setReturnRepository(getReturnRepository());
+      });
+    });
 
     return { basketService, checkoutService, orderSyncService };
   }

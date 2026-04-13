@@ -74,6 +74,7 @@ function createMockBasketService(): BasketServiceInterface {
 function createMockOrderRepo(): jest.Mocked<OrderRepository> {
   return {
     create: jest.fn(),
+    createWithItems: jest.fn(),
     findById: jest.fn(),
     findAll: jest.fn().mockResolvedValue([]),
     findUnsynced: jest.fn().mockResolvedValue([]),
@@ -128,8 +129,7 @@ describe('CheckoutService', () => {
     it('creates an order and order items from the basket', async () => {
       const order = await service.startCheckout(undefined, 'cashier-1', 'Jane');
 
-      expect(orderRepo.create).toHaveBeenCalledTimes(1);
-      expect(orderItemRepo.createMany).toHaveBeenCalledTimes(1);
+      expect(orderRepo.createWithItems).toHaveBeenCalledTimes(1);
 
       expect(order.status).toBe('pending');
       expect(order.syncStatus).toBe('pending');
@@ -142,7 +142,7 @@ describe('CheckoutService', () => {
       (basketService.getBasket as jest.Mock).mockResolvedValue({ ...mockBasket, items: [] });
 
       await expect(service.startCheckout()).rejects.toThrow('Cannot checkout with empty basket');
-      expect(orderRepo.create).not.toHaveBeenCalled();
+      expect(orderRepo.createWithItems).not.toHaveBeenCalled();
     });
   });
 

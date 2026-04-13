@@ -18,6 +18,8 @@ import { queueManager } from './services/queue/QueueManager';
 import { backgroundSyncService } from './services/sync/BackgroundSyncService';
 import { posConfig } from './services/config/POSConfigService';
 import { authConfig } from './services/auth/AuthConfigService';
+import { localApiConfig } from './services/localapi/LocalApiConfig';
+import { syncPoller } from './services/localapi/sync/SyncPoller';
 import RootNavigator from './navigation/RootNavigator';
 import ErrorBoundary from './components/ErrorBoundary';
 import { NotificationProvider, useNotifications } from './contexts/NotificationProvider';
@@ -109,6 +111,19 @@ const AppContent = () => {
       );
     });
 
+    // Load local API config and start SyncPoller if in client mode
+    localApiConfig
+      .load()
+      .then(() => {
+        if (localApiConfig.isClient) {
+          syncPoller.start();
+          loggerRef.current.info({ message: 'SyncPoller started — client mode active' });
+        }
+      })
+      .catch(err => {
+        loggerRef.current.error({ message: 'Failed to load local API config' }, err instanceof Error ? err : new Error(String(err)));
+      });
+
     // Initialize sync queue manager
     queueManager.initialize();
 
@@ -120,6 +135,7 @@ const AppContent = () => {
       isMounted = false;
       backgroundSyncService.stop();
       queueManager.dispose();
+      syncPoller.stop();
     };
   }, []);
 

@@ -6,6 +6,8 @@ import { localApiConfig, LocalApiMode } from '../../services/localapi/LocalApiCo
 import { localApiClient } from '../../services/clients/localapi/LocalApiClient';
 import { localApiServer } from '../../services/localapi/LocalApiServer';
 import { localApiDiscovery, DiscoveredServer } from '../../services/localapi/LocalApiDiscovery';
+import { BasketServiceFactory } from '../../services/basket/BasketServiceFactory';
+import { syncPoller } from '../../services/localapi/sync/SyncPoller';
 import { generateUUID } from '../../utils/uuid';
 import { useTranslate } from '../../hooks/useTranslate';
 
@@ -51,12 +53,18 @@ const LocalApiSettingsTab: React.FC = () => {
 
     if (mode === 'server') {
       localApiServer.start();
+      syncPoller.stop();
+      BasketServiceFactory.getInstance().reset();
       Alert.alert(t('common.saved'), t('settings.localApi.savedServer', { port }));
     } else if (mode === 'client') {
       localApiServer.stop();
+      syncPoller.start();
+      BasketServiceFactory.getInstance().reset();
       Alert.alert(t('common.saved'), t('settings.localApi.savedClient'));
     } else {
       localApiServer.stop();
+      syncPoller.stop();
+      BasketServiceFactory.getInstance().reset();
       Alert.alert(t('common.saved'), t('settings.localApi.savedStandalone'));
     }
   }, [mode, port, sharedSecret, registerName, serverAddress, t]);

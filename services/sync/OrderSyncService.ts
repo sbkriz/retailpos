@@ -48,6 +48,18 @@ export class OrderSyncService implements OrderSyncServiceInterface {
     try {
       const orderService = this.orderServiceFactory.getService(localOrder.platform);
 
+      // If a draft was created at checkout time, complete it rather than creating a duplicate
+      if (localOrder.platformOrderId) {
+        const completed = await orderService.completeOrder(
+          localOrder.platformOrderId,
+          localOrder.paymentMethod ?? 'unknown',
+          localOrder.paymentTransactionId
+        );
+        const platformOrderId = completed?.platformOrderId ?? completed?.id ?? localOrder.platformOrderId;
+        await this.orderRepo.updateSyncSuccess(orderId, platformOrderId);
+        return { success: true, orderId, platformOrderId };
+      }
+
       const platformOrder: Order = {
         customerEmail: localOrder.customerEmail,
         customerName: localOrder.customerName,
@@ -139,17 +151,15 @@ export class OrderSyncService implements OrderSyncServiceInterface {
   }
 
   private basketItemsToLineItems(items: BasketItem[]): OrderLineItem[] {
-    return items.map(item => {
-      return {
-        productId: item.originalId ?? item.productId,
-        variantId: item.variantId,
-        sku: item.sku,
-        name: item.name,
-        quantity: item.quantity,
-        price: item.price,
-        total: item.price,
-        properties: item.properties,
-      };
-    });
+    return items.map(item => ({
+      productId: item.originalId ?? item.productId,
+      variantId: item.variantId,
+      sku: item.sku,
+      name: item.name,
+      quantity: item.quantity,
+      price: item.price,
+      total: item.price * item.quantity,
+      properties: item.properties,
+    }));
   }
 }

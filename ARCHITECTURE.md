@@ -232,12 +232,26 @@ OrderServiceFactory.getInstance().getService(platform); // → OrderServiceInter
 
 ### Repository Pattern
 
-Local data (orders, users) is accessed through repository classes that wrap SQLite:
+Local data (orders, users) is accessed through repository classes that wrap SQLite. Each repository file exports:
+
+1. **An interface** (same name as the file, e.g. `OrderRepository`) — the contract
+2. **An `Offline` implementation** (e.g. `OfflineOrderRepository`) — SQLite-backed, used in standalone/server mode
+3. **A factory function** (e.g. `getOrderRepository()`) — returns the right implementation for the current mode
 
 ```typescript
-OrderRepository.findAll();
-UserRepository.create({ name, pin, role });
+// repositories/OrderRepository.ts
+export interface OrderRepository { ... }          // contract
+export class OfflineOrderRepository implements OrderRepository { ... }  // SQLite
+export const orderRepository = new OfflineOrderRepository();            // singleton
+export function getOrderRepository(): OrderRepository { ... }           // factory
+
+// repositories/LocalApiOrderRepository.ts
+export class LocalApiOrderRepository implements OrderRepository { ... } // HTTP to server
 ```
+
+The factory function checks `localApiConfig.isClient` and returns `LocalApiOrderRepository` (HTTP) or `OfflineOrderRepository` (SQLite). Services receive the interface type — they have no knowledge of which implementation is active.
+
+`BasketServiceFactory.buildContainer()` calls `getOrderRepository()` and `getReturnRepository()` to wire the right implementations at startup.
 
 ### Offline Queue
 

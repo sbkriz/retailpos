@@ -3,8 +3,8 @@ import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity }
 import { MaterialIcons } from '@expo/vector-icons';
 import { lightColors, spacing, typography, borderRadius, elevation } from '../utils/theme';
 import { formatMoney } from '../utils/money';
-import { useReturns } from '../hooks/useReturns';
-import { RefundRecord } from '../services/returns/ReturnService';
+import { useRefund } from '../hooks/useRefund';
+import { RefundRecord } from '../services/refunds/RefundService';
 import { Button } from '../components/Button';
 import Input from '../components/Input';
 import { useCurrency } from '../hooks/useCurrency';
@@ -16,7 +16,7 @@ interface ReturnsScreenProps {
 
 const ReturnsScreen: React.FC<ReturnsScreenProps> = ({ onGoBack }) => {
   const currency = useCurrency();
-  const { isInitialized, isLoading, error, processPaymentRefund, processEcommerceRefund, getRefundHistory } = useReturns();
+  const { isInitialized, isLoading, error, processPaymentRefund, processEcommerceRefund, getRefundHistory } = useRefund();
   const [refundType, setRefundType] = useState<'payment' | 'ecommerce'>('payment');
   const [orderId, setOrderId] = useState('');
   const [transactionId, setTransactionId] = useState('');
@@ -66,10 +66,16 @@ const ReturnsScreen: React.FC<ReturnsScreenProps> = ({ onGoBack }) => {
         return;
       }
 
-      const result = await processPaymentRefund(transactionId, parseFloat(amount), reason);
+      const parsedAmount = parseFloat(amount);
+      if (isNaN(parsedAmount) || parsedAmount <= 0) {
+        setFormError('Amount must be a positive number.');
+        return;
+      }
+
+      const result = await processPaymentRefund(transactionId, parsedAmount, reason);
 
       if (result.success) {
-        setSuccessMsg(`Refund of ${formatMoney(parseFloat(amount), currency.code)} processed successfully.`);
+        setSuccessMsg(`Refund of ${formatMoney(parsedAmount, currency.code)} processed successfully.`);
         const history = await getRefundHistory(transactionId);
         setRefundHistory(history);
         setAmount('');
@@ -83,13 +89,19 @@ const ReturnsScreen: React.FC<ReturnsScreenProps> = ({ onGoBack }) => {
         return;
       }
 
+      const parsedAmount = parseFloat(amount);
+      if (isNaN(parsedAmount) || parsedAmount <= 0) {
+        setFormError('Amount must be a positive number.');
+        return;
+      }
+
       const result = await processEcommerceRefund(orderId, {
-        amount: parseFloat(amount),
+        amount: parsedAmount,
         reason: reason,
       });
 
       if (result.success) {
-        setSuccessMsg(`E-commerce refund of ${formatMoney(parseFloat(amount), currency.code)} processed successfully.`);
+        setSuccessMsg(`E-commerce refund of ${formatMoney(parsedAmount, currency.code)} processed successfully.`);
         const history = await getRefundHistory(orderId);
         setRefundHistory(history);
         setAmount('');

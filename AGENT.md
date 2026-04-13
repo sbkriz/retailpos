@@ -827,10 +827,15 @@ describe('Button', () => {
 
 ### Adding a New Repository
 
-1. Create repository in `repositories/[Entity]Repository.ts`
-2. Define entity interface and row type
-3. Implement CRUD methods
-4. Create hook if needed in `hooks/use[Entity].ts`
+1. Create the file `repositories/[Entity]Repository.ts`
+2. Export an **interface** named `[Entity]Repository` — the contract
+3. Export a class `Offline[Entity]Repository implements [Entity]Repository` — SQLite implementation
+4. Export a singleton `export const [entity]Repository = new Offline[Entity]Repository()`
+5. Export a factory `export function get[Entity]Repository(): [Entity]Repository` — checks `localApiConfig.isClient` and returns `LocalApi[Entity]Repository` or the offline singleton
+6. If multi-register support is needed, create `repositories/LocalApi[Entity]Repository.ts` implementing the same interface via `localApiClient`
+7. Create hook if needed in `hooks/use[Entity].ts`
+
+**Never use `I`-prefixed interface names** (e.g. `IOrderRepository`). The interface takes the plain name (`OrderRepository`), the SQLite class is `Offline[Entity]Repository`, and the HTTP class is `LocalApi[Entity]Repository`.
 
 ---
 

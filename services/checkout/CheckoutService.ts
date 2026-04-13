@@ -3,7 +3,8 @@ import { BasketItem } from '../basket/basket';
 import { LocalOrder, LocalOrderStatus, CheckoutResult } from '../order/order';
 import { BasketServiceInterface } from '../basket/BasketServiceInterface';
 import { CheckoutServiceInterface } from './CheckoutServiceInterface';
-import { OrderRepository, OrderRow } from '../../repositories/OrderRepository';
+import { OrderRepository } from '../../repositories/OrderRepository';
+import { OrderRow } from '../../repositories/OrderRepository';
 import { OrderItemRepository } from '../../repositories/OrderItemRepository';
 import { LoggerInterface } from '../logger/LoggerInterface';
 import { posConfig } from '../config/POSConfigService';
@@ -104,8 +105,7 @@ export class CheckoutService implements CheckoutServiceInterface {
       updatedAt: new Date(now),
     };
 
-    // Save order
-    await this.orderRepo.create({
+    const orderInput = {
       id: orderId,
       platform: platform ?? null,
       subtotal,
@@ -120,26 +120,25 @@ export class CheckoutService implements CheckoutServiceInterface {
       cashierName: cashierName ?? null,
       platformOrderId: platformOrderId ?? null,
       status,
-    });
+    };
 
-    // Save order items with platform-resolved tax rates
-    await this.orderItemRepo.createMany(
-      basket.items.map((item, i) => ({
-        orderId,
-        productId: item.productId,
-        variantId: item.variantId,
-        sku: item.sku,
-        name: item.name,
-        price: item.price,
-        quantity: item.quantity,
-        image: item.image,
-        taxable: false,
-        taxRate: platformTaxRates[i] ?? null,
-        isEcommerceProduct: item.isEcommerceProduct,
-        originalId: item.originalId,
-        properties: item.properties,
-      }))
-    );
+    const itemInputs = basket.items.map((item, i) => ({
+      orderId,
+      productId: item.productId,
+      variantId: item.variantId,
+      sku: item.sku,
+      name: item.name,
+      price: item.price,
+      quantity: item.quantity,
+      image: item.image,
+      taxable: false,
+      taxRate: platformTaxRates[i] ?? null,
+      isEcommerceProduct: item.isEcommerceProduct,
+      originalId: item.originalId,
+      properties: item.properties,
+    }));
+
+    await this.orderRepo.createWithItems(orderInput, itemInputs);
 
     auditLogService.log('order:created', {
       userId: cashierId,

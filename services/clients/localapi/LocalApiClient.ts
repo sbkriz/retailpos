@@ -1,10 +1,11 @@
 import { localApiConfig } from '../../localapi/LocalApiConfig';
 import { LoggerFactory } from '../../logger/LoggerFactory';
-import { OrderRow } from '../../../repositories/OrderRepository';
-import { OrderItemRow } from '../../../repositories/OrderItemRepository';
+import { OrderRow, CreateOrderInput } from '../../../repositories/OrderRepository';
+import { OrderItemRow, CreateOrderItemInput } from '../../../repositories/OrderItemRepository';
 import { Product } from '../../../repositories/ProductRepository';
 import { TaxProfileRow } from '../../../repositories/TaxProfileRepository';
-import { ReturnRow } from '../../../repositories/ReturnRepository';
+import { ReturnRow, CreateReturnInput } from '../../../repositories/ReturnRepository';
+import { Category } from '../../../services/category/CategoryServiceInterface';
 
 export interface LocalApiHealthResponse {
   ok: boolean;
@@ -122,6 +123,67 @@ export class LocalApiClient {
     return result.returns;
   }
 
+  // ── Categories ────────────────────────────────────────────────────
+
+  async getCategories(): Promise<Category[]> {
+    const result = await this.get<{ categories: Category[] }>('/api/categories');
+    return result.categories;
+  }
+
+  async createCategory(data: Omit<Category, 'id'>): Promise<Category> {
+    const result = await this.post<{ category: Category }>('/api/categories', data);
+    return result.category;
+  }
+
+  async updateCategory(id: string, data: Partial<Category>): Promise<Category> {
+    const result = await this.put<{ category: Category }>(`/api/categories/${id}`, data);
+    return result.category;
+  }
+
+  async deleteCategory(id: string): Promise<void> {
+    await this.delete(`/api/categories/${id}`);
+  }
+
+  // ── Orders (write) ────────────────────────────────────────────────
+
+  async createOrder(order: CreateOrderInput, items: CreateOrderItemInput[]): Promise<OrderRow> {
+    const result = await this.post<{ order: OrderRow }>('/api/orders', { order, items });
+    return result.order;
+  }
+
+  async updateOrderStatus(orderId: string, status: string): Promise<OrderRow> {
+    const result = await this.put<{ order: OrderRow }>(`/api/orders/${orderId}/status`, { status });
+    return result.order;
+  }
+
+  async updateOrderPayment(orderId: string, paymentMethod: string, transactionId?: string): Promise<OrderRow> {
+    const result = await this.put<{ order: OrderRow }>(`/api/orders/${orderId}/payment`, { paymentMethod, transactionId });
+    return result.order;
+  }
+
+  // ── Products (write) ──────────────────────────────────────────────
+
+  async createProduct(data: Omit<Product, 'id'>): Promise<Product> {
+    const result = await this.post<{ product: Product }>('/api/products', data);
+    return result.product;
+  }
+
+  async updateProduct(id: string, data: Partial<Product>): Promise<Product> {
+    const result = await this.put<{ product: Product }>(`/api/products/${id}`, data);
+    return result.product;
+  }
+
+  async deleteProduct(id: string): Promise<void> {
+    await this.delete(`/api/products/${id}`);
+  }
+
+  // ── Returns (write) ───────────────────────────────────────────────
+
+  async createReturn(input: CreateReturnInput, processedBy?: string): Promise<string> {
+    const result = await this.post<{ returnId: string }>('/api/returns', { input, processedBy });
+    return result.returnId;
+  }
+
   // ── Generic HTTP helpers ──────────────────────────────────────────
 
   private get headers(): Record<string, string> {
@@ -236,6 +298,18 @@ export class LocalApiClient {
     }
 
     return response.json();
+  }
+
+  private async delete(path: string): Promise<void> {
+    const response = await fetch(`${this.baseUrl}${path}`, {
+      method: 'DELETE',
+      headers: this.headers,
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({}));
+      throw new Error(errorBody.error || `DELETE ${path} failed: ${response.status}`);
+    }
   }
 }
 

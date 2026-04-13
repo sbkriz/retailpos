@@ -5,6 +5,7 @@ import { lightColors, spacing, typography, borderRadius, elevation, semanticColo
 import { useResponsive } from '../hooks/useResponsive';
 import { FloatingSaveBar } from '../components/FloatingSaveBar';
 import { useTranslate } from '../hooks/useTranslate';
+import { useAuthContext } from '../contexts/AuthProvider';
 import PaymentSettingsTab from './settings/PaymentSettingsTab';
 import PrinterSettingsTab from './settings/PrinterSettingsTab';
 import ScannerSettingsTab from './settings/ScannerSettingsTab';
@@ -66,10 +67,20 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ onGoBack }) => {
   const navigation = useNavigation();
   const { isMobile, isDesktop } = useResponsive();
   const { t } = useTranslate();
+  const { user } = useAuthContext();
 
   const [activeTab, setActiveTab] = useState<SettingsTab>('generic');
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
   const [dropdownVisible, setDropdownVisible] = useState(false);
+
+  // Settings are restricted to admin and manager roles
+  if (user?.role === 'cashier') {
+    return (
+      <View style={styles.accessDenied}>
+        <Text style={styles.accessDeniedText}>Access denied. Settings require manager or admin role.</Text>
+      </View>
+    );
+  }
 
   const handleGoBack = () => {
     if (onGoBack) {
@@ -395,6 +406,18 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: spacing.md,
+  },
+  accessDenied: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.xl,
+    backgroundColor: lightColors.background,
+  },
+  accessDeniedText: {
+    fontSize: typography.fontSize.md,
+    color: lightColors.textSecondary,
+    textAlign: 'center',
   },
 });
 

@@ -1,12 +1,14 @@
 import { localApiConfig } from './LocalApiConfig';
 import { LoggerFactory } from '../logger/LoggerFactory';
-import { orderRepository } from '../../repositories/OrderRepository';
-import { OrderItemRepository } from '../../repositories/OrderItemRepository';
+import { orderRepository, CreateOrderInput } from '../../repositories/OrderRepository';
+import { OrderItemRepository, CreateOrderItemInput } from '../../repositories/OrderItemRepository';
 import { ProductRepository } from '../../repositories/ProductRepository';
 import { taxProfileRepository } from '../../repositories/TaxProfileRepository';
-import { returnRepository } from '../../repositories/ReturnRepository';
+import { returnRepository, CreateReturnInput } from '../../repositories/ReturnRepository';
 import { syncEventBus } from './sync/SyncEventBus';
 import { CommerceFullWebhookReceiver } from '../clients/commercefull/CommerceFullWebhookReceiver';
+import { offlineProductService } from '../product/platforms/OfflineProductService';
+import { offlineCategoryService } from '../category/platforms/OfflineCategoryService';
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
@@ -178,6 +180,88 @@ export class LocalApiServer {
       const receiver = CommerceFullWebhookReceiver.getInstance();
       const rawBody = typeof body === 'string' ? body : JSON.stringify(body);
       return await receiver.handleRequest(rawBody, headers || {});
+    });
+
+    // ── Categories ────────────────────────────────────────────────────
+    this.route('GET', '/api/categories', async () => {
+      const rows = await offlineCategoryService.getCategories();
+      return { status: 200, body: { categories: rows } };
+    });
+
+    this.route('POST', '/api/categories', async (_params, body) => {
+      const data = body as Parameters<typeof offlineCategoryService.addCategory>[0];
+      const category = await offlineCategoryService.addCategory(data);
+      syncEventBus.emit('config:updated', { entity: 'category', action: 'created', category });
+      return { status: 201, body: { category } };
+    });
+
+    this.route('PUT', '/api/categories/:id', async (params, body) => {
+      const data = body as Parameters<typeof offlineCategoryService.updateCategory>[1];
+      const category = await offlineCategoryService.updateCategory(params.id, data);
+      syncEventBus.emit('config:updated', { entity: 'category', action: 'updated', category });
+      return { status: 200, body: { category } };
+    });
+
+    this.route('DELETE', '/api/categories/:id', async params => {
+      await offlineCategoryService.deleteCategory(params.id);
+      syncEventBus.emit('config:updated', { entity: 'category', action: 'deleted', id: params.id });
+      return { status: 200, body: { ok: true } };
+    });
+
+    // ── Orders (write) ────────────────────────────────────────────────
+    this.route('POST', '/api/orders', async (_params, body) => {
+      const b = body as { order: CreateOrderInput; items: CreateOrderItemInput[] };
+      await orderRepository.create(b.order);
+      await this.orderItemRepo.createMany(b.items);
+      const row = await orderRepository.findById(b.order.id);
+      syncEventBus.emit('order:created', { orderId: b.order.id });
+      return { status: 201, body: { order: row } };
+    });
+
+    this.route('PUT', '/api/orders/:id/status', async (params, body) => {
+      const b = body as { status: string };
+      await orderRepository.updateStatus(params.id, b.status);
+      const row = await orderRepository.findById(params.id);
+      syncEventBus.emit('order:updated', { orderId: params.id, status: b.status });
+      return { status: 200, body: { order: row } };
+    });
+
+    this.route('PUT', '/api/orders/:id/payment', async (params, body) => {
+      const b = body as { paymentMethod: string; transactionId?: string };
+      await orderRepository.updatePayment(params.id, b.paymentMethod, b.transactionId ?? null);
+      const row = await orderRepository.findById(params.id);
+      syncEventBus.emit('order:paid', { orderId: params.id });
+      return { status: 200, body: { order: row } };
+    });
+
+    // ── Products (write) ──────────────────────────────────────────────
+    this.route('POST', '/api/products', async (_params, body) => {
+      const data = body as Parameters<typeof offlineProductService.createProduct>[0];
+      const product = await offlineProductService.createProduct(data);
+      syncEventBus.emit('product:updated', { action: 'created', product });
+      return { status: 201, body: { product } };
+    });
+
+    this.route('PUT', '/api/products/:id', async (params, body) => {
+      const data = body as Parameters<typeof offlineProductService.updateProduct>[1];
+      const product = await offlineProductService.updateProduct(params.id, data);
+      syncEventBus.emit('product:updated', { action: 'updated', product });
+      return { status: 200, body: { product } };
+    });
+
+    this.route('DELETE', '/api/products/:id', async params => {
+      await offlineProductService.deleteProduct(params.id);
+      syncEventBus.emit('product:updated', { action: 'deleted', id: params.id });
+      return { status: 200, body: { ok: true } };
+    });
+
+    // ── Returns (write) ───────────────────────────────────────────────
+    this.route('POST', '/api/returns', async (_params, body) => {
+      const b = body as { input: CreateReturnInput; processedBy?: string };
+      const id = await returnRepository.create(b.input);
+      await returnRepository.updateStatus(id, 'completed', b.processedBy);
+      syncEventBus.emit('return:created', { returnId: id, orderId: b.input.orderId });
+      return { status: 201, body: { returnId: id } };
     });
   }
 

@@ -341,7 +341,7 @@ export class ServiceConfigBridge {
    * Configure refund service within ReturnService with platform settings
    */
   private configureRefundService(platform: ECommercePlatform, config: Record<string, unknown>): void {
-    const { ReturnService } = require('../returns/ReturnService');
+    const { ReturnService } = require('../refunds/RefundService');
     ReturnService.getInstance().configurePlatformRefund(platform, config);
     this.logger.info(`RefundService configured for ${platform}`);
   }

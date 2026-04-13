@@ -3,7 +3,7 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useNavigation } from '@react-navigation/native';
 import { MaterialIcons } from '@expo/vector-icons';
-import OrderScreen from '../screens/OrderScreen';
+import SaleScreen from '../screens/SaleScreen';
 import { MoreNavigator } from './MoreNavigator';
 import type { MainTabParamList } from './types';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -44,10 +44,10 @@ interface MainTabNavigatorProps {
 export const MainTabNavigator: React.FC<MainTabNavigatorProps> = ({ username, userRole, onLogout }) => {
   const navigation = useNavigation<BottomTabNavigationProp<MainTabParamList>>();
 
-  // Handler for barcode scan success — navigate to Order tab and auto-add the scanned product
+  // Handler for barcode scan success — navigate to Sale tab and auto-add the scanned product
   const handleScanSuccess = useCallback(
     (productId: string) => {
-      navigation.navigate('Order', { scannedProductId: productId });
+      navigation.navigate('Sale', { scannedProductId: productId });
     },
     [navigation]
   );
@@ -74,13 +74,13 @@ export const MainTabNavigator: React.FC<MainTabNavigatorProps> = ({ username, us
       }}
     >
       <Tab.Screen
-        name="Order"
+        name="Sale"
         options={{
           tabBarIcon: ({ color, size }) => <MaterialIcons name="shopping-cart" size={size} color={color} />,
-          tabBarLabel: 'Order',
+          tabBarLabel: 'Sale',
         }}
       >
-        {props => <OrderScreen {...props} username={username} />}
+        {props => <SaleScreen {...props} username={username} />}
       </Tab.Screen>
 
       <Tab.Screen

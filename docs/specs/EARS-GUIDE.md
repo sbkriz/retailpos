@@ -377,29 +377,30 @@ After writing or updating a spec, always perform an integration review:
 
 ## Existing Specs (Reference)
 
-| Spec                            | File                                    | Key patterns demonstrated                                           |
-| ------------------------------- | --------------------------------------- | ------------------------------------------------------------------- |
-| Onboarding – Wizard             | `docs/specs/onboarding/wizard.md`       | Dual path (online/offline), hardware skips, mock flags              |
-| Authentication – Login          | `docs/specs/auth/login.md`              | Provider pattern, hardware methods, platform token, audit log       |
-| Authentication – Logout         | `docs/specs/auth/logout.md`             | Session clear, navigation, prop-drilling risk                       |
-| Catalog – Products & Categories | `docs/specs/catalog/products.md`        | Multi-platform mappers, pagination, variant picker, category tree   |
-| Basket – Shopping Cart          | `docs/specs/basket/basket.md`           | Service/context split, checkout flow, dual UI surfaces, audit log   |
-| Checkout – Order Lifecycle      | `docs/specs/checkout/checkout.md`       | Draft order, payment, sync status machine, offline fallback         |
-| Customer – Search & Attach      | `docs/specs/customer/customer.md`       | Platform customer lookup, modal flow                                |
-| Payments – Terminal             | `docs/specs/payments/payments.md`       | Provider selection, terminal connect, optional methods              |
-| Sync – Order Sync Queue         | `docs/specs/sync/sync.md`               | Retry/discard, exponential backoff, sync status machine             |
-| Refunds – Returns & Refunds     | `docs/specs/refunds/refunds.md`         | Standalone refund vs return-triggered, audit log, amount validation |
-| Reporting – Sales Analytics     | `docs/specs/reporting/reporting.md`     | Date range presets, hourly/daily chart, CSV export                  |
-| Orders – Order History          | `docs/specs/orders/order-history.md`    | Role-based filtering, shift management, daily report, print         |
-| Settings – Screen & Tabs        | `docs/specs/settings/settings.md`       | Role guard, responsive layout, tab navigation                       |
-| Settings – Tab Content          | `docs/specs/settings/settings-tabs.md`  | All 10 settings tabs, save patterns, validation                     |
-| Settings – Multi-Register       | `docs/specs/settings/multi-register.md` | Local API server/client, discovery, sync event bus, poller          |
-| Offline – Data Flow             | `docs/specs/offline/offline.md`         | Repository injection, mode routing, resilience, conflict resolution |
-| Hardware – Scanner              | `docs/specs/hardware/scanner.md`        | Four scanner types, HID emulation, BLE UUIDs, barcode lookup        |
-| Hardware – Cash Drawer          | `docs/specs/hardware/cash-drawer.md`    | Driver priority, ESC/POS kick, Electron IPC, no-op fallback         |
-| Hardware – Authentication       | `docs/specs/hardware/auth.md`           | Six auth methods, PIN permanence, hardware availability             |
-| Hardware – Payment Terminal     | `docs/specs/hardware/payment.md`        | Provider selection, lazy loading, optional methods                  |
-| Hardware – Printer              | `docs/specs/hardware/printer.md`        | ESC/POS buffer, receipt config, daily report, shift management      |
-| System – Notifications          | `docs/specs/system/notifications.md`    | Singleton event bus, toast lifecycle, bell badge, drawer            |
-| System – Audit Log              | `docs/specs/system/audit.md`            | KV-backed append-only, producers, CSV export                        |
-| System – Logger                 | `docs/specs/system/logger.md`           | Pluggable transports, child loggers, DEV-only console               |
+| Spec                            | File                                    | Key patterns demonstrated                                                     |
+| ------------------------------- | --------------------------------------- | ----------------------------------------------------------------------------- |
+| Inventory – Stock Management    | `docs/specs/inventory/inventory.md`     | Platform service factory, adjust/set quantity, filter tabs, optimistic update |
+| Onboarding – Wizard             | `docs/specs/onboarding/wizard.md`       | Dual path (online/offline), hardware skips, mock flags                        |
+| Authentication – Login          | `docs/specs/auth/login.md`              | Provider pattern, hardware methods, platform token, audit log                 |
+| Authentication – Logout         | `docs/specs/auth/logout.md`             | Session clear, navigation, prop-drilling risk                                 |
+| Catalog – Products & Categories | `docs/specs/catalog/products.md`        | Multi-platform mappers, pagination, variant picker, category tree             |
+| Basket – Shopping Cart          | `docs/specs/basket/basket.md`           | Service/context split, checkout flow, dual UI surfaces, audit log             |
+| Checkout – Order Lifecycle      | `docs/specs/checkout/checkout.md`       | Draft order, payment, sync status machine, offline fallback                   |
+| Customer – Search & Attach      | `docs/specs/customer/customer.md`       | Platform customer lookup, modal flow                                          |
+| Payments – Terminal             | `docs/specs/payments/payments.md`       | Provider selection, terminal connect, optional methods                        |
+| Sync – Order Sync Queue         | `docs/specs/sync/sync.md`               | Retry/discard, exponential backoff, sync status machine                       |
+| Refunds – Returns & Refunds     | `docs/specs/refunds/refunds.md`         | Standalone refund vs return-triggered, audit log, amount validation           |
+| Reporting – Sales Analytics     | `docs/specs/reporting/reporting.md`     | Date range presets, hourly/daily chart, CSV export                            |
+| Orders – Order History          | `docs/specs/orders/order-history.md`    | Role-based filtering, shift management, daily report, print                   |
+| Settings – Screen & Tabs        | `docs/specs/settings/settings.md`       | Role guard, responsive layout, tab navigation                                 |
+| Settings – Tab Content          | `docs/specs/settings/settings-tabs.md`  | All 10 settings tabs, save patterns, validation                               |
+| Settings – Multi-Register       | `docs/specs/settings/multi-register.md` | Local API server/client, discovery, sync event bus, poller                    |
+| Offline – Data Flow             | `docs/specs/offline/offline.md`         | Repository injection, mode routing, resilience, conflict resolution           |
+| Hardware – Scanner              | `docs/specs/hardware/scanner.md`        | Four scanner types, HID emulation, BLE UUIDs, barcode lookup                  |
+| Hardware – Cash Drawer          | `docs/specs/hardware/cash-drawer.md`    | Driver priority, ESC/POS kick, Electron IPC, no-op fallback                   |
+| Hardware – Authentication       | `docs/specs/hardware/auth.md`           | Six auth methods, PIN permanence, hardware availability                       |
+| Hardware – Payment Terminal     | `docs/specs/hardware/payment.md`        | Provider selection, lazy loading, optional methods                            |
+| Hardware – Printer              | `docs/specs/hardware/printer.md`        | ESC/POS buffer, receipt config, daily report, shift management                |
+| System – Notifications          | `docs/specs/system/notifications.md`    | Singleton event bus, toast lifecycle, bell badge, drawer                      |
+| System – Audit Log              | `docs/specs/system/audit.md`            | KV-backed append-only, producers, CSV export                                  |
+| System – Logger                 | `docs/specs/system/logger.md`           | Pluggable transports, child loggers, DEV-only console                         |

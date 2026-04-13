@@ -1,8 +1,8 @@
 /**
- * useOrderScreen
+ * useSaleScreen
  *
  * Encapsulates all product-loading, search, category-filter, and barcode-scan
- * logic that previously lived directly in OrderScreen. The screen itself
+ * logic that previously lived directly in SaleScreen. The screen itself
  * becomes a pure layout/orchestration component.
  */
 
@@ -10,21 +10,21 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRoute, type RouteProp } from '@react-navigation/native';
 import { useBasketContext, CartProduct } from '../contexts/BasketProvider';
 import { useCategoryContext } from '../contexts/CategoryProvider';
-import { useEcommerceSettings } from '../hooks/useEcommerceSettings';
-import { useProductsForDisplay } from '../hooks/useProducts';
-import { useResponsive, getProductColumns, getSidebarWidths } from '../hooks/useResponsive';
-import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
+import { useEcommerceSettings } from './useEcommerceSettings';
+import { useProductsForDisplay } from './useProducts';
+import { useResponsive, getProductColumns, getSidebarWidths } from './useResponsive';
+import { useKeyboardShortcuts } from './useKeyboardShortcuts';
 import { ProductServiceFactory } from '../services/product/ProductServiceFactory';
 import { ECommercePlatform } from '../utils/platforms';
 import type { MainTabParamList } from '../navigation/types';
 
-export function useOrderScreen() {
+export function useSaleScreen() {
   const { selectedCategory, selectedCategoryName, setSelectedCategory, setSelectedCategoryName } = useCategoryContext();
   const { cartItems, cartItemsMap, addToCart, updateQuantity, itemCount } = useBasketContext();
   const { isTabletOrDesktop, width } = useResponsive();
   const [searchQuery, setSearchQuery] = useState('');
 
-  const route = useRoute<RouteProp<MainTabParamList, 'Order'>>();
+  const route = useRoute<RouteProp<MainTabParamList, 'Sale'>>();
   const handledScanRef = useRef<string | null>(null);
 
   const { currentPlatform } = useEcommerceSettings();

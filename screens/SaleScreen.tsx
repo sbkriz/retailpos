@@ -2,20 +2,20 @@ import React from 'react';
 import { View, StyleSheet, ActivityIndicator, Text, TouchableOpacity } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { lightColors, spacing, typography, borderRadius } from '../utils/theme';
-import { Basket } from './order/Basket';
-import { ProductGrid } from './order/ProductGrid';
-import { Header } from './order/Header';
-import { Category } from './order/Category';
-import { CategoryList } from './order/CategoryList';
-import { BasketContent } from './order/BasketContent';
+import { Basket } from './sale/Basket';
+import { ProductGrid } from './sale/ProductGrid';
+import { Header } from './sale/Header';
+import { Category } from './sale/Category';
+import { CategoryList } from './sale/CategoryList';
+import { BasketContent } from './sale/BasketContent';
 import { SearchBar } from '../components/SearchBar';
-import { useOrderScreen } from '../hooks/useOrderScreen';
+import { useSaleScreen } from '../hooks/useSaleScreen';
 
-interface OrderScreenProps {
+interface SaleScreenProps {
   username?: string;
 }
 
-const OrderScreen: React.FC<OrderScreenProps> = ({ username = 'User' }) => {
+const SaleScreen: React.FC<SaleScreenProps> = ({ username = 'User' }) => {
   const {
     currentPlatform,
     filteredProducts,
@@ -33,7 +33,7 @@ const OrderScreen: React.FC<OrderScreenProps> = ({ username = 'User' }) => {
     isTabletOrDesktop,
     numColumns,
     sidebarWidths,
-  } = useOrderScreen();
+  } = useSaleScreen();
 
   const renderProductArea = () => (
     <View style={styles.productArea}>
@@ -194,4 +194,4 @@ const styles = StyleSheet.create({
   clearFilterText: { color: lightColors.textOnPrimary, fontWeight: '600', fontSize: typography.fontSize.md },
 });
 
-export default OrderScreen;
+export default SaleScreen;

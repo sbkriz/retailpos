@@ -23,7 +23,7 @@ export type AuthStackParamList = {
  * Main Tab Navigator - Bottom tabs after login
  */
 export type MainTabParamList = {
-  Order: { scannedProductId?: string } | undefined;
+  Sale: { scannedProductId?: string } | undefined;
   Scan: undefined;
   Search: undefined;
   Inventory: undefined;
@@ -37,7 +37,7 @@ export type MoreStackParamList = {
   MoreMenu: undefined;
   Settings: undefined;
   Users: undefined;
-  Returns: undefined;
+  Refund: undefined;
   Printer: undefined;
   PaymentTerminal: { amount?: number; items?: { id: string; name: string; price: number; quantity: number }[] };
   OrderHistory: undefined;

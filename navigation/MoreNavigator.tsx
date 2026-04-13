@@ -9,7 +9,7 @@ import { canAccessMoreMenuItem } from '../utils/roleAccess';
 import type { UserRole } from '../repositories/UserRepository';
 
 const SettingsScreen = lazy(() => import('../screens/SettingsScreen'));
-const ReturnsScreen = lazy(() => import('../screens/ReturnsScreen'));
+const RefundScreen = lazy(() => import('../screens/RefundScreen'));
 const PrinterScreen = lazy(() => import('../screens/PrinterScreen'));
 const PaymentTerminalScreen = lazy(() => import('../screens/PaymentTerminalScreen'));
 const UsersScreen = lazy(() => import('../screens/UsersScreen'));
@@ -59,10 +59,10 @@ const MoreMenuScreen: React.FC<MoreMenuScreenProps> = ({ userRole, onLogout }) =
       color: lightColors.secondary,
     },
     {
-      key: 'Returns' as const,
+      key: 'Refund' as const,
       icon: 'receipt-long' as const,
-      label: 'Returns & Refunds',
-      onPress: () => navigation.navigate('Returns'),
+      label: 'Refund',
+      onPress: () => navigation.navigate('Refund'),
       color: lightColors.warning,
     },
     {
@@ -168,10 +168,10 @@ export const MoreNavigator: React.FC<MoreNavigatorProps> = ({ userRole, onLogout
           </Suspense>
         )}
       </Stack.Screen>
-      <Stack.Screen name="Returns" options={{ title: 'Returns & Refunds' }}>
+      <Stack.Screen name="Refund" options={{ title: 'Refund' }}>
         {() => (
           <Suspense fallback={<LazyFallback />}>
-            <ReturnsScreen />
+            <RefundScreen />
           </Suspense>
         )}
       </Stack.Screen>

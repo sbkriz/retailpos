@@ -8,18 +8,18 @@ import { UserRole } from '../repositories/UserRepository';
  * Cashier – Order, Scan, Search, Daily Orders, Printer, Payment Terminal
  */
 
-type TabName = 'Order' | 'Scan' | 'Search' | 'Inventory' | 'More';
-type MoreMenuItem = 'OrderHistory' | 'Settings' | 'Users' | 'Returns' | 'Printer' | 'PaymentTerminal' | 'SyncQueue' | 'Reports';
+type TabName = 'Sale' | 'Scan' | 'Search' | 'Inventory' | 'More';
+type MoreMenuItem = 'OrderHistory' | 'Settings' | 'Users' | 'Refund' | 'Printer' | 'PaymentTerminal' | 'SyncQueue' | 'Reports';
 
 const TAB_ACCESS: Record<UserRole, TabName[]> = {
-  admin: ['Order', 'Scan', 'Search', 'Inventory', 'More'],
-  manager: ['Order', 'Scan', 'Search', 'Inventory', 'More'],
-  cashier: ['Order', 'Scan', 'Search', 'More'],
+  admin: ['Sale', 'Scan', 'Search', 'Inventory', 'More'],
+  manager: ['Sale', 'Scan', 'Search', 'Inventory', 'More'],
+  cashier: ['Sale', 'Scan', 'Search', 'More'],
 };
 
 const MORE_MENU_ACCESS: Record<UserRole, MoreMenuItem[]> = {
-  admin: ['OrderHistory', 'Settings', 'Users', 'Returns', 'Printer', 'PaymentTerminal', 'SyncQueue', 'Reports'],
-  manager: ['OrderHistory', 'Settings', 'Returns', 'Printer', 'PaymentTerminal', 'SyncQueue', 'Reports'],
+  admin: ['OrderHistory', 'Settings', 'Users', 'Refund', 'Printer', 'PaymentTerminal', 'SyncQueue', 'Reports'],
+  manager: ['OrderHistory', 'Settings', 'Refund', 'Printer', 'PaymentTerminal', 'SyncQueue', 'Reports'],
   cashier: ['OrderHistory', 'Printer', 'PaymentTerminal'],
 };
 

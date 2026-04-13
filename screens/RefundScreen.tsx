@@ -14,7 +14,7 @@ interface ReturnsScreenProps {
   onGoBack?: () => void;
 }
 
-const ReturnsScreen: React.FC<ReturnsScreenProps> = ({ onGoBack }) => {
+const RefundScreen: React.FC<ReturnsScreenProps> = ({ onGoBack }) => {
   const currency = useCurrency();
   const { isInitialized, isLoading, error, processPaymentRefund, processEcommerceRefund, getRefundHistory } = useRefund();
   const [refundType, setRefundType] = useState<'payment' | 'ecommerce'>('payment');
@@ -376,4 +376,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default ReturnsScreen;
+export default RefundScreen;

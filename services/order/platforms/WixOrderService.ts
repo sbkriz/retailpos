@@ -131,7 +131,6 @@ export class WixOrderService extends BaseOrderService {
       name: item.name || item.productName?.original || '',
       quantity: item.quantity,
       price: item.priceData?.price || item.price || 0,
-      taxable: true,
       total: item.priceData?.totalPrice || item.totalPrice || 0,
       properties: {},
     }));

@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { PlatformServiceRegistry } from '../services/platform/PlatformServiceRegistry';
+import { SearchServiceFactory } from '../services/search/SearchServiceFactory';
 import { SearchOptions, SearchResult } from '../services/search/SearchServiceInterface';
 import { useLogger } from './useLogger';
 
@@ -7,7 +7,7 @@ import { useLogger } from './useLogger';
  * Hook to interact with the SearchService
  */
 export const useSearch = () => {
-  const searchService = PlatformServiceRegistry.getInstance().getSearchService();
+  const searchService = SearchServiceFactory.getInstance().getService();
   const logger = useLogger('useSearch');
 
   const [isInitialized, setIsInitialized] = useState<boolean>(false);

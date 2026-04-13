@@ -41,26 +41,11 @@ export interface CustomerSearchResult {
 
 /**
  * Interface for customer-related operations.
- * Implementations call the e-commerce platform's customer API.
+ * The POS reads customer data from the platform — it never creates or modifies customers.
+ * Only `searchCustomers` is used in the current E2E flow (attach email to basket).
  */
 export interface CustomerServiceInterface {
-  /**
-   * Initialize the customer service
-   */
   initialize(): Promise<boolean>;
-
-  /**
-   * Whether the service is ready
-   */
   isInitialized(): boolean;
-
-  /**
-   * Search customers by name, email, or phone
-   */
   searchCustomers(options: CustomerSearchOptions): Promise<CustomerSearchResult>;
-
-  /**
-   * Get a single customer by platform ID
-   */
-  getCustomer(customerId: string): Promise<PlatformCustomer | null>;
 }

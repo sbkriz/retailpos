@@ -77,21 +77,8 @@ export class CommerceFullCustomerService implements CustomerServiceInterface {
     }
   }
 
-  async getCustomer(customerId: string): Promise<PlatformCustomer | null> {
-    if (!this.isInitialized()) {
-      throw new Error('CommerceFull customer service not initialized');
-    }
-
-    try {
-      const data = await this.apiClient.get<any>(`/business/customers/${customerId}`);
-      return this.mapToCustomer(data.data || data.customer || data);
-    } catch (error) {
-      this.logger.error(
-        { message: `Error fetching customer ${customerId} from CommerceFull` },
-        error instanceof Error ? error : new Error(String(error))
-      );
-      return null;
-    }
+  async getCustomer(_customerId: string): Promise<PlatformCustomer | null> {
+    return null;
   }
 
   private mapToCustomer(c: any): PlatformCustomer {

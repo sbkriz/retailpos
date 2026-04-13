@@ -1,8 +1,11 @@
-import React, { memo, useCallback } from 'react';
+import React, { memo, useCallback, useState } from 'react';
 import { View, FlatList, StyleSheet, ImageSourcePropType } from 'react-native';
 import { spacing } from '../../utils/theme';
 import { ProductCard } from './ProductCard';
 import { ECommercePlatform } from '../../utils/platforms';
+import VariantPicker from '../../components/VariantPicker';
+import { UnifiedProductVariant, UnifiedProductOption } from '../../services/product/types';
+import { useCurrency } from '../../hooks/useCurrency';
 
 /**
  * Display-ready product interface
@@ -39,18 +42,51 @@ export interface DisplayProduct {
   platform?: ECommercePlatform;
   /** Product description */
   description?: string;
+  /** All variants — present when product has multiple variants */
+  variants?: UnifiedProductVariant[];
+  /** Product options (e.g. Size, Color) — present when product has variants */
+  options?: UnifiedProductOption[];
+  /** Offline: tax profile ID */
+  taxProfileId?: string;
+  /** Online: platform tax code/class */
+  taxCode?: string;
 }
 
 interface ProductGridProps {
   products: DisplayProduct[];
-  onAddToCart: (id: string, quantity: number) => void;
+  onAddToCart: (id: string, quantity: number, variantId?: string) => void;
   cartItems?: Record<string, number>;
   numColumns?: number;
+  onLoadMore?: () => void;
 }
 
-const ProductGridInner: React.FC<ProductGridProps> = ({ products, onAddToCart, cartItems = {}, numColumns = 2 }) => {
-  // FlatList requires a key prop change to re-render when numColumns changes
+const ProductGridInner: React.FC<ProductGridProps> = ({ products, onAddToCart, cartItems = {}, numColumns = 2, onLoadMore }) => {
+  const currency = useCurrency();
+  const [pickerProduct, setPickerProduct] = useState<DisplayProduct | null>(null);
+
   const cardWidthPercent = Math.floor(100 / numColumns) - 2;
+
+  const handleCardPress = useCallback(
+    (id: string, quantity: number) => {
+      const product = products.find(p => p.id === id);
+      // Open variant picker for multi-variant products
+      if (product && product.variants && product.variants.length > 1) {
+        setPickerProduct(product);
+        return;
+      }
+      onAddToCart(id, quantity);
+    },
+    [products, onAddToCart]
+  );
+
+  const handleVariantSelect = useCallback(
+    (variant: UnifiedProductVariant) => {
+      if (!pickerProduct) return;
+      onAddToCart(pickerProduct.id, 1, variant.id);
+      setPickerProduct(null);
+    },
+    [pickerProduct, onAddToCart]
+  );
 
   const renderItem = useCallback(
     ({ item }: { item: DisplayProduct }) => (
@@ -60,13 +96,13 @@ const ProductGridInner: React.FC<ProductGridProps> = ({ products, onAddToCart, c
         price={item.price}
         image={item.image}
         stock={item.stock}
-        onAddToCart={onAddToCart}
+        onAddToCart={handleCardPress}
         inCart={!!cartItems[item.id]}
         initialQuantity={cartItems[item.id] || 0}
         widthPercent={cardWidthPercent}
       />
     ),
-    [onAddToCart, cartItems, cardWidthPercent]
+    [handleCardPress, cartItems, cardWidthPercent]
   );
 
   const keyExtractor = useCallback((item: DisplayProduct) => item.id, []);
@@ -86,7 +122,21 @@ const ProductGridInner: React.FC<ProductGridProps> = ({ products, onAddToCart, c
         windowSize={5}
         removeClippedSubviews={true}
         updateCellsBatchingPeriod={50}
+        onEndReached={onLoadMore}
+        onEndReachedThreshold={0.3}
       />
+
+      {pickerProduct && pickerProduct.variants && (
+        <VariantPicker
+          visible={true}
+          productTitle={pickerProduct.name}
+          variants={pickerProduct.variants}
+          options={pickerProduct.options ?? []}
+          currencyCode={currency.code}
+          onSelect={handleVariantSelect}
+          onClose={() => setPickerProduct(null)}
+        />
+      )}
     </View>
   );
 };

@@ -5,7 +5,8 @@ import { BasketItem } from '../basket/basket';
  * Status of a local order
  */
 export type LocalOrderStatus =
-  | 'pending' // Order created, awaiting payment
+  | 'draft' // Platform draft created, awaiting payment confirmation
+  | 'pending' // Order created locally (offline), awaiting payment
   | 'processing' // Payment in progress
   | 'paid' // Payment completed
   | 'synced' // Order synced to platform

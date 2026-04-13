@@ -78,6 +78,15 @@ export abstract class BaseApiClient<TConfig extends BaseApiClientConfig = BaseAp
   }
 
   /**
+   * Authenticated GET request that also returns response headers.
+   * Used by services that need pagination cursors from Link headers (e.g. Shopify).
+   */
+  public async getWithHeaders<T = any>(path: string, params?: Record<string, string>): Promise<{ data: T; headers: Headers }> {
+    const url = this.appendQueryParams(this.buildApiUrl(path), params);
+    return this.requestWithHeaders<T>('GET', url);
+  }
+
+  /**
    * Authenticated POST request.
    */
   public async post<T = any>(path: string, body?: unknown): Promise<T> {
@@ -101,6 +110,11 @@ export abstract class BaseApiClient<TConfig extends BaseApiClientConfig = BaseAp
   // ── Internals ──────────────────────────────────────────────────────
 
   protected async request<T>(method: string, url: string, body?: unknown): Promise<T> {
+    const { data } = await this.requestWithHeaders<T>(method, url, body);
+    return data;
+  }
+
+  protected async requestWithHeaders<T>(method: string, url: string, body?: unknown): Promise<{ data: T; headers: Headers }> {
     const headers = this.buildHeaders();
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30_000);
@@ -123,10 +137,11 @@ export abstract class BaseApiClient<TConfig extends BaseApiClientConfig = BaseAp
       // Some DELETE endpoints return 204 with no body
       const contentLength = response.headers.get('content-length');
       if (response.status === 204 || contentLength === '0') {
-        return {} as T;
+        return { data: {} as T, headers: response.headers };
       }
 
-      return response.json() as Promise<T>;
+      const data = (await response.json()) as T;
+      return { data, headers: response.headers };
     } catch (error: any) {
       clearTimeout(timeout);
       if (error.name === 'AbortError') {

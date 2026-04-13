@@ -37,7 +37,6 @@ jest.mock('../../logger/LoggerFactory', () => ({
   },
 }));
 
-import { getPlatformToken } from '../../token/TokenUtils';
 import { withTokenRefresh } from '../../token/TokenIntegration';
 import { ECommercePlatform } from '../../../utils/platforms';
 
@@ -54,7 +53,6 @@ describe('SquarespaceCustomerService', () => {
     service = new SquarespaceCustomerService();
     (service as unknown as { apiClient: typeof mockApiClient }).apiClient = mockApiClient;
 
-    (getPlatformToken as jest.Mock).mockResolvedValue('test-token');
     (withTokenRefresh as jest.Mock).mockImplementation(async (platform, fn) => fn());
     mockApiClient.isInitialized.mockReturnValue(true);
     mockApiClient.initialize.mockResolvedValue(undefined);
@@ -130,39 +128,6 @@ describe('SquarespaceCustomerService', () => {
 
       expect(result.customers).toHaveLength(1);
       expect(result.customers[0].firstName).toBe('John');
-    });
-  });
-
-  describe('getCustomer', () => {
-    beforeEach(async () => {
-      await service.initialize();
-    });
-
-    it('should fetch customer successfully', async () => {
-      const mockProfile = {
-        id: 'profile-1',
-        email: 'jane@example.com',
-        firstName: 'Jane',
-        lastName: 'Smith',
-        orderCount: 5,
-        totalOrderAmount: { value: '250.00' },
-        createdOn: '2024-01-01T00:00:00Z',
-      };
-      mockApiClient.get.mockResolvedValue(mockProfile);
-
-      const result = await service.getCustomer('profile-1');
-
-      expect(result).toEqual({
-        id: 'profile-1',
-        platformId: 'profile-1',
-        platform: ECommercePlatform.SQUARESPACE,
-        email: 'jane@example.com',
-        firstName: 'Jane',
-        lastName: 'Smith',
-        orderCount: 5,
-        totalSpent: 250.0,
-        createdAt: new Date('2024-01-01T00:00:00Z'),
-      });
     });
   });
 });

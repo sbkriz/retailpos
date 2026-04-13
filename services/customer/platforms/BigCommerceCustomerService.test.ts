@@ -155,64 +155,6 @@ describe('BigCommerceCustomerService', () => {
     });
   });
 
-  describe('getCustomer', () => {
-    beforeEach(async () => {
-      await service.initialize();
-    });
-
-    it('should return null when not initialized', async () => {
-      service = new BigCommerceCustomerService(); // Not initialized
-      const result = await service.getCustomer('1');
-      expect(result).toBeNull();
-    });
-
-    it('should fetch customer successfully', async () => {
-      const mockResponse = {
-        data: [
-          {
-            id: 1,
-            email: 'jane@example.com',
-            first_name: 'Jane',
-            last_name: 'Smith',
-            phone: '+1234567890',
-            date_created: '2024-01-01T00:00:00Z',
-            date_modified: '2024-01-02T00:00:00Z',
-          },
-        ],
-      };
-
-      mockApiClient.get.mockResolvedValue(mockResponse);
-
-      const result = await service.getCustomer('1');
-
-      expect(result).toEqual({
-        id: '1',
-        platformId: '1',
-        platform: ECommercePlatform.BIGCOMMERCE,
-        email: 'jane@example.com',
-        firstName: 'Jane',
-        lastName: 'Smith',
-        phone: '+1234567890',
-        createdAt: new Date('2024-01-01T00:00:00Z'),
-        updatedAt: new Date('2024-01-02T00:00:00Z'),
-      });
-    });
-
-    it('should return null for non-existent customer', async () => {
-      mockApiClient.get.mockResolvedValue({ data: [] });
-
-      const result = await service.getCustomer('999');
-      expect(result).toBeNull();
-    });
-
-    it('should handle API errors gracefully', async () => {
-      mockApiClient.get.mockRejectedValue(new Error('Not found'));
-
-      const result = await service.getCustomer('1');
-      expect(result).toBeNull();
-    });
-  });
-
   describe('getAuthHeaders', () => {
     it('should return proper auth headers', async () => {
       await service.initialize();

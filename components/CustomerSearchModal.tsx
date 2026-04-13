@@ -83,10 +83,35 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ visible, plat
           </View>
 
           {!isAvailable ? (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyIcon}>👤</Text>
-              <Text style={styles.emptyTitle}>{t('customerSearch.unavailableTitle')}</Text>
-              <Text style={styles.emptyDescription}>{t('customerSearch.unavailableDescription')}</Text>
+            <View style={styles.offlineContainer}>
+              <Text style={styles.offlineTitle}>{t('customerSearch.offlineTitle')}</Text>
+              <Text style={styles.offlineDescription}>{t('customerSearch.offlineDescription')}</Text>
+              <TextInput
+                style={styles.emailInput}
+                value={query}
+                onChangeText={setQuery}
+                placeholder={t('customerSearch.emailPlaceholder')}
+                placeholderTextColor={lightColors.textSecondary}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+                autoFocus
+                accessibilityLabel={t('customerSearch.emailLabel')}
+              />
+              <TouchableOpacity
+                style={[styles.attachButton, !query.trim() && styles.attachButtonDisabled]}
+                onPress={() => {
+                  const email = query.trim();
+                  if (!email) return;
+                  onSelect({ id: email, platformId: email, platform: ECommercePlatform.OFFLINE, email });
+                  setQuery('');
+                  onClose();
+                }}
+                disabled={!query.trim()}
+                accessibilityRole="button"
+              >
+                <Text style={styles.attachButtonText}>{t('customerSearch.attachEmail')}</Text>
+              </TouchableOpacity>
             </View>
           ) : (
             <>
@@ -292,6 +317,43 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.sm,
     color: lightColors.textSecondary,
     textAlign: 'center',
+  },
+  offlineContainer: {
+    padding: spacing.lg,
+    gap: spacing.md,
+  },
+  offlineTitle: {
+    fontSize: typography.fontSize.md,
+    fontWeight: '600',
+    color: lightColors.textPrimary,
+  },
+  offlineDescription: {
+    fontSize: typography.fontSize.sm,
+    color: lightColors.textSecondary,
+  },
+  emailInput: {
+    height: 48,
+    backgroundColor: lightColors.background,
+    borderRadius: borderRadius.md,
+    paddingHorizontal: spacing.md,
+    fontSize: typography.fontSize.md,
+    color: lightColors.textPrimary,
+    borderWidth: 1,
+    borderColor: lightColors.border,
+  },
+  attachButton: {
+    backgroundColor: lightColors.primary,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+  },
+  attachButtonDisabled: {
+    opacity: 0.4,
+  },
+  attachButtonText: {
+    color: lightColors.textOnPrimary,
+    fontWeight: '700',
+    fontSize: typography.fontSize.md,
   },
 });
 

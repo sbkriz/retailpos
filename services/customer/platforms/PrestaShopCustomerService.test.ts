@@ -8,10 +8,6 @@ jest.mock('../../secrets/SecretsService', () => ({
   },
 }));
 
-jest.mock('../../token/TokenUtils', () => ({
-  getPlatformToken: jest.fn(),
-}));
-
 jest.mock('../../token/TokenInitializer', () => ({
   TokenInitializer: {
     getInstance: jest.fn(() => ({
@@ -38,7 +34,6 @@ jest.mock('../../logger/LoggerFactory', () => ({
 }));
 
 import secretsService from '../../secrets/SecretsService';
-import { getPlatformToken } from '../../token/TokenUtils';
 import { withTokenRefresh } from '../../token/TokenIntegration';
 import { ECommercePlatform } from '../../../utils/platforms';
 
@@ -62,7 +57,6 @@ describe('PrestaShopCustomerService', () => {
       return Promise.resolve(null);
     });
 
-    (getPlatformToken as jest.Mock).mockResolvedValue('test-token');
     (withTokenRefresh as jest.Mock).mockImplementation(async (platform, fn) => fn());
     mockApiClient.isInitialized.mockReturnValue(true);
     mockApiClient.initialize.mockResolvedValue(undefined);
@@ -117,37 +111,6 @@ describe('PrestaShopCustomerService', () => {
         updatedAt: new Date('2024-01-02 00:00:00'),
       });
       expect(result.hasMore).toBe(false);
-    });
-  });
-
-  describe('getCustomer', () => {
-    beforeEach(async () => {
-      await service.initialize();
-    });
-
-    it('should fetch customer successfully', async () => {
-      const mockCustomer = {
-        id: 1,
-        email: 'jane@example.com',
-        firstname: 'Jane',
-        lastname: 'Smith',
-        date_add: '2024-01-01 00:00:00',
-        date_upd: '2024-01-02 00:00:00',
-      };
-      mockApiClient.get.mockResolvedValue({ customer: mockCustomer });
-
-      const result = await service.getCustomer('1');
-
-      expect(result).toEqual({
-        id: '1',
-        platformId: '1',
-        platform: ECommercePlatform.PRESTASHOP,
-        email: 'jane@example.com',
-        firstName: 'Jane',
-        lastName: 'Smith',
-        createdAt: new Date('2024-01-01 00:00:00'),
-        updatedAt: new Date('2024-01-02 00:00:00'),
-      });
     });
   });
 });

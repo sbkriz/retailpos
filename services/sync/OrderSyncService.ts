@@ -6,8 +6,8 @@ import { CheckoutServiceInterface } from '../checkout/CheckoutServiceInterface';
 import { OrderSyncServiceInterface } from './OrderSyncServiceInterface';
 import { OrderRepository } from '../../repositories/OrderRepository';
 import { LoggerInterface } from '../logger/LoggerInterface';
-import { DEFAULT_TAX_RATE, MAX_SYNC_RETRIES } from '../config/POSConfigService';
-import { calculateLineTotal } from '../../utils/money';
+import { MAX_SYNC_RETRIES } from '../config/POSConfigService';
+import { isOnlinePlatform } from '../../utils/platforms';
 
 /**
  * Handles syncing paid orders to e-commerce platforms.
@@ -37,6 +37,12 @@ export class OrderSyncService implements OrderSyncServiceInterface {
 
     if (localOrder.syncStatus === 'synced') {
       return { success: true, orderId, platformOrderId: localOrder.platformOrderId };
+    }
+
+    // Offline orders have no platform to sync to — mark as synced immediately
+    if (!localOrder.platform || !isOnlinePlatform(localOrder.platform)) {
+      await this.orderRepo.updateSyncSuccess(orderId, orderId);
+      return { success: true, orderId };
     }
 
     try {
@@ -134,8 +140,6 @@ export class OrderSyncService implements OrderSyncServiceInterface {
 
   private basketItemsToLineItems(items: BasketItem[]): OrderLineItem[] {
     return items.map(item => {
-      const rate = item.taxRate ?? DEFAULT_TAX_RATE();
-      const { lineTotal, taxAmount } = calculateLineTotal(item.price, item.quantity, item.taxable, rate);
       return {
         productId: item.originalId ?? item.productId,
         variantId: item.variantId,
@@ -143,10 +147,7 @@ export class OrderSyncService implements OrderSyncServiceInterface {
         name: item.name,
         quantity: item.quantity,
         price: item.price,
-        taxable: item.taxable,
-        taxRate: rate,
-        taxAmount,
-        total: lineTotal,
+        total: item.price,
         properties: item.properties,
       };
     });

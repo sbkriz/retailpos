@@ -83,18 +83,8 @@ export class BigCommerceCustomerService extends BaseCustomerService {
     }
   }
 
-  async getCustomer(customerId: string): Promise<PlatformCustomer | null> {
-    if (!this.initialized) return null;
-    try {
-      return await withTokenRefresh(ECommercePlatform.BIGCOMMERCE, async () => {
-        const body = await this.apiClient.get<BigCommerceCustomersResponse>('customers', { 'id:in': customerId });
-        if (!body.data?.length) return null;
-        return this.mapCustomer(body.data[0]);
-      });
-    } catch (error) {
-      this.logger.error({ message: 'Error fetching BigCommerce customer' }, error instanceof Error ? error : new Error(String(error)));
-      return null;
-    }
+  async getCustomer(_customerId: string): Promise<PlatformCustomer | null> {
+    return null;
   }
 
   protected async getAuthHeaders(): Promise<Record<string, string>> {

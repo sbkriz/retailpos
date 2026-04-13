@@ -164,7 +164,6 @@ export class SyliusOrderService extends BaseOrderService {
       name: item.productName || item.variant?.name || '',
       quantity: item.quantity,
       price: (item.unitPrice || 0) / 100,
-      taxable: true,
       total: (item.total || 0) / 100,
       properties: {},
     }));

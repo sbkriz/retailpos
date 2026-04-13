@@ -1,4 +1,4 @@
-import { ECommercePlatform } from '../../utils/platforms';
+import { ECommercePlatform, isOnlinePlatform } from '../../utils/platforms';
 import { BasketItem } from '../basket/basket';
 import { LocalOrder, LocalOrderStatus, CheckoutResult } from '../order/order';
 import { BasketServiceInterface } from '../basket/BasketServiceInterface';
@@ -9,6 +9,7 @@ import { LoggerInterface } from '../logger/LoggerInterface';
 import { posConfig } from '../config/POSConfigService';
 import { generateUUID } from '../../utils/uuid';
 import { auditLogService } from '../audit/AuditLogService';
+import { OrderServiceFactory } from '../order/OrderServiceFactory';
 
 /**
  * Handles checkout flow and order queries.
@@ -32,13 +33,64 @@ export class CheckoutService implements CheckoutServiceInterface {
     const now = Date.now();
     const orderId = generateUUID();
 
+    // ── Draft order on platform (online only) ──────────────────────────
+    let subtotal = basket.subtotal;
+    let tax = basket.tax;
+    let total = basket.total;
+    let platformOrderId: string | undefined;
+    let status: LocalOrderStatus = 'pending';
+    let platformTaxRates: (number | undefined)[] = basket.items.map(() => undefined);
+
+    if (platform && isOnlinePlatform(platform)) {
+      try {
+        const orderService = OrderServiceFactory.getInstance().getService(platform);
+        const draftOrder = await orderService.createDraftOrder({
+          customerEmail: basket.customerEmail,
+          customerName: basket.customerName,
+          note: basket.note,
+          lineItems: basket.items.map(item => ({
+            productId: item.productId,
+            variantId: item.variantId,
+            sku: item.sku,
+            name: item.name,
+            quantity: item.quantity,
+            price: item.price,
+            total: item.price * item.quantity,
+          })),
+          subtotal: basket.subtotal,
+          tax: basket.tax,
+          total: basket.total,
+          discounts: basket.discountCode
+            ? [{ code: basket.discountCode, amount: basket.discountAmount ?? 0, type: 'fixed_amount' }]
+            : undefined,
+        });
+
+        // Use platform-authoritative values
+        subtotal = draftOrder.subtotal;
+        tax = draftOrder.tax;
+        total = draftOrder.total;
+        platformOrderId = draftOrder.platformOrderId ?? draftOrder.id;
+        status = 'draft';
+
+        // Capture platform tax rates by position for order_items persistence
+        platformTaxRates = basket.items.map((_, i) => draftOrder.lineItems[i]?.taxRate);
+      } catch (err) {
+        this.logger.warn(
+          { message: `Draft order creation failed for ${platform}, falling back to basket totals` },
+          err instanceof Error ? err : new Error(String(err))
+        );
+        // status stays 'pending', totals stay from basket
+      }
+    }
+
     const localOrder: LocalOrder = {
       id: orderId,
+      platformOrderId,
       platform,
-      items: [...basket.items],
-      subtotal: basket.subtotal,
-      tax: basket.tax,
-      total: basket.total,
+      items: basket.items,
+      subtotal,
+      tax,
+      total,
       discountAmount: basket.discountAmount,
       discountCode: basket.discountCode,
       customerEmail: basket.customerEmail,
@@ -46,7 +98,7 @@ export class CheckoutService implements CheckoutServiceInterface {
       note: basket.note,
       cashierId,
       cashierName,
-      status: 'pending',
+      status,
       syncStatus: 'pending',
       createdAt: new Date(now),
       updatedAt: new Date(now),
@@ -56,9 +108,9 @@ export class CheckoutService implements CheckoutServiceInterface {
     await this.orderRepo.create({
       id: orderId,
       platform: platform ?? null,
-      subtotal: basket.subtotal,
-      tax: basket.tax,
-      total: basket.total,
+      subtotal,
+      tax,
+      total,
       discountAmount: basket.discountAmount ?? null,
       discountCode: basket.discountCode ?? null,
       customerEmail: basket.customerEmail ?? null,
@@ -66,11 +118,13 @@ export class CheckoutService implements CheckoutServiceInterface {
       note: basket.note ?? null,
       cashierId: cashierId ?? null,
       cashierName: cashierName ?? null,
+      platformOrderId: platformOrderId ?? null,
+      status,
     });
 
-    // Save order items
+    // Save order items with platform-resolved tax rates
     await this.orderItemRepo.createMany(
-      basket.items.map(item => ({
+      basket.items.map((item, i) => ({
         orderId,
         productId: item.productId,
         variantId: item.variantId,
@@ -79,8 +133,8 @@ export class CheckoutService implements CheckoutServiceInterface {
         price: item.price,
         quantity: item.quantity,
         image: item.image,
-        taxable: item.taxable,
-        taxRate: item.taxRate,
+        taxable: false,
+        taxRate: platformTaxRates[i] ?? null,
         isEcommerceProduct: item.isEcommerceProduct,
         originalId: item.originalId,
         properties: item.properties,
@@ -90,11 +144,33 @@ export class CheckoutService implements CheckoutServiceInterface {
     auditLogService.log('order:created', {
       userId: cashierId,
       userName: cashierName,
-      details: `Order ${orderId} created — ${basket.items.length} item(s), total ${basket.total.toFixed(2)}`,
-      metadata: { orderId, itemCount: basket.items.length, total: basket.total },
+      details: `Order ${orderId} created — ${basket.items.length} item(s), total ${total.toFixed(2)}`,
+      metadata: { orderId, itemCount: basket.items.length, total },
     });
 
     return localOrder;
+  }
+
+  /**
+   * Cancel a draft order — deletes the platform draft and the local row.
+   * The basket is NOT cleared. The cashier can edit and start a new checkout.
+   */
+  async cancelDraftOrder(orderId: string, platform?: ECommercePlatform, platformOrderId?: string): Promise<void> {
+    // Cancel on platform (best-effort — don't block if it fails)
+    if (platform && isOnlinePlatform(platform) && platformOrderId) {
+      try {
+        const orderService = OrderServiceFactory.getInstance().getService(platform);
+        await orderService.cancelDraftOrder(platformOrderId);
+      } catch (err) {
+        this.logger.warn(
+          { message: `Failed to cancel platform draft ${platformOrderId} on ${platform}, removing local draft anyway` },
+          err instanceof Error ? err : new Error(String(err))
+        );
+      }
+    }
+
+    // Always remove the local draft row
+    await this.orderRepo.delete(orderId);
   }
 
   async markPaymentProcessing(orderId: string): Promise<LocalOrder> {
@@ -111,10 +187,27 @@ export class CheckoutService implements CheckoutServiceInterface {
     try {
       await this.orderRepo.updatePayment(orderId, paymentMethod, transactionId ?? null);
 
+      // If this order has a platform draft, mark it as paid on the platform
+      const orderRow = await this.orderRepo.findById(orderId);
+      if (orderRow?.platform_order_id && orderRow.platform) {
+        const platform = orderRow.platform as ECommercePlatform;
+        if (isOnlinePlatform(platform)) {
+          try {
+            const orderService = OrderServiceFactory.getInstance().getService(platform);
+            await orderService.completeOrder(orderRow.platform_order_id, paymentMethod, transactionId);
+          } catch (err) {
+            // Non-blocking — local payment is already recorded
+            this.logger.warn(
+              { message: `Failed to complete platform order ${orderRow.platform_order_id} on ${platform}` },
+              err instanceof Error ? err : new Error(String(err))
+            );
+          }
+        }
+      }
+
       // Only clear basket after the order is successfully recorded
       await this.basketService.clearBasket();
 
-      // Signal the UI to open the drawer when paying with cash
       const isCash = paymentMethod.toLowerCase() === 'cash';
       const openDrawer = isCash && posConfig.values.drawerOpenOnCash;
 
@@ -126,9 +219,7 @@ export class CheckoutService implements CheckoutServiceInterface {
       return { success: true, orderId, openDrawer };
     } catch (error) {
       this.logger.error({ message: `Failed to complete payment for order ${orderId}` }, error as Error);
-
       await this.orderRepo.updateStatus(orderId, 'failed');
-
       return { success: false, orderId, error: (error as Error).message };
     }
   }

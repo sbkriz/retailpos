@@ -60,17 +60,8 @@ export class SyliusCustomerService extends BaseCustomerService {
     }
   }
 
-  async getCustomer(customerId: string): Promise<PlatformCustomer | null> {
-    if (!this.initialized) return null;
-    try {
-      return await withTokenRefresh(ECommercePlatform.SYLIUS, async () => {
-        const data = await this.apiClient.get<any>(`api/v2/shop/customers/${customerId}`);
-        return this.mapCustomer(data);
-      });
-    } catch (error) {
-      this.logger.error({ message: 'Error fetching Sylius customer' }, error instanceof Error ? error : new Error(String(error)));
-      return null;
-    }
+  async getCustomer(_customerId: string): Promise<PlatformCustomer | null> {
+    return null;
   }
 
   private mapCustomer(c: any): PlatformCustomer {

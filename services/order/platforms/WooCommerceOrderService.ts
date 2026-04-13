@@ -73,6 +73,66 @@ export class WooCommerceOrderService extends BaseOrderService {
   }
 
   /**
+   * Create a draft order in WooCommerce.
+   * WooCommerce doesn't have a native draft API — we create a 'pending' order
+   * which acts as a draft. The server calculates tax based on the line items.
+   */
+  async createDraftOrder(order: Order): Promise<Order> {
+    if (!this.isInitialized()) {
+      throw new Error('WooCommerce order service not initialized');
+    }
+    try {
+      const wooOrder = this.mapToWooCommerceOrder({ ...order, paymentStatus: 'pending' });
+      // Force pending status so it acts as a draft
+      wooOrder.status = 'pending';
+      wooOrder.set_paid = false;
+      const data = await this.apiClient.post<any>('orders', wooOrder);
+      return this.mapToOrder(data);
+    } catch (error) {
+      this.logger.error({ message: 'Error creating WooCommerce draft order' }, error instanceof Error ? error : new Error(String(error)));
+      throw error;
+    }
+  }
+
+  /**
+   * Cancel a WooCommerce draft order by deleting it.
+   */
+  async cancelDraftOrder(platformOrderId: string): Promise<void> {
+    if (!this.isInitialized()) return;
+    try {
+      // WooCommerce: DELETE /orders/{id}?force=true permanently deletes
+      await this.apiClient.delete(`orders/${platformOrderId}?force=true`);
+    } catch (err) {
+      this.logger.warn(
+        { message: `Failed to delete WooCommerce draft order ${platformOrderId}` },
+        err instanceof Error ? err : new Error(String(err))
+      );
+    }
+  }
+
+  /**
+   * Complete a WooCommerce order (mark as processing/paid).
+   */
+  async completeOrder(platformOrderId: string, paymentMethod: string, _transactionId?: string): Promise<Order | null> {
+    if (!this.isInitialized()) return null;
+    try {
+      const data = await this.apiClient.put<any>(`orders/${platformOrderId}`, {
+        status: 'processing',
+        set_paid: true,
+        payment_method: paymentMethod,
+        payment_method_title: paymentMethod,
+      });
+      return this.mapToOrder(data);
+    } catch (error) {
+      this.logger.error(
+        { message: `Error completing WooCommerce order ${platformOrderId}` },
+        error instanceof Error ? error : new Error(String(error))
+      );
+      return null;
+    }
+  }
+
+  /**
    * Create a new order in WooCommerce
    */
   async createOrder(order: Order): Promise<Order> {
@@ -213,7 +273,6 @@ export class WooCommerceOrderService extends BaseOrderService {
         name: item.name,
         quantity: item.quantity,
         price: parseFloat(item.price || '0'),
-        taxable: true,
         total: parseFloat(item.total || '0'),
         properties: item.meta_data?.reduce((acc: Record<string, string>, meta: any) => {
           acc[meta.key] = meta.value;

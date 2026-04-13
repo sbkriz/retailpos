@@ -110,12 +110,6 @@ export class POSConfigService {
 
 export const posConfig = POSConfigService.getInstance();
 
-// ── Convenience accessors (backward-compat for existing imports) ────
-
-export function DEFAULT_TAX_RATE(): number {
-  return posConfig.values.taxRate;
-}
-
 export function MAX_SYNC_RETRIES(): number {
   return posConfig.values.maxSyncRetries;
 }

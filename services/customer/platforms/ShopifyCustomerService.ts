@@ -64,18 +64,8 @@ export class ShopifyCustomerService extends BaseCustomerService {
     }
   }
 
-  async getCustomer(customerId: string): Promise<PlatformCustomer | null> {
-    if (!this.initialized) return null;
-
-    try {
-      return await withTokenRefresh(ECommercePlatform.SHOPIFY, async () => {
-        const data = await this.apiClient.get<{ customer: any }>(`customers/${customerId}.json`);
-        return data.customer ? this.mapCustomer(data.customer) : null;
-      });
-    } catch (error) {
-      this.logger.error({ message: 'Error fetching Shopify customer' }, error instanceof Error ? error : new Error(String(error)));
-      return null;
-    }
+  async getCustomer(_customerId: string): Promise<PlatformCustomer | null> {
+    return null;
   }
 
   private mapCustomer(c: any): PlatformCustomer {

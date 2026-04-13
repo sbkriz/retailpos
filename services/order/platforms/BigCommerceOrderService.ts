@@ -185,9 +185,8 @@ export class BigCommerceOrderService extends BaseOrderService {
       name: item.name,
       quantity: item.quantity,
       price_inc_tax: item.price,
-      price_ex_tax: item.taxable ? item.price / 1.1 : item.price, // Approximate tax calculation
+      price_ex_tax: item.price,
       sku: item.sku,
-      is_taxable: item.taxable,
     }));
 
     // Map status
@@ -300,7 +299,6 @@ export class BigCommerceOrderService extends BaseOrderService {
         name: item.name,
         quantity: item.quantity,
         price: parseFloat(item.price_inc_tax || item.price || '0'),
-        taxable: item.is_taxable !== false,
         total: parseFloat(item.price_inc_tax || item.price || '0') * item.quantity,
         properties: {},
       })) || [];

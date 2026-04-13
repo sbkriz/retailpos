@@ -527,7 +527,12 @@
     "searchPrompt": "Search for a customer",
     "searchPromptDescription": "Type a name, email, or phone number to find a customer from your platform.",
     "orders": "orders",
-    "selectHint": "Double tap to attach this customer to the order"
+    "selectHint": "Double tap to attach this customer to the order",
+    "offlineTitle": "Attach customer email",
+    "offlineDescription": "Enter the customer's email address to attach it to this order.",
+    "emailPlaceholder": "customer@example.com",
+    "emailLabel": "Customer email address",
+    "attachEmail": "Attach Email"
   },
   "notifications": {
     "title": "Notifications",

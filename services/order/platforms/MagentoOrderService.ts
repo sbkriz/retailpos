@@ -176,7 +176,6 @@ export class MagentoOrderService extends BaseOrderService {
       name: item.name,
       quantity: item.qty_ordered,
       price: parseFloat(item.price || '0'),
-      taxable: true,
       taxAmount: parseFloat(item.tax_amount || '0'),
       total: parseFloat(item.row_total || '0'),
       properties: {},

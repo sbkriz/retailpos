@@ -16,6 +16,19 @@ jest.mock('../audit/AuditLogService', () => ({
   auditLogService: { log: jest.fn() },
 }));
 
+// Mock OrderServiceFactory to avoid transitive platform client imports
+jest.mock('../order/OrderServiceFactory', () => ({
+  OrderServiceFactory: {
+    getInstance: jest.fn(() => ({
+      getService: jest.fn(() => ({
+        createDraftOrder: jest.fn(),
+        cancelDraftOrder: jest.fn(),
+        completeOrder: jest.fn(),
+      })),
+    })),
+  },
+}));
+
 import { CheckoutService } from './CheckoutService';
 import { BasketServiceInterface } from '../basket/BasketServiceInterface';
 import { OrderRepository } from '../../repositories/OrderRepository';
@@ -34,7 +47,6 @@ const mockBasket: Basket = {
       name: 'Widget',
       price: 9.99,
       quantity: 2,
-      taxable: true,
     },
   ],
   subtotal: 19.98,

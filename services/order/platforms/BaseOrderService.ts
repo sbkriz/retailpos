@@ -4,73 +4,68 @@ import { PlatformOrderServiceInterface, PlatformConfigRequirements, PlatformOrde
 import { LoggerFactory } from '../../logger/LoggerFactory';
 
 /**
- * Base abstract class for platform-specific order service implementations
- * Provides common functionality for all platform order services
+ * Base abstract class for platform-specific order service implementations.
+ *
+ * Draft order lifecycle:
+ *   createDraftOrder() — creates a draft with platform-calculated tax (override per platform)
+ *   cancelDraftOrder() — cancels/deletes the draft before payment (override per platform)
+ *   completeOrder()    — marks the draft as paid after payment (override per platform)
+ *
+ * Default implementations fall back to createOrder() for platforms that don't
+ * natively support drafts, so existing services keep working without changes.
  */
 export abstract class BaseOrderService implements PlatformOrderServiceInterface {
   protected initialized: boolean = false;
   protected config: PlatformOrderConfig;
   protected logger = LoggerFactory.getInstance().createLogger(this.constructor.name);
 
-  /**
-   * Creates a new platform order service
-   * @param config Platform-specific configuration
-   */
   constructor(config: PlatformOrderConfig = {}) {
     this.config = config;
   }
 
-  /**
-   * Initialize the order service
-   * Each platform must implement this to handle platform-specific initialization
-   */
   abstract initialize(): Promise<boolean>;
 
-  /**
-   * Check if the service is properly initialized
-   */
   isInitialized(): boolean {
     return this.initialized;
   }
 
-  /**
-   * Get configuration requirements for this platform
-   * Each platform must implement this to specify its required config fields
-   */
   abstract getConfigRequirements(): PlatformConfigRequirements;
-
-  /**
-   * Create a new order in the e-commerce platform
-   * Each platform must implement this with its specific API calls
-   */
   abstract createOrder(order: Order): Promise<Order>;
-
-  /**
-   * Get an existing order by ID
-   * Each platform must implement this with its specific API calls
-   */
   abstract getOrder(orderId: string): Promise<Order | null>;
-
-  /**
-   * Update an existing order
-   * Each platform must implement this with its specific API calls
-   */
   abstract updateOrder(orderId: string, updates: Partial<Order>): Promise<Order | null>;
 
-  // Refund functionality moved to dedicated refund service
+  // ── Draft order lifecycle ─────────────────────────────────────────────
+  // Platforms override these to use native draft APIs.
+  // Default: createDraftOrder falls back to createOrder (no native draft support).
 
-  /**
-   * Create authorization headers for API requests
-   * Utility method for platform implementations
-   */
+  async createDraftOrder(order: Order): Promise<Order> {
+    return this.createOrder({ ...order, paymentStatus: 'draft' });
+  }
+
+  async cancelDraftOrder(platformOrderId: string): Promise<void> {
+    try {
+      await this.updateOrder(platformOrderId, { paymentStatus: 'failed' });
+    } catch (err) {
+      this.logger.warn(
+        { message: `cancelDraftOrder fallback failed for ${platformOrderId}` },
+        err instanceof Error ? err : new Error(String(err))
+      );
+    }
+  }
+
+  async completeOrder(platformOrderId: string, paymentMethod: string, _transactionId?: string): Promise<Order | null> {
+    return this.updateOrder(platformOrderId, {
+      paymentStatus: 'paid',
+      note: paymentMethod,
+    });
+  }
+
+  // ── Shared mapping helpers ────────────────────────────────────────────
+
   protected getAuthHeaders(): Record<string, string> {
     return {};
   }
 
-  /**
-   * Map a platform-specific order to the standard Order format
-   * This can be overridden by platform-specific implementations
-   */
   protected mapToOrder(platformOrder: any): Order {
     const lineItems =
       platformOrder.line_items?.map((item: any) => ({
@@ -81,7 +76,6 @@ export abstract class BaseOrderService implements PlatformOrderServiceInterface 
         name: item.name || item.title || '',
         quantity: item.quantity || 0,
         price: parseFloat(item.price || '0'),
-        taxable: item.taxable !== false,
         taxRate: item.tax_rate ? parseFloat(item.tax_rate) : undefined,
         taxAmount: item.tax_amount ? parseFloat(item.tax_amount) : undefined,
         discountAmount: item.discount_amount ? parseFloat(item.discount_amount) : undefined,

@@ -1,4 +1,4 @@
-import { CustomerServiceInterface, CustomerSearchOptions, CustomerSearchResult, PlatformCustomer } from '../CustomerServiceInterface';
+import { CustomerServiceInterface, CustomerSearchOptions, CustomerSearchResult } from '../CustomerServiceInterface';
 import { LoggerFactory } from '../../logger/LoggerFactory';
 
 /**
@@ -16,12 +16,6 @@ export abstract class BaseCustomerService implements CustomerServiceInterface {
 
   abstract searchCustomers(options: CustomerSearchOptions): Promise<CustomerSearchResult>;
 
-  abstract getCustomer(customerId: string): Promise<PlatformCustomer | null>;
-
-  /**
-   * Utility: build auth headers for platform API calls.
-   * Subclasses override to provide platform-specific headers.
-   */
   protected async getAuthHeaders(): Promise<Record<string, string>> {
     return {};
   }

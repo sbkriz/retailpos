@@ -1,14 +1,4 @@
-import {
-  toCents,
-  toDollars,
-  roundMoney,
-  multiplyMoney,
-  addMoney,
-  subtractMoney,
-  sumMoney,
-  calculateTax,
-  calculateLineTotal,
-} from './money';
+import { toCents, toDollars, roundMoney, multiplyMoney, addMoney, subtractMoney, sumMoney } from './money';
 
 describe('money utilities', () => {
   // ─── toCents ────────────────────────────────────────────────
@@ -132,56 +122,6 @@ describe('money utilities', () => {
     it('handles many small values', () => {
       const items = Array(100).fill(0.01);
       expect(sumMoney(items)).toBe(1);
-    });
-  });
-
-  // ─── calculateTax ──────────────────────────────────────────
-  describe('calculateTax', () => {
-    it('calculates 8% tax correctly', () => {
-      expect(calculateTax(100, 0.08)).toBe(8);
-      expect(calculateTax(10.0, 0.08)).toBe(0.8);
-      expect(calculateTax(19.99, 0.08)).toBe(1.6); // 1.5992 rounds to 1.60
-    });
-
-    it('calculates 0% tax', () => {
-      expect(calculateTax(100, 0)).toBe(0);
-    });
-
-    it('handles small amounts', () => {
-      expect(calculateTax(0.5, 0.08)).toBe(0.04);
-    });
-
-    it('handles non-standard tax rates', () => {
-      // 7.25% California rate
-      expect(calculateTax(10.0, 0.0725)).toBe(0.73); // 72.5 cents rounds to 73
-    });
-  });
-
-  // ─── calculateLineTotal ────────────────────────────────────
-  describe('calculateLineTotal', () => {
-    it('returns correct line total and tax for taxable items', () => {
-      const result = calculateLineTotal(9.99, 2, true, 0.08);
-      expect(result.lineTotal).toBe(19.98);
-      expect(result.taxAmount).toBe(1.6); // 19.98 * 0.08 = 1.5984 → rounds to 1.60
-    });
-
-    it('returns 0 tax for non-taxable items', () => {
-      const result = calculateLineTotal(9.99, 2, false, 0.08);
-      expect(result.lineTotal).toBe(19.98);
-      expect(result.taxAmount).toBe(0);
-    });
-
-    it('handles single quantity', () => {
-      const result = calculateLineTotal(1.1, 1, true, 0.08);
-      expect(result.lineTotal).toBe(1.1);
-      expect(result.taxAmount).toBe(0.09); // 110 * 0.08 = 8.8 → rounds to 9 cents
-    });
-
-    it('handles the classic 0.1 + 0.2 accumulation', () => {
-      // 3 items at $0.10 each, taxable at 10%
-      const result = calculateLineTotal(0.1, 3, true, 0.1);
-      expect(result.lineTotal).toBe(0.3);
-      expect(result.taxAmount).toBe(0.03);
     });
   });
 });

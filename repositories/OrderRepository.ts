@@ -39,6 +39,8 @@ export interface CreateOrderInput {
   note: string | null;
   cashierId: string | null;
   cashierName: string | null;
+  platformOrderId?: string | null;
+  status?: string;
 }
 
 export class OrderRepository {
@@ -48,14 +50,15 @@ export class OrderRepository {
     const now = Date.now();
     await db.runAsync(
       `INSERT INTO orders (
-        id, platform, subtotal, tax, total,
+        id, platform, platform_order_id, subtotal, tax, total,
         discount_amount, discount_code, customer_email, customer_name, note,
         cashier_id, cashier_name,
         status, sync_status, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         input.id,
         input.platform,
+        input.platformOrderId ?? null,
         input.subtotal,
         input.tax,
         input.total,
@@ -66,7 +69,7 @@ export class OrderRepository {
         input.note,
         input.cashierId,
         input.cashierName,
-        'pending',
+        input.status ?? 'pending',
         'pending',
         now,
         now,

@@ -58,17 +58,8 @@ export class WixCustomerService extends BaseCustomerService {
     }
   }
 
-  async getCustomer(customerId: string): Promise<PlatformCustomer | null> {
-    if (!this.initialized) return null;
-    try {
-      return await withTokenRefresh(ECommercePlatform.WIX, async () => {
-        const data = await this.apiClient.get<any>(`contacts/v4/contacts/${customerId}`);
-        return this.mapCustomer(data.contact || data);
-      });
-    } catch (error) {
-      this.logger.error({ message: 'Error fetching Wix customer' }, error instanceof Error ? error : new Error(String(error)));
-      return null;
-    }
+  async getCustomer(_customerId: string): Promise<PlatformCustomer | null> {
+    return null;
   }
 
   private mapCustomer(c: any): PlatformCustomer {

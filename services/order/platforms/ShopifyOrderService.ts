@@ -71,6 +71,62 @@ export class ShopifyOrderService extends BaseOrderService {
   }
 
   /**
+   * Create a draft order in Shopify using the Draft Orders API.
+   * Shopify calculates tax server-side and returns authoritative totals.
+   * Endpoint: POST /admin/api/{version}/draft_orders.json
+   */
+  async createDraftOrder(order: Order): Promise<Order> {
+    if (!this.isInitialized()) {
+      throw new Error('Shopify order service not initialized');
+    }
+
+    try {
+      const draftPayload = this.mapToShopifyDraftOrder(order);
+      const data = await this.apiClient.post<{ draft_order: any }>('draft_orders.json', { draft_order: draftPayload });
+      return this.mapDraftOrderToOrder(data.draft_order);
+    } catch (error) {
+      this.logger.error({ message: 'Error creating Shopify draft order' }, error instanceof Error ? error : new Error(String(error)));
+      throw error;
+    }
+  }
+
+  /**
+   * Cancel a Shopify draft order.
+   * Endpoint: POST /admin/api/{version}/draft_orders/{id}/complete.json (cancel via delete)
+   */
+  async cancelDraftOrder(platformOrderId: string): Promise<void> {
+    if (!this.isInitialized()) return;
+    try {
+      await this.apiClient.delete(`draft_orders/${platformOrderId}.json`);
+    } catch (err) {
+      this.logger.warn(
+        { message: `Failed to delete Shopify draft order ${platformOrderId}` },
+        err instanceof Error ? err : new Error(String(err))
+      );
+    }
+  }
+
+  /**
+   * Complete a Shopify draft order (mark as paid).
+   * Endpoint: PUT /admin/api/{version}/draft_orders/{id}/complete.json
+   */
+  async completeOrder(platformOrderId: string): Promise<Order | null> {
+    if (!this.isInitialized()) return null;
+    try {
+      const data = await this.apiClient.put<{ draft_order: any }>(`draft_orders/${platformOrderId}/complete.json`, {
+        payment_pending: false,
+      });
+      return this.mapDraftOrderToOrder(data.draft_order);
+    } catch (error) {
+      this.logger.error(
+        { message: `Error completing Shopify draft order ${platformOrderId}` },
+        error instanceof Error ? error : new Error(String(error))
+      );
+      return null;
+    }
+  }
+
+  /**
    * Create a new order in Shopify
    */
   async createOrder(order: Order): Promise<Order> {
@@ -152,7 +208,6 @@ export class ShopifyOrderService extends BaseOrderService {
       price: item.price,
       title: item.name,
       sku: item.sku,
-      taxable: item.taxable,
       properties: Object.entries(item.properties || {}).map(([key, value]) => ({
         name: key,
         value,
@@ -212,5 +267,60 @@ export class ShopifyOrderService extends BaseOrderService {
     }
 
     return order;
+  }
+
+  /** Map our Order to Shopify Draft Order payload */
+  private mapToShopifyDraftOrder(order: Order): any {
+    return {
+      line_items: order.lineItems.map(item => ({
+        variant_id: item.variantId,
+        quantity: item.quantity,
+        title: item.name,
+        price: item.price.toFixed(2),
+        sku: item.sku,
+        properties: Object.entries(item.properties || {}).map(([key, value]) => ({ name: key, value })),
+      })),
+      customer: order.customerEmail ? { email: order.customerEmail } : undefined,
+      note: order.note,
+      applied_discount: order.discounts?.[0]
+        ? {
+            value_type: order.discounts[0].type === 'percentage' ? 'percentage' : 'fixed_amount',
+            value: String(order.discounts[0].amount),
+            title: order.discounts[0].code || 'Discount',
+          }
+        : undefined,
+      use_customer_default_address: false,
+    };
+  }
+
+  /** Map a Shopify draft_order response to our Order type */
+  private mapDraftOrderToOrder(draft: any): Order {
+    const lineItems = (draft.line_items || []).map((item: any) => ({
+      id: item.id?.toString(),
+      productId: item.product_id?.toString() || '',
+      variantId: item.variant_id?.toString(),
+      sku: item.sku,
+      name: item.name || item.title,
+      quantity: item.quantity,
+      price: parseFloat(item.price || '0'),
+      taxRate: item.tax_lines?.[0]?.rate ?? undefined,
+      taxAmount: item.tax_lines?.reduce((sum: number, t: any) => sum + parseFloat(t.price || '0'), 0),
+      total: parseFloat(item.price || '0') * item.quantity,
+    }));
+
+    return {
+      id: draft.id?.toString(),
+      platformOrderId: draft.id?.toString(),
+      customerEmail: draft.customer?.email || draft.email,
+      customerName: draft.customer ? `${draft.customer.first_name || ''} ${draft.customer.last_name || ''}`.trim() : undefined,
+      lineItems,
+      subtotal: parseFloat(draft.subtotal_price || '0'),
+      tax: parseFloat(draft.total_tax || '0'),
+      total: parseFloat(draft.total_price || '0'),
+      paymentStatus: 'draft',
+      note: draft.note,
+      createdAt: draft.created_at ? new Date(draft.created_at) : undefined,
+      updatedAt: draft.updated_at ? new Date(draft.updated_at) : undefined,
+    };
   }
 }

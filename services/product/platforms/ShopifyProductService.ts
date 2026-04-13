@@ -118,17 +118,29 @@ export class ShopifyProductService extends BaseProductService {
           queryParams.append('page_info', options.cursor);
         }
 
-        const data = await this.apiClient.get<{ products: any[] }>(`products.json?${queryParams.toString()}`);
+        const { data, headers } = await this.apiClient.getWithHeaders<{ products: any[] }>(`products.json?${queryParams.toString()}`);
 
         const products: Product[] = data.products.map((shopifyProduct: any) => this.mapToProduct(shopifyProduct));
+
+        // Parse Shopify Link header for cursor-based pagination
+        // Format: <url?page_info=CURSOR>; rel="next", <url?page_info=CURSOR>; rel="previous"
+        let nextCursor: string | undefined;
+        const linkHeader = headers.get('Link') || headers.get('link');
+        if (linkHeader) {
+          const nextMatch = linkHeader.match(/<[^>]*[?&]page_info=([^&>]+)[^>]*>;\s*rel="next"/);
+          if (nextMatch) {
+            nextCursor = nextMatch[1];
+          }
+        }
 
         return {
           products,
           pagination: {
             currentPage: options.page || 1,
-            totalPages: options.page || 1,
+            totalPages: nextCursor ? (options.page || 1) + 1 : options.page || 1,
             totalItems: products.length,
             perPage: limit,
+            nextCursor,
           },
         };
       });

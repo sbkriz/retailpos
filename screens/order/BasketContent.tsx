@@ -4,49 +4,49 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { lightColors, spacing, typography, borderRadius } from '../../utils/theme';
 import { useBasketContext, CartItem } from '../../contexts/BasketProvider';
 import { formatMoney } from '../../utils/money';
-import { CheckoutModal, PaymentSelection } from '../../components/CheckoutModal';
-import { cashDrawerServiceFactory } from '../../services/drawer/CashDrawerServiceFactory';
+import { CheckoutModal } from '../../components/CheckoutModal';
 import { StatusBadge } from '../../components/StatusBadge';
 import { ECommercePlatform } from '../../utils/platforms';
 import { useCurrency } from '../../hooks/useCurrency';
 import CustomerSearchModal from '../../components/CustomerSearchModal';
 import { PlatformCustomer } from '../../services/customer/CustomerServiceInterface';
+import { useCheckout } from '../../hooks/useCheckout';
 
 interface BasketContentProps {
   platform?: ECommercePlatform;
   onCheckout?: () => void;
 }
 
-/**
- * Basket content component that can be used both inline (sidebar) and in a SwipeablePanel.
- * Replaces Alert-based checkout with a proper CheckoutModal.
- */
 export const BasketContent: React.FC<BasketContentProps> = ({ platform, onCheckout }) => {
   const currency = useCurrency();
   const {
     isLoading,
     basket,
     cartItems,
-    subtotal,
-    tax,
-    total,
-    itemCount,
     incrementQuantity,
     decrementQuantity,
     removeFromCart,
     setCustomer,
-    startCheckout,
-    markPaymentProcessing,
-    completePayment,
-    cancelOrder,
     unsyncedOrdersCount,
     syncAllPendingOrders,
   } = useBasketContext();
 
-  const [isProcessing, setIsProcessing] = useState(false);
+  const {
+    isProcessing,
+    checkoutVisible,
+    error,
+    currentOrder,
+    total,
+    subtotal,
+    tax,
+    itemCount,
+    terminalConnected,
+    handleStartCheckout,
+    handleCancelCheckout,
+    handlePayment,
+  } = useCheckout({ platform, onSuccess: () => onCheckout?.() });
+
   const [isSyncing, setIsSyncing] = useState(false);
-  const [checkoutModalVisible, setCheckoutModalVisible] = useState(false);
-  const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
   const [customerModalVisible, setCustomerModalVisible] = useState(false);
 
   const handleDecrement = async (itemId: string, currentQuantity: number) => {
@@ -57,76 +57,10 @@ export const BasketContent: React.FC<BasketContentProps> = ({ platform, onChecko
     }
   };
 
-  const handleStartCheckout = async () => {
-    if (cartItems.length === 0) return;
-
-    setIsProcessing(true);
-    try {
-      const order = await startCheckout(platform);
-      if (order) {
-        setCurrentOrderId(order.id);
-        setCheckoutModalVisible(true);
-      }
-    } catch {
-      // Error handled by context
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const handlePayment = async (selection: PaymentSelection) => {
-    if (!currentOrderId) return;
-
-    setIsProcessing(true);
-    try {
-      await markPaymentProcessing(currentOrderId);
-
-      const paymentMethod = selection.method === 'terminal' ? 'card_terminal' : selection.method;
-      const result = await completePayment(currentOrderId, paymentMethod);
-
-      if (result.success) {
-        // Open cash drawer if the service flagged it (cash payment + drawer configured)
-        if (result.openDrawer) {
-          cashDrawerServiceFactory
-            .getService()
-            .open()
-            .catch(() => {});
-        }
-        setCheckoutModalVisible(false);
-        setCurrentOrderId(null);
-        onCheckout?.();
-      }
-    } catch {
-      // Error handled by context
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const handleCancelCheckout = async () => {
-    const orderId = currentOrderId;
-    setCheckoutModalVisible(false);
-    setCurrentOrderId(null);
-
-    if (!orderId) {
-      return;
-    }
-
-    try {
-      await cancelOrder(orderId);
-    } catch {
-      // Error handled by context
-    }
-  };
-
   const handleSelectCustomer = async (customer: PlatformCustomer) => {
     const name = [customer.firstName, customer.lastName].filter(Boolean).join(' ');
     await setCustomer(customer.email, name || customer.email);
     setCustomerModalVisible(false);
-  };
-
-  const handleRemoveCustomer = async () => {
-    await setCustomer(undefined, undefined);
   };
 
   const handleSyncOrders = async () => {
@@ -221,7 +155,7 @@ export const BasketContent: React.FC<BasketContentProps> = ({ platform, onChecko
             )}
           </View>
           <TouchableOpacity
-            onPress={handleRemoveCustomer}
+            onPress={() => setCustomer(undefined, undefined)}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             accessibilityLabel="Remove customer"
             accessibilityRole="button"
@@ -241,7 +175,7 @@ export const BasketContent: React.FC<BasketContentProps> = ({ platform, onChecko
         </TouchableOpacity>
       )}
 
-      {/* Summary & Actions */}
+      {/* Summary & checkout */}
       <View style={styles.summary}>
         {unsyncedOrdersCount > 0 && (
           <TouchableOpacity style={styles.syncBanner} onPress={handleSyncOrders} disabled={isSyncing}>
@@ -263,6 +197,8 @@ export const BasketContent: React.FC<BasketContentProps> = ({ platform, onChecko
           <Text style={styles.totalValue}>{formatMoney(total, currency.code)}</Text>
         </View>
 
+        {error && <Text style={styles.errorText}>{error}</Text>}
+
         <TouchableOpacity
           style={[styles.checkoutButton, (cartItems.length === 0 || isProcessing) && styles.buttonDisabled]}
           onPress={handleStartCheckout}
@@ -281,7 +217,6 @@ export const BasketContent: React.FC<BasketContentProps> = ({ platform, onChecko
         </TouchableOpacity>
       </View>
 
-      {/* Customer Search Modal */}
       <CustomerSearchModal
         visible={customerModalVisible}
         platform={platform}
@@ -289,10 +224,9 @@ export const BasketContent: React.FC<BasketContentProps> = ({ platform, onChecko
         onClose={() => setCustomerModalVisible(false)}
       />
 
-      {/* Checkout Modal */}
       <CheckoutModal
-        visible={checkoutModalVisible}
-        orderId={currentOrderId || ''}
+        visible={checkoutVisible}
+        orderId={currentOrder?.id || ''}
         orderTotal={total}
         orderSubtotal={subtotal}
         orderTax={tax}
@@ -300,44 +234,20 @@ export const BasketContent: React.FC<BasketContentProps> = ({ platform, onChecko
         onSelectPayment={handlePayment}
         onCancel={handleCancelCheckout}
         isProcessing={isProcessing}
+        terminalConnected={terminalConnected}
       />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: spacing.xl,
-  },
-  loadingText: {
-    fontSize: typography.fontSize.md,
-    color: lightColors.textSecondary,
-    marginTop: spacing.md,
-  },
-  emptyIcon: {
-    fontSize: 48,
-    marginBottom: spacing.md,
-  },
-  emptyText: {
-    fontSize: typography.fontSize.md,
-    color: lightColors.textSecondary,
-    fontWeight: '600',
-  },
-  emptyHint: {
-    fontSize: typography.fontSize.sm,
-    color: lightColors.textHint,
-    marginTop: spacing.xs,
-  },
-  cartList: {
-    flex: 1,
-    paddingHorizontal: spacing.md,
-  },
+  container: { flex: 1 },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: spacing.xl },
+  loadingText: { fontSize: typography.fontSize.md, color: lightColors.textSecondary, marginTop: spacing.md },
+  emptyIcon: { fontSize: 48, marginBottom: spacing.md },
+  emptyText: { fontSize: typography.fontSize.md, color: lightColors.textSecondary, fontWeight: '600' },
+  emptyHint: { fontSize: typography.fontSize.sm, color: lightColors.textHint, marginTop: spacing.xs },
+  cartList: { flex: 1, paddingHorizontal: spacing.md },
   cartItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -346,42 +256,14 @@ const styles = StyleSheet.create({
     borderBottomColor: lightColors.border,
     paddingVertical: spacing.sm,
   },
-  itemInfo: {
-    flex: 1,
-    marginRight: spacing.sm,
-  },
-  itemName: {
-    fontSize: typography.fontSize.sm,
-    fontWeight: '500',
-  },
-  itemPrice: {
-    fontSize: typography.fontSize.xs,
-    color: lightColors.textSecondary,
-    marginTop: 2,
-  },
-  itemSku: {
-    fontSize: 10,
-    color: lightColors.textHint,
-    marginTop: 1,
-  },
-  itemRight: {
-    alignItems: 'flex-end',
-    gap: 4,
-  },
-  itemTotal: {
-    fontSize: typography.fontSize.sm,
-    fontWeight: '600',
-    minWidth: 56,
-    textAlign: 'right',
-  },
-  removeButton: {
-    padding: 2,
-  },
-  quantityContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: spacing.sm,
-  },
+  itemInfo: { flex: 1, marginRight: spacing.sm },
+  itemName: { fontSize: typography.fontSize.sm, fontWeight: '500' },
+  itemPrice: { fontSize: typography.fontSize.xs, color: lightColors.textSecondary, marginTop: 2 },
+  itemSku: { fontSize: 10, color: lightColors.textHint, marginTop: 1 },
+  itemRight: { alignItems: 'flex-end', gap: 4 },
+  itemTotal: { fontSize: typography.fontSize.sm, fontWeight: '600', minWidth: 56, textAlign: 'right' },
+  removeButton: { padding: 2 },
+  quantityContainer: { flexDirection: 'row', alignItems: 'center', marginRight: spacing.sm },
   quantityButton: {
     width: 28,
     height: 28,
@@ -391,56 +273,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginHorizontal: 3,
   },
-  quantityButtonText: {
-    fontSize: typography.fontSize.md,
-    fontWeight: '700',
-  },
-  quantity: {
-    fontSize: typography.fontSize.sm,
-    marginHorizontal: spacing.xs,
-    minWidth: 18,
-    textAlign: 'center',
-  },
-  summary: {
-    borderTopWidth: 1,
-    borderTopColor: lightColors.border,
-    padding: spacing.md,
-    backgroundColor: lightColors.surface,
-  },
-  syncBanner: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: spacing.xs,
-  },
-  summaryLabel: {
-    fontSize: typography.fontSize.sm,
-    color: lightColors.textSecondary,
-  },
-  summaryValue: {
-    fontSize: typography.fontSize.sm,
-  },
-  totalRow: {
-    marginTop: spacing.xs,
-    borderTopWidth: 1,
-    borderTopColor: lightColors.border,
-    paddingTop: spacing.sm,
-  },
-  totalLabel: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: '700',
-  },
-  totalValue: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: '700',
-    color: lightColors.primary,
-  },
+  quantityButtonText: { fontSize: typography.fontSize.md, fontWeight: '700' },
+  quantity: { fontSize: typography.fontSize.sm, marginHorizontal: spacing.xs, minWidth: 18, textAlign: 'center' },
+  summary: { borderTopWidth: 1, borderTopColor: lightColors.border, padding: spacing.md, backgroundColor: lightColors.surface },
+  syncBanner: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.xs },
+  summaryLabel: { fontSize: typography.fontSize.sm, color: lightColors.textSecondary },
+  summaryValue: { fontSize: typography.fontSize.sm },
+  totalRow: { marginTop: spacing.xs, borderTopWidth: 1, borderTopColor: lightColors.border, paddingTop: spacing.sm },
+  totalLabel: { fontSize: typography.fontSize.lg, fontWeight: '700' },
+  totalValue: { fontSize: typography.fontSize.lg, fontWeight: '700', color: lightColors.primary },
+  errorText: { fontSize: typography.fontSize.sm, color: lightColors.error, marginBottom: spacing.xs, textAlign: 'center' },
   checkoutButton: {
     backgroundColor: lightColors.success,
     paddingHorizontal: spacing.md,
@@ -451,24 +294,10 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     minHeight: 56,
   },
-  checkoutButtonInner: {
-    alignItems: 'center',
-    gap: 2,
-  },
-  checkoutButtonLabel: {
-    color: lightColors.textOnPrimary,
-    fontSize: typography.fontSize.sm,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-  },
-  checkoutButtonTotal: {
-    color: lightColors.textOnPrimary,
-    fontSize: typography.fontSize.xl,
-    fontWeight: '800',
-  },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
+  checkoutButtonInner: { alignItems: 'center', gap: 2 },
+  checkoutButtonLabel: { color: lightColors.textOnPrimary, fontSize: typography.fontSize.sm, fontWeight: '700', letterSpacing: 0.8 },
+  checkoutButtonTotal: { color: lightColors.textOnPrimary, fontSize: typography.fontSize.xl, fontWeight: '800' },
+  buttonDisabled: { opacity: 0.5 },
   customerBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -479,18 +308,9 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.sm,
     gap: spacing.xs,
   },
-  customerBadgeInfo: {
-    flex: 1,
-  },
-  customerBadgeName: {
-    fontSize: typography.fontSize.sm,
-    fontWeight: '600',
-    color: lightColors.textPrimary,
-  },
-  customerBadgeEmail: {
-    fontSize: typography.fontSize.xs,
-    color: lightColors.textSecondary,
-  },
+  customerBadgeInfo: { flex: 1 },
+  customerBadgeName: { fontSize: typography.fontSize.sm, fontWeight: '600', color: lightColors.textPrimary },
+  customerBadgeEmail: { fontSize: typography.fontSize.xs, color: lightColors.textSecondary },
   addCustomerButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -499,11 +319,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
     gap: spacing.xs,
   },
-  addCustomerText: {
-    fontSize: typography.fontSize.sm,
-    color: lightColors.primary,
-    fontWeight: '600',
-  },
+  addCustomerText: { fontSize: typography.fontSize.sm, color: lightColors.primary, fontWeight: '600' },
 });
 
 export default BasketContent;

@@ -2,8 +2,7 @@ import { BasketServiceInterface } from './BasketServiceInterface';
 import { Basket, BasketItem } from './basket';
 import { BasketRepository, BasketRow } from '../../repositories/BasketRepository';
 import { LoggerInterface } from '../logger/LoggerInterface';
-import { DEFAULT_TAX_RATE } from '../config/POSConfigService';
-import { multiplyMoney, sumMoney, calculateTax, roundMoney } from '../../utils/money';
+import { multiplyMoney, sumMoney, roundMoney } from '../../utils/money';
 import { generateUUID } from '../../utils/uuid';
 
 /**
@@ -142,16 +141,14 @@ export class BasketService implements BasketServiceInterface {
   private calculateTotals(items: BasketItem[], discountAmount: number = 0) {
     const lineTotals = items.map(item => multiplyMoney(item.price, item.quantity));
     const subtotal = sumMoney(lineTotals);
-    const taxableAmount = sumMoney(items.filter(i => i.taxable).map(i => multiplyMoney(i.price, i.quantity)));
-    const tax = calculateTax(taxableAmount, DEFAULT_TAX_RATE());
-    const total = Math.max(0, roundMoney(subtotal + tax - discountAmount));
-    return { subtotal, tax, total };
+
+    const total = Math.max(0, roundMoney(subtotal - discountAmount));
+    return { subtotal, total };
   }
 
   private async recalculateAndSave(basket: Basket): Promise<Basket> {
     const totals = this.calculateTotals(basket.items, basket.discountAmount);
     basket.subtotal = totals.subtotal;
-    basket.tax = totals.tax;
     basket.total = totals.total;
     basket.updatedAt = new Date();
     await this.updateBasketInDb(basket);

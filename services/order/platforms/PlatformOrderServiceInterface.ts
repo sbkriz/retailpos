@@ -43,45 +43,23 @@ export interface PlatformOrderConfig {
 }
 
 /**
- * Interface for platform-specific order service implementations
+ * Interface for platform-specific order service implementations.
+ * Mirrors OrderServiceInterface but adds the draft lifecycle methods.
  */
 export interface PlatformOrderServiceInterface {
-  /**
-   * Initialize the platform order service with required configuration
-   */
   initialize(): Promise<boolean>;
-
-  /**
-   * Check if the service is properly initialized
-   */
   isInitialized(): boolean;
-
-  /**
-   * Get configuration requirements for this platform
-   */
   getConfigRequirements(): PlatformConfigRequirements;
 
-  /**
-   * Create a new order in the e-commerce platform
-   * @param order Order details to be created
-   * @returns Promise resolving to the created order with platform-specific IDs
-   */
+  /** Create a draft order (platform-calculated tax, not yet paid) */
+  createDraftOrder(order: Order): Promise<Order>;
+  /** Cancel/delete a draft before payment */
+  cancelDraftOrder(platformOrderId: string): Promise<void>;
+  /** Mark a draft as paid after payment succeeds */
+  completeOrder(platformOrderId: string, paymentMethod: string, transactionId?: string): Promise<Order | null>;
+
+  /** Legacy: create a fully-paid order (used by sync service) */
   createOrder(order: Order): Promise<Order>;
-
-  /**
-   * Get an existing order by ID
-   * @param orderId The ID of the order to retrieve
-   * @returns Promise resolving to the order if found
-   */
   getOrder(orderId: string): Promise<Order | null>;
-
-  /**
-   * Update an existing order
-   * @param orderId The ID of the order to update
-   * @param updates The order properties to update
-   * @returns Promise resolving to the updated order
-   */
   updateOrder(orderId: string, updates: Partial<Order>): Promise<Order | null>;
-
-  // Refund functionality moved to dedicated refund service
 }

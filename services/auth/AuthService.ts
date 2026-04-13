@@ -95,9 +95,13 @@ export class AuthService {
     return provider.authenticate(credential);
   }
 
-  /** Authenticate using the primary method */
+  /** Authenticate using the primary method, falling back to PIN on failure */
   async authenticateWithPrimary(credential?: string): Promise<AuthResult> {
-    return this.authenticate(this.config.primaryMethod, credential);
+    const result = await this.authenticate(this.config.primaryMethod, credential);
+    if (!result.success && this.config.primaryMethod !== 'pin') {
+      return this.authenticate('pin', credential);
+    }
+    return result;
   }
 }
 

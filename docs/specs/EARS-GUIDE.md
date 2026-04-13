@@ -357,17 +357,28 @@ Before committing a spec, verify:
 
 - [ ] Every requirement uses exactly one EARS pattern (or the complex combination)
 - [ ] Every "shall allow" in sections 2–3 has a corresponding "If not..." in section 5
-- [ ] All step names match the actual `OnboardingStep` type values in `OnboardingScreen.tsx`
-- [ ] All config defaults match the actual values in `POSConfigService.ts` and `.env.example`
-- [ ] The step transition table matches the actual handler logic in `OnboardingScreen.tsx`
+- [ ] All step names match the actual type values in the relevant screen/service
+- [ ] All config defaults match the actual values in the relevant service and `.env.example`
+- [ ] The step transition table matches the actual handler logic in the orchestrating screen
 - [ ] The `Source` header links to the correct screen, hook, and service files
-- [ ] The lifecycle summary diagram is consistent with the `STEP_ORDER` arrays
+- [ ] The lifecycle summary diagram is consistent with the actual flow arrays/state machines
 - [ ] No business logic is invented — every rule traces to code
+
+After writing or updating a spec, always perform an integration review:
+
+- [ ] Read every requirement in sections 1–6 against the actual source files
+- [ ] Confirm audit logging is wired up for all success and failure paths (if applicable)
+- [ ] Confirm fallback/error paths in services match what the spec describes
+- [ ] Fix any gaps found in the implementation before considering the spec complete
+- [ ] Update this guide's "Existing Specs" table if a new spec was added
 
 ---
 
 ## Existing Specs (Reference)
 
-| Spec                | File                              | Key patterns demonstrated                              |
-| ------------------- | --------------------------------- | ------------------------------------------------------ |
-| Onboarding – Wizard | `docs/specs/onboarding/wizard.md` | Dual path (online/offline), hardware skips, mock flags |
+| Spec                            | File                              | Key patterns demonstrated                                         |
+| ------------------------------- | --------------------------------- | ----------------------------------------------------------------- |
+| Onboarding – Wizard             | `docs/specs/onboarding/wizard.md` | Dual path (online/offline), hardware skips, mock flags            |
+| Authentication – Login          | `docs/specs/auth/login.md`        | Provider pattern, hardware methods, platform token, audit log     |
+| Catalog – Products & Categories | `docs/specs/catalog/products.md`  | Multi-platform mappers, pagination, variant picker, category tree |
+| Basket – Shopping Cart          | `docs/specs/basket/basket.md`     | Service/context split, checkout flow, dual UI surfaces, audit log |

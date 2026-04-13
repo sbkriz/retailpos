@@ -129,7 +129,6 @@ export class SquarespaceOrderService extends BaseOrderService {
       name: item.productName,
       quantity: item.quantity,
       price: item.unitPricePaid?.value ? parseFloat(item.unitPricePaid.value) / 100 : 0,
-      taxable: true,
       total: item.lineItemTotalPaid?.value ? parseFloat(item.lineItemTotalPaid.value) / 100 : 0,
       properties: item.customizations || {},
     }));

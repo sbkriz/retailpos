@@ -84,6 +84,10 @@ export interface UnifiedProduct {
   status: UnifiedProductStatus;
   isFeatured: boolean;
   handle?: string;
+  /** Offline mode: references a TaxProfile by ID in tax_profiles table */
+  taxProfileId?: string;
+  /** Online mode: platform-native tax class/code string (e.g. 'reduced-rate', 'exempt') */
+  taxCode?: string;
   createdAt: Date;
   updatedAt: Date;
   syncedAt: Date;

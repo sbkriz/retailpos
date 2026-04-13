@@ -90,7 +90,6 @@ describe('BasketService', () => {
         name: 'Test Product',
         price: 10.0,
         quantity: 1,
-        taxable: true,
       });
 
       expect(basket.items).toHaveLength(1);
@@ -128,7 +127,6 @@ describe('BasketService', () => {
         name: 'Test Product',
         price: 10.0,
         quantity: 1,
-        taxable: true,
       });
 
       const basket = await service.addItem({
@@ -136,7 +134,6 @@ describe('BasketService', () => {
         name: 'Test Product',
         price: 10.0,
         quantity: 2,
-        taxable: true,
       });
 
       expect(basket.items).toHaveLength(1);
@@ -153,7 +150,6 @@ describe('BasketService', () => {
         name: 'Test Product',
         price: 10.0,
         quantity: 1,
-        taxable: false,
       });
 
       const itemId = basketAfterAdd.items[0].id;

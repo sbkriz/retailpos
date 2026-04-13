@@ -48,6 +48,10 @@ export interface CartProduct {
   originalId?: string;
   sku?: string;
   taxable?: boolean;
+  /** Offline: references a TaxProfile by ID */
+  taxProfileId?: string;
+  /** Online: platform tax class/code string */
+  taxCode?: string;
   platformId?: string;
   platform?: ECommercePlatform;
 }
@@ -93,6 +97,7 @@ export interface BasketContextType {
   markPaymentProcessing: (orderId: string) => Promise<void>;
   completePayment: (orderId: string, paymentMethod: string, transactionId?: string) => Promise<CheckoutResult>;
   cancelOrder: (orderId: string) => Promise<void>;
+  cancelDraftOrder: () => Promise<void>;
 
   // Sync operations
   unsyncedOrdersCount: number;
@@ -250,7 +255,6 @@ export const BasketProvider = ({ children }: Readonly<{ children: ReactNode }>) 
         price: product.price,
         quantity,
         image: getImageUrl(product.image),
-        taxable: product.taxable ?? true,
         isEcommerceProduct: product.isEcommerceProduct,
         originalId: product.originalId || product.platformId,
       });
@@ -401,6 +405,12 @@ export const BasketProvider = ({ children }: Readonly<{ children: ReactNode }>) 
       if (!containerRef.current) return null;
 
       try {
+        // Cancel any existing draft before creating a new one
+        if (currentOrder?.status === 'draft') {
+          await containerRef.current.checkoutService.cancelDraftOrder(currentOrder.id, currentOrder.platform, currentOrder.platformOrderId);
+          if (mountedRef.current) setCurrentOrder(null);
+        }
+
         const order = await containerRef.current.checkoutService.startCheckout(platform, user?.id, user?.username);
         if (mountedRef.current) {
           setCurrentOrder(order);
@@ -414,7 +424,7 @@ export const BasketProvider = ({ children }: Readonly<{ children: ReactNode }>) 
         return null;
       }
     },
-    [user]
+    [user, currentOrder]
   );
 
   const markPaymentProcessing = useCallback(async (orderId: string) => {
@@ -474,6 +484,23 @@ export const BasketProvider = ({ children }: Readonly<{ children: ReactNode }>) 
       }
     }
   }, []);
+
+  // Cancel a draft order and return to basket editing
+  const cancelDraftOrder = useCallback(async () => {
+    if (!containerRef.current || !currentOrder) return;
+
+    try {
+      await containerRef.current.checkoutService.cancelDraftOrder(currentOrder.id, currentOrder.platform, currentOrder.platformOrderId);
+      if (mountedRef.current) {
+        setCurrentOrder(null);
+        setError(null);
+      }
+    } catch (err) {
+      if (mountedRef.current) {
+        setError((err as Error).message);
+      }
+    }
+  }, [currentOrder]);
 
   // Sync operations
   const syncOrderToPlatform = useCallback(
@@ -548,6 +575,7 @@ export const BasketProvider = ({ children }: Readonly<{ children: ReactNode }>) 
       markPaymentProcessing,
       completePayment,
       cancelOrder,
+      cancelDraftOrder,
       unsyncedOrdersCount,
       syncOrderToPlatform,
       syncAllPendingOrders,
@@ -582,6 +610,7 @@ export const BasketProvider = ({ children }: Readonly<{ children: ReactNode }>) 
       markPaymentProcessing,
       completePayment,
       cancelOrder,
+      cancelDraftOrder,
       unsyncedOrdersCount,
       syncOrderToPlatform,
       syncAllPendingOrders,

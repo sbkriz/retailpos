@@ -38,7 +38,6 @@ jest.mock('../../logger/LoggerFactory', () => ({
 }));
 
 import secretsService from '../../secrets/SecretsService';
-import { getPlatformToken } from '../../token/TokenUtils';
 import { withTokenRefresh } from '../../token/TokenIntegration';
 import { ECommercePlatform } from '../../../utils/platforms';
 
@@ -62,7 +61,6 @@ describe('SyliusCustomerService', () => {
       return Promise.resolve(null);
     });
 
-    (getPlatformToken as jest.Mock).mockResolvedValue('test-token');
     (withTokenRefresh as jest.Mock).mockImplementation(async (platform, fn) => fn());
     mockApiClient.isInitialized.mockReturnValue(true);
     mockApiClient.initialize.mockResolvedValue(undefined);
@@ -118,35 +116,6 @@ describe('SyliusCustomerService', () => {
         createdAt: new Date('2024-01-01T00:00:00+00:00'),
       });
       expect(result.hasMore).toBe(false);
-    });
-  });
-
-  describe('getCustomer', () => {
-    beforeEach(async () => {
-      await service.initialize();
-    });
-
-    it('should fetch customer successfully', async () => {
-      const mockCustomer = {
-        id: 'customer-1',
-        email: 'jane@example.com',
-        firstName: 'Jane',
-        lastName: 'Smith',
-        createdAt: '2024-01-01T00:00:00+00:00',
-      };
-      mockApiClient.get.mockResolvedValue(mockCustomer);
-
-      const result = await service.getCustomer('customer-1');
-
-      expect(result).toEqual({
-        id: 'customer-1',
-        platformId: 'customer-1',
-        platform: ECommercePlatform.SYLIUS,
-        email: 'jane@example.com',
-        firstName: 'Jane',
-        lastName: 'Smith',
-        createdAt: new Date('2024-01-01T00:00:00+00:00'),
-      });
     });
   });
 });

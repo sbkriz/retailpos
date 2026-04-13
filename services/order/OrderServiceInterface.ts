@@ -13,7 +13,11 @@ export interface Order {
   discounts?: Discount[];
   shippingAddress?: Address;
   billingAddress?: Address;
-  paymentStatus?: 'pending' | 'paid' | 'partially_refunded' | 'refunded' | 'failed';
+  /**
+   * Payment status as understood by the platform.
+   * 'draft' is used when the order is created as a draft (not yet paid).
+   */
+  paymentStatus?: 'draft' | 'pending' | 'paid' | 'partially_refunded' | 'refunded' | 'failed';
   fulfillmentStatus?: 'unfulfilled' | 'partially_fulfilled' | 'fulfilled';
   note?: string;
   tags?: string[];
@@ -32,7 +36,6 @@ export interface OrderLineItem {
   name: string;
   quantity: number;
   price: number;
-  taxable: boolean;
   taxRate?: number;
   taxAmount?: number;
   discountAmount?: number;
@@ -71,30 +74,50 @@ export interface Address {
 // Refund interfaces moved to refundServiceInterface.ts
 
 /**
- * Interface for order-related operations in an e-commerce platform
+ * Interface for order-related operations in an e-commerce platform.
+ *
+ * Draft order lifecycle (online platforms):
+ *   createDraftOrder() → platform creates a draft with server-calculated tax
+ *   cancelDraftOrder() → platform deletes/cancels the draft (cashier goes back to basket)
+ *   completeOrder()    → platform marks the draft as paid after payment succeeds
+ *
+ * Platforms that don't support native drafts fall back to createOrder() and
+ * implement cancelDraftOrder() as a no-op or a delete call.
  */
 export interface OrderServiceInterface {
   /**
-   * Create a new order in the e-commerce platform
-   * @param order Order details to be created
-   * @returns Promise resolving to the created order with platform-specific IDs
+   * Create a draft order on the platform.
+   * Returns the draft with platform-calculated tax, subtotal, and total.
+   * The draft is not yet paid — it is confirmed via completeOrder() after payment.
+   */
+  createDraftOrder(order: Order): Promise<Order>;
+
+  /**
+   * Cancel / delete a draft order on the platform before payment.
+   * Called when the cashier returns to the basket to add/remove items.
+   * Implementations should be best-effort — failures are logged but not thrown.
+   */
+  cancelDraftOrder(platformOrderId: string): Promise<void>;
+
+  /**
+   * Mark a draft order as paid on the platform after payment succeeds.
+   * For platforms that don't support drafts, this may be equivalent to createOrder().
+   */
+  completeOrder(platformOrderId: string, paymentMethod: string, transactionId?: string): Promise<Order | null>;
+
+  /**
+   * Create a new order in the e-commerce platform (legacy / sync path).
+   * Used by OrderSyncService when syncing a locally-paid order that has no platformOrderId.
    */
   createOrder(order: Order): Promise<Order>;
 
   /**
    * Get an existing order by ID
-   * @param orderId The ID of the order to retrieve
-   * @returns Promise resolving to the order if found
    */
   getOrder(orderId: string): Promise<Order | null>;
 
   /**
    * Update an existing order
-   * @param orderId The ID of the order to update
-   * @param updates The order properties to update
-   * @returns Promise resolving to the updated order
    */
   updateOrder(orderId: string, updates: Partial<Order>): Promise<Order | null>;
-
-  // Refund functionality moved to dedicated refund service
 }

@@ -56,17 +56,8 @@ export class SquarespaceCustomerService extends BaseCustomerService {
     }
   }
 
-  async getCustomer(customerId: string): Promise<PlatformCustomer | null> {
-    if (!this.initialized) return null;
-    try {
-      return await withTokenRefresh(ECommercePlatform.SQUARESPACE, async () => {
-        const data = await this.apiClient.get<any>(`profiles/${customerId}`);
-        return this.mapCustomer(data);
-      });
-    } catch (error) {
-      this.logger.error({ message: 'Error fetching Squarespace customer' }, error instanceof Error ? error : new Error(String(error)));
-      return null;
-    }
+  async getCustomer(_customerId: string): Promise<PlatformCustomer | null> {
+    return null;
   }
 
   private mapCustomer(c: any): PlatformCustomer {

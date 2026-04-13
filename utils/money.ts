@@ -37,15 +37,6 @@ export function sumMoney(amounts: number[]): number {
 }
 
 /**
- * Calculate tax on a dollar amount at the given rate.
- * Rate is a decimal (e.g. 0.08 for 8%).
- * Returns dollars, rounded to nearest cent.
- */
-export function calculateTax(amount: number, rate: number): number {
-  return toDollars(Math.round(toCents(amount) * rate));
-}
-
-/**
  * Format a dollar amount for display (e.g. "$19.99" or "19.99₽").
  * Always shows exactly 2 decimal places.
  * Symbol placement depends on the currency (before or after).
@@ -60,19 +51,4 @@ export function formatMoney(amount: number, currencyCode: string = 'GBP'): strin
     return `${formattedAmount}${symbol}`;
   }
   return `${symbol}${formattedAmount}`;
-}
-
-/**
- * Calculate the line total for a basket item.
- * Returns { lineTotal, taxAmount } in dollars.
- */
-export function calculateLineTotal(
-  price: number,
-  quantity: number,
-  taxable: boolean,
-  taxRate: number
-): { lineTotal: number; taxAmount: number } {
-  const lineTotal = multiplyMoney(price, quantity);
-  const taxAmount = taxable ? calculateTax(lineTotal, taxRate) : 0;
-  return { lineTotal, taxAmount };
 }

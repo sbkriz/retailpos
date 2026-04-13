@@ -163,6 +163,8 @@ export function mapShopifyProduct(data: ShopifyProduct): UnifiedProduct {
     status,
     isFeatured: false,
     handle: data.handle,
+    // Shopify: if any variant is non-taxable, mark product as exempt
+    taxCode: variants.some(v => !v.taxable) ? 'exempt' : undefined,
     createdAt: data.created_at ? new Date(data.created_at) : new Date(),
     updatedAt: data.updated_at ? new Date(data.updated_at) : new Date(),
     syncedAt: new Date(),
@@ -318,6 +320,8 @@ export function mapWooCommerceProduct(data: WooCommerceProduct): UnifiedProduct 
     status,
     isFeatured: data.featured ?? false,
     handle: data.slug,
+    // WooCommerce: map tax_class to taxCode for TaxProfileService resolution
+    taxCode: data.tax_class || undefined,
     createdAt: data.date_created ? new Date(data.date_created) : new Date(),
     updatedAt: data.date_modified ? new Date(data.date_modified) : new Date(),
     syncedAt: new Date(),
@@ -471,6 +475,8 @@ interface GenericProduct {
   productType?: string;
   tags?: string[];
   vendor?: string;
+  taxProfileId?: string;
+  taxCode?: string;
   variants?: Array<{
     id: string;
     title?: string;
@@ -579,6 +585,8 @@ export function mapGenericProduct(data: GenericProduct, platform: ECommercePlatf
     images,
     status: 'active',
     isFeatured: false,
+    taxProfileId: data.taxProfileId,
+    taxCode: data.taxCode,
     createdAt: new Date(),
     updatedAt: new Date(),
     syncedAt: new Date(),

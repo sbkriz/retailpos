@@ -1,11 +1,8 @@
 import { MagentoCustomerService } from './MagentoCustomerService';
 
-// Mock the dependencies
 jest.mock('../../secrets/SecretsService', () => ({
   __esModule: true,
-  default: {
-    getSecret: jest.fn(),
-  },
+  default: { getSecret: jest.fn() },
 }));
 
 jest.mock('../../token/TokenUtils', () => ({
@@ -38,7 +35,6 @@ jest.mock('../../logger/LoggerFactory', () => ({
 }));
 
 import secretsService from '../../secrets/SecretsService';
-import { getPlatformToken } from '../../token/TokenUtils';
 import { withTokenRefresh } from '../../token/TokenIntegration';
 import { ECommercePlatform } from '../../../utils/platforms';
 
@@ -57,14 +53,12 @@ describe('MagentoCustomerService', () => {
     service = new MagentoCustomerService();
     (service as unknown as { apiClient: typeof mockApiClient }).apiClient = mockApiClient;
 
-    // Setup default mocks
     (secretsService.getSecret as jest.Mock).mockImplementation((key: string) => {
       if (key === 'MAGENTO_BASE_URL') return Promise.resolve(mockBaseUrl);
       return Promise.resolve(null);
     });
 
-    (getPlatformToken as jest.Mock).mockResolvedValue('test-token');
-    (withTokenRefresh as jest.Mock).mockImplementation(async (platform, fn) => fn());
+    (withTokenRefresh as jest.Mock).mockImplementation(async (_platform: unknown, fn: () => unknown) => fn());
     mockApiClient.isInitialized.mockReturnValue(true);
     mockApiClient.initialize.mockResolvedValue(undefined);
   });
@@ -119,37 +113,6 @@ describe('MagentoCustomerService', () => {
         updatedAt: new Date('2024-01-02 00:00:00'),
       });
       expect(result.hasMore).toBe(false);
-    });
-  });
-
-  describe('getCustomer', () => {
-    beforeEach(async () => {
-      await service.initialize();
-    });
-
-    it('should fetch customer successfully', async () => {
-      const mockCustomer = {
-        id: 1,
-        email: 'jane@example.com',
-        firstname: 'Jane',
-        lastname: 'Smith',
-        addresses: [{ telephone: '+1234567890' }],
-      };
-      mockApiClient.get.mockResolvedValue(mockCustomer);
-
-      const result = await service.getCustomer('1');
-
-      expect(result).toEqual({
-        id: '1',
-        platformId: '1',
-        platform: ECommercePlatform.MAGENTO,
-        email: 'jane@example.com',
-        firstName: 'Jane',
-        lastName: 'Smith',
-        phone: '+1234567890',
-        createdAt: undefined,
-        updatedAt: undefined,
-      });
     });
   });
 });

@@ -148,7 +148,6 @@ export class PrestaShopOrderService extends BaseOrderService {
       name: item.product_name,
       quantity: parseInt(item.product_quantity || '1', 10),
       price: parseFloat(item.unit_price_tax_excl || '0'),
-      taxable: true,
       total: parseFloat(item.total_price_tax_incl || '0'),
       properties: {},
     }));

@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- raw platform API response mapping */
 import { Order, OrderLineItem } from '../OrderServiceInterface';
-import { PlatformOrderServiceInterface, PlatformOrderConfig, PlatformConfigRequirements } from './PlatformOrderServiceInterface';
+import { PlatformOrderConfig, PlatformConfigRequirements } from './PlatformOrderServiceInterface';
+import { BaseOrderService } from './BaseOrderService';
 import { CommerceFullApiClient, CommerceFullConfig } from '../../clients/commercefull/CommerceFullApiClient';
-import { LoggerFactory } from '../../logger/LoggerFactory';
 
 /**
  * CommerceFull platform implementation of the order service.
@@ -12,14 +12,11 @@ import { LoggerFactory } from '../../logger/LoggerFactory';
  *   GET  /business/orders/:orderId    → getOrder
  *   PUT  /business/orders/:id/status  → updateOrder (status update)
  */
-export class CommerceFullOrderService implements PlatformOrderServiceInterface {
-  private config: PlatformOrderConfig;
-  private initialized = false;
+export class CommerceFullOrderService extends BaseOrderService {
   private apiClient: CommerceFullApiClient;
-  private logger = LoggerFactory.getInstance().createLogger('CommerceFullOrderService');
 
   constructor(config: PlatformOrderConfig = {}) {
-    this.config = config;
+    super(config);
     this.apiClient = CommerceFullApiClient.getInstance();
   }
 
@@ -112,7 +109,7 @@ export class CommerceFullOrderService implements PlatformOrderServiceInterface {
     }
   }
 
-  private mapToOrder(o: any): Order {
+  protected mapToOrder(o: any): Order {
     if (!o) return { lineItems: [], subtotal: 0, tax: 0, total: 0 };
 
     const lineItems: OrderLineItem[] = (o.items || o.lineItems || []).map((item: any) => ({
@@ -123,7 +120,6 @@ export class CommerceFullOrderService implements PlatformOrderServiceInterface {
       name: item.name || item.productName || '',
       quantity: item.quantity || 0,
       price: parseFloat(item.price || item.unitPrice) || 0,
-      taxable: item.taxable ?? true,
       taxRate: item.taxRate,
       taxAmount: item.taxAmount,
       discountAmount: item.discountAmount,
@@ -160,7 +156,6 @@ export class CommerceFullOrderService implements PlatformOrderServiceInterface {
         name: item.name,
         quantity: item.quantity,
         price: item.price,
-        taxable: item.taxable,
         taxRate: item.taxRate,
         taxAmount: item.taxAmount,
         discountAmount: item.discountAmount,

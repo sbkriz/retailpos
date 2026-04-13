@@ -9,6 +9,7 @@ import { User } from '../repositories/UserRepository';
 import { authService } from '../services/auth/AuthService';
 import { authConfig } from '../services/auth/AuthConfigService';
 import { AuthMethodProvider, AuthMethodType } from '../services/auth/AuthMethodInterface';
+import { auditLogService } from '../services/audit/AuditLogService';
 import { useTranslate } from '../hooks/useTranslate';
 
 interface LoginScreenProps {
@@ -59,13 +60,21 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
     (credential: string, result: { success: boolean; user?: User; error?: string }) => {
       setIsLoading(false);
       if (result.success) {
+        auditLogService.log('auth:login', {
+          userId: result.user?.id,
+          userName: result.user?.name,
+          details: activeMethod,
+        });
         onLogin(credential, result.user);
       } else {
+        auditLogService.log('auth:failed', {
+          details: `method=${activeMethod} error=${result.error ?? 'unknown'}`,
+        });
         setError(result.error ?? t('login.authFailed'));
         startShake();
       }
     },
-    [onLogin, startShake, t]
+    [onLogin, startShake, t, activeMethod]
   );
 
   // ── Biometric handler ───────────────────────────────────────────────

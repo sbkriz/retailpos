@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { lightColors, spacing, typography, borderRadius } from '../../utils/theme';
 import { SwipeablePanel } from '../../components/SwipeablePanel';
@@ -7,9 +7,8 @@ import { formatMoney } from '../../utils/money';
 import { ECommercePlatform } from '../../utils/platforms';
 import { useCurrency } from '../../hooks/useCurrency';
 import { useTranslate } from '../../hooks/useTranslate';
-import { CheckoutModal, PaymentSelection } from '../../components/CheckoutModal';
-import { usePayment } from '../../hooks/usePayment';
-import { cashDrawerServiceFactory } from '../../services/drawer/CashDrawerServiceFactory';
+import { CheckoutModal } from '../../components/CheckoutModal';
+import { useCheckout } from '../../hooks/useCheckout';
 
 interface BasketProps {
   onCheckout?: () => void;
@@ -20,36 +19,53 @@ interface BasketProps {
 export const Basket: React.FC<BasketProps> = ({ onCheckout, onPrintReceipt, platform }) => {
   const currency = useCurrency();
   const { t } = useTranslate();
-  const { processPayment, isTerminalConnected } = usePayment();
   const {
     isRightPanelOpen,
     setIsRightPanelOpen,
     isLoading,
     cartItems,
-    subtotal,
-    tax,
-    total,
     incrementQuantity,
     decrementQuantity,
     removeFromCart,
-    startCheckout,
-    markPaymentProcessing,
-    completePayment,
-    cancelOrder,
-    itemCount,
     unsyncedOrdersCount,
     syncAllPendingOrders,
   } = useBasketContext();
 
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [checkoutModalVisible, setCheckoutModalVisible] = useState(false);
-  const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
+  const {
+    isProcessing,
+    checkoutVisible,
+    error,
+    currentOrder,
+    total,
+    subtotal,
+    tax,
+    itemCount,
+    terminalConnected,
+    handleStartCheckout,
+    handleCancelCheckout,
+    handlePayment,
+    clearError,
+  } = useCheckout({
+    platform,
+    onSuccess: orderId => {
+      setIsRightPanelOpen(false);
+      onCheckout?.();
+      onPrintReceipt?.(orderId);
+    },
+  });
 
-  // Handle quantity decrease
+  // Basket surfaces payment errors as Alert.alert per spec 2.9.8
+  useEffect(() => {
+    if (error) {
+      Alert.alert(t('common.error'), error);
+      clearError();
+    }
+  }, [error, clearError, t]);
+
+  const [isSyncing, setIsSyncing] = useState(false);
+
   const handleDecrement = async (itemId: string, currentQuantity: number) => {
     if (currentQuantity <= 1) {
-      // Confirm removal
       Alert.alert(t('basket.removeItem'), t('basket.removeItemConfirm'), [
         { text: t('common.cancel'), style: 'cancel' },
         { text: t('common.remove'), style: 'destructive', onPress: () => removeFromCart(itemId) },
@@ -59,90 +75,6 @@ export const Basket: React.FC<BasketProps> = ({ onCheckout, onPrintReceipt, plat
     }
   };
 
-  // Handle checkout process — opens CheckoutModal for payment method selection
-  const handleCheckout = async () => {
-    if (cartItems.length === 0) return;
-
-    setIsProcessing(true);
-    try {
-      const order = await startCheckout(platform);
-      if (!order) {
-        Alert.alert(t('common.error'), t('basket.failedToCreateOrder'));
-        return;
-      }
-      setCurrentOrderId(order.id);
-      setCheckoutModalVisible(true);
-    } catch (error) {
-      Alert.alert(t('common.error'), (error as Error).message);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  // Handle payment method selection from CheckoutModal
-  const handlePayment = async (selection: PaymentSelection) => {
-    if (!currentOrderId) return;
-
-    setIsProcessing(true);
-    try {
-      await markPaymentProcessing(currentOrderId);
-
-      // Card and terminal payments go through the payment service first
-      if (selection.method === 'card' || selection.method === 'terminal') {
-        const paymentResponse = await processPayment({
-          amount: total,
-          reference: currentOrderId,
-          orderId: currentOrderId,
-          itemCount,
-        });
-        if (!paymentResponse.success) {
-          Alert.alert(t('common.error'), paymentResponse.errorMessage || t('basket.paymentFailed'));
-          return;
-        }
-      }
-
-      const paymentMethod = selection.method === 'terminal' ? 'card_terminal' : selection.method;
-      const result = await completePayment(currentOrderId, paymentMethod);
-      if (result.success) {
-        // Open cash drawer if the service flagged it (cash payment + drawer configured)
-        if (result.openDrawer) {
-          cashDrawerServiceFactory
-            .getService()
-            .open()
-            .catch(() => {});
-        }
-        setCheckoutModalVisible(false);
-        setCurrentOrderId(null);
-        setIsRightPanelOpen(false);
-        onCheckout?.();
-        if (onPrintReceipt) onPrintReceipt(currentOrderId);
-      } else {
-        Alert.alert(t('common.error'), result.error || t('basket.paymentFailed'));
-      }
-    } catch (error) {
-      Alert.alert(t('common.error'), (error as Error).message);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const handleCancelCheckout = async () => {
-    const orderId = currentOrderId;
-    setCheckoutModalVisible(false);
-    setCurrentOrderId(null);
-
-    if (!orderId) {
-      return;
-    }
-
-    try {
-      await cancelOrder(orderId);
-    } catch (error) {
-      Alert.alert(t('common.error'), (error as Error).message);
-    }
-  };
-
-  // Handle sync of pending orders
   const handleSyncOrders = async () => {
     setIsSyncing(true);
     try {
@@ -154,14 +86,13 @@ export const Basket: React.FC<BasketProps> = ({ onCheckout, onPrintReceipt, plat
       } else {
         Alert.alert(t('basket.noOrdersTitle'), t('basket.noOrdersToSync'));
       }
-    } catch (error) {
-      Alert.alert(t('common.error'), (error as Error).message);
+    } catch (err) {
+      Alert.alert(t('common.error'), (err as Error).message);
     } finally {
       setIsSyncing(false);
     }
   };
 
-  // Render each cart item
   const renderItem = ({ item }: { item: CartItem }) => (
     <View style={styles.cartItem}>
       <View style={styles.itemInfo}>
@@ -226,7 +157,6 @@ export const Basket: React.FC<BasketProps> = ({ onCheckout, onPrintReceipt, plat
           )}
 
           <View style={styles.summary}>
-            {/* Unsynced orders indicator */}
             {unsyncedOrdersCount > 0 && (
               <TouchableOpacity style={styles.syncBanner} onPress={handleSyncOrders} disabled={isSyncing}>
                 <Text style={styles.syncBannerText}>
@@ -241,7 +171,7 @@ export const Basket: React.FC<BasketProps> = ({ onCheckout, onPrintReceipt, plat
               <Text style={styles.summaryValue}>{formatMoney(subtotal, currency.code)}</Text>
             </View>
             <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>{t('basket.tax', { rate: '8' })}</Text>
+              <Text style={styles.summaryLabel}>{t('basket.tax')}</Text>
               <Text style={styles.summaryValue}>{formatMoney(tax, currency.code)}</Text>
             </View>
             <View style={[styles.summaryRow, styles.totalRow]}>
@@ -249,29 +179,28 @@ export const Basket: React.FC<BasketProps> = ({ onCheckout, onPrintReceipt, plat
               <Text style={styles.totalValue}>{formatMoney(total, currency.code)}</Text>
             </View>
 
-            <View style={styles.buttonsContainer}>
-              <TouchableOpacity
-                style={[styles.checkoutButton, (cartItems.length === 0 || isProcessing) && styles.buttonDisabled]}
-                onPress={handleCheckout}
-                disabled={cartItems.length === 0 || isProcessing}
-                accessibilityLabel="Complete order"
-                accessibilityRole="button"
-                accessibilityHint="Opens a menu to complete the order in different ways"
-              >
-                {isProcessing ? (
-                  <ActivityIndicator size="small" color={lightColors.textOnPrimary} />
-                ) : (
-                  <Text style={styles.checkoutButtonText}>{t('basket.completeOrder')}</Text>
-                )}
-              </TouchableOpacity>
-            </View>
+            {/* no inline error — payment errors shown via Alert.alert (spec 2.9.8) */}
+
+            <TouchableOpacity
+              style={[styles.checkoutButton, (cartItems.length === 0 || isProcessing) && styles.buttonDisabled]}
+              onPress={handleStartCheckout}
+              disabled={cartItems.length === 0 || isProcessing}
+              accessibilityLabel="Complete order"
+              accessibilityRole="button"
+            >
+              {isProcessing ? (
+                <ActivityIndicator size="small" color={lightColors.textOnPrimary} />
+              ) : (
+                <Text style={styles.checkoutButtonText}>{t('basket.completeOrder')}</Text>
+              )}
+            </TouchableOpacity>
           </View>
         </View>
       </View>
 
       <CheckoutModal
-        visible={checkoutModalVisible}
-        orderId={currentOrderId || ''}
+        visible={checkoutVisible}
+        orderId={currentOrder?.id || ''}
         orderTotal={total}
         orderSubtotal={subtotal}
         orderTax={tax}
@@ -279,20 +208,16 @@ export const Basket: React.FC<BasketProps> = ({ onCheckout, onPrintReceipt, plat
         onSelectPayment={handlePayment}
         onCancel={handleCancelCheckout}
         isProcessing={isProcessing}
-        terminalConnected={isTerminalConnected()}
+        terminalConnected={terminalConnected}
       />
     </SwipeablePanel>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: spacing.md,
-  },
-  cartList: {
-    flex: 1,
-  },
+  container: { flex: 1, padding: spacing.md },
+  panelContent: { flex: 1, height: '100%', width: '100%' },
+  cartList: { flex: 1 },
   cartItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -301,40 +226,12 @@ const styles = StyleSheet.create({
     borderBottomColor: lightColors.border,
     paddingVertical: spacing.sm,
   },
-  panelContent: {
-    flex: 1,
-    height: '100%',
-    width: '100%',
-  },
-  itemInfo: {
-    flex: 1,
-    marginRight: spacing.sm,
-  },
-  itemName: {
-    fontSize: typography.fontSize.md,
-    fontWeight: '500',
-  },
-  itemPrice: {
-    fontSize: typography.fontSize.sm,
-    color: lightColors.textSecondary,
-    marginTop: spacing.xs,
-  },
-  itemSku: {
-    fontSize: typography.fontSize.xs,
-    color: lightColors.textHint,
-    marginTop: 2,
-  },
-  itemTotal: {
-    fontSize: typography.fontSize.md,
-    fontWeight: '600',
-    minWidth: 60,
-    textAlign: 'right',
-  },
-  quantityContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: spacing.sm,
-  },
+  itemInfo: { flex: 1, marginRight: spacing.sm },
+  itemName: { fontSize: typography.fontSize.md, fontWeight: '500' },
+  itemPrice: { fontSize: typography.fontSize.sm, color: lightColors.textSecondary, marginTop: spacing.xs },
+  itemSku: { fontSize: typography.fontSize.xs, color: lightColors.textHint, marginTop: 2 },
+  itemTotal: { fontSize: typography.fontSize.md, fontWeight: '600', minWidth: 60, textAlign: 'right' },
+  quantityContainer: { flexDirection: 'row', alignItems: 'center', marginRight: spacing.sm },
   quantityButton: {
     width: 30,
     height: 30,
@@ -344,49 +241,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginHorizontal: spacing.xs,
   },
-  quantityButtonText: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: '700',
-  },
-  quantity: {
-    fontSize: typography.fontSize.md,
-    marginHorizontal: spacing.xs,
-    minWidth: 20,
-    textAlign: 'center',
-  },
-  summary: {
-    marginTop: spacing.lg,
-    borderTopWidth: 1,
-    borderTopColor: lightColors.border,
-    paddingTop: spacing.md,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: spacing.xs,
-  },
-  summaryLabel: {
-    fontSize: typography.fontSize.md,
-    color: lightColors.textSecondary,
-  },
-  summaryValue: {
-    fontSize: typography.fontSize.md,
-  },
-  totalRow: {
-    marginTop: spacing.xs,
-    borderTopWidth: 1,
-    borderTopColor: lightColors.border,
-    paddingTop: spacing.xs,
-  },
-  totalLabel: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: '700',
-  },
-  totalValue: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: '700',
-    color: lightColors.primary,
-  },
+  quantityButtonText: { fontSize: typography.fontSize.lg, fontWeight: '700' },
+  quantity: { fontSize: typography.fontSize.md, marginHorizontal: spacing.xs, minWidth: 20, textAlign: 'center' },
+  summary: { marginTop: spacing.lg, borderTopWidth: 1, borderTopColor: lightColors.border, paddingTop: spacing.md },
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.xs },
+  summaryLabel: { fontSize: typography.fontSize.md, color: lightColors.textSecondary },
+  summaryValue: { fontSize: typography.fontSize.md },
+  totalRow: { marginTop: spacing.xs, borderTopWidth: 1, borderTopColor: lightColors.border, paddingTop: spacing.xs },
+  totalLabel: { fontSize: typography.fontSize.lg, fontWeight: '700' },
+  totalValue: { fontSize: typography.fontSize.lg, fontWeight: '700', color: lightColors.primary },
   checkoutButton: {
     backgroundColor: lightColors.success,
     padding: spacing.sm,
@@ -398,41 +261,12 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     minHeight: 48,
   },
-  checkoutButtonText: {
-    color: lightColors.textOnPrimary,
-    fontSize: typography.fontSize.md,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
-  buttonsContainer: {
-    marginTop: spacing.sm,
-    width: '100%',
-  },
-  emptyCart: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: spacing.xl,
-  },
-  emptyCartText: {
-    fontSize: typography.fontSize.md,
-    color: lightColors.textHint,
-    textAlign: 'center',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: spacing.xl,
-  },
-  loadingText: {
-    fontSize: typography.fontSize.md,
-    color: lightColors.textSecondary,
-    marginTop: spacing.md,
-  },
+  checkoutButtonText: { color: lightColors.textOnPrimary, fontSize: typography.fontSize.md, fontWeight: '700', textAlign: 'center' },
+  buttonDisabled: { opacity: 0.5 },
+  emptyCart: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: spacing.xl },
+  emptyCartText: { fontSize: typography.fontSize.md, color: lightColors.textHint, textAlign: 'center' },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: spacing.xl },
+  loadingText: { fontSize: typography.fontSize.md, color: lightColors.textSecondary, marginTop: spacing.md },
   syncBanner: {
     backgroundColor: lightColors.warning,
     padding: spacing.sm,
@@ -443,9 +277,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
   },
-  syncBannerText: {
-    color: lightColors.textOnPrimary,
-    fontSize: typography.fontSize.sm,
-    fontWeight: '600',
-  },
+  syncBannerText: { color: lightColors.textOnPrimary, fontSize: typography.fontSize.sm, fontWeight: '600' },
 });

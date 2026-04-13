@@ -9,8 +9,7 @@ import { PrestaShopOrderService } from './platforms/PrestaShopOrderService';
 import { SquarespaceOrderService } from './platforms/SquarespaceOrderService';
 import { CommerceFullOrderService } from './platforms/CommerceFullOrderService';
 import { OfflineOrderService } from './platforms/OfflineOrderService';
-import { PlatformOrderConfig, PlatformOrderServiceInterface } from './platforms/PlatformOrderServiceInterface';
-import { CompositeOrderService } from './platforms/CompositeOrderService';
+import { PlatformOrderConfig } from './platforms/PlatformOrderServiceInterface';
 import { ECommercePlatform } from '../../utils/platforms';
 import { LoggerFactory } from '../logger/LoggerFactory';
 
@@ -32,7 +31,6 @@ export class OrderServiceFactory {
   private squarespaceService: SquarespaceOrderService | null = null;
   private commerceFullService: CommerceFullOrderService | null = null;
   private offlineService: OfflineOrderService | null = null;
-  private compositeService: CompositeOrderService | null = null;
 
   private constructor() {
     this.offlineDefaultService = new OfflineOrderService();
@@ -182,45 +180,6 @@ export class OrderServiceFactory {
   }
 
   /**
-   * Get a composite order service that combines results from multiple platforms
-   * @param platforms List of platforms to include in the composite
-   * @param configs Optional configurations for each platform
-   * @returns A composite order service
-   */
-  public getCompositeService(
-    platforms: ECommercePlatform[] = [],
-    configs: Partial<Record<ECommercePlatform, PlatformOrderConfig>> = {}
-  ): OrderServiceInterface {
-    // Create a new composite service if it doesn't exist
-    if (!this.compositeService) {
-      this.compositeService = new CompositeOrderService();
-    }
-
-    // If no platforms specified, use all available platforms
-    if (platforms.length === 0) {
-      platforms = Object.values(ECommercePlatform);
-    }
-
-    // Add each platform service to the composite
-    platforms.forEach(platform => {
-      const config = configs[platform] || {};
-      const service = this.getService(platform, config);
-
-      // Don't add mock service to composite unless explicitly requested
-      if (service instanceof OfflineOrderService) {
-        return;
-      }
-
-      // Add the service to the composite
-      if (this.compositeService) {
-        this.compositeService.addService(service as unknown as PlatformOrderServiceInterface);
-      }
-    });
-
-    return this.compositeService;
-  }
-
-  /**
    * Initialize the mock order service with sample data
    * @returns The mock order service
    */
@@ -340,8 +299,5 @@ export class OrderServiceFactory {
       default:
         this.logger.warn({ message: `Platform ${platform} not supported for configuration` });
     }
-
-    // Reset composite service so it picks up new configurations
-    this.compositeService = null;
   }
 }

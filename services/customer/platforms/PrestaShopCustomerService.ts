@@ -58,17 +58,8 @@ export class PrestaShopCustomerService extends BaseCustomerService {
     }
   }
 
-  async getCustomer(customerId: string): Promise<PlatformCustomer | null> {
-    if (!this.initialized) return null;
-    try {
-      return await withTokenRefresh(ECommercePlatform.PRESTASHOP, async () => {
-        const body = await this.apiClient.get<any>(`customers/${customerId}?output_format=JSON`);
-        return this.mapCustomer(body.customer || body);
-      });
-    } catch (error) {
-      this.logger.error({ message: 'Error fetching PrestaShop customer' }, error instanceof Error ? error : new Error(String(error)));
-      return null;
-    }
+  async getCustomer(_customerId: string): Promise<PlatformCustomer | null> {
+    return null;
   }
 
   private mapCustomer(c: any): PlatformCustomer {

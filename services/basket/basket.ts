@@ -10,8 +10,6 @@ export interface BasketItem {
   price: number;
   quantity: number;
   image?: string;
-  taxable: boolean;
-  taxRate?: number;
   isEcommerceProduct?: boolean;
   originalId?: string; // Original platform ID for ecommerce products
   properties?: Record<string, string>;

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { ECommercePlatform } from '../utils/platforms';
-import { PlatformServiceRegistry } from '../services/platform/PlatformServiceRegistry';
+import { ProductServiceFactory } from '../services/product/ProductServiceFactory';
 import {
   getDefaultVariant,
   toProductSummary,
@@ -80,8 +80,7 @@ export const useUnifiedProducts = (platform?: ECommercePlatform, initialOptions?
       setError(null);
 
       try {
-        const registry = PlatformServiceRegistry.getInstance();
-        const service = registry.getProductService(platform || ECommercePlatform.OFFLINE);
+        const service = ProductServiceFactory.getInstance().getService(platform || ECommercePlatform.OFFLINE);
 
         if (!service) {
           throw new Error('Product service not available');
@@ -119,7 +118,11 @@ export const useUnifiedProducts = (platform?: ECommercePlatform, initialOptions?
         setCurrentPage(result.pagination.currentPage);
         setTotalPages(result.pagination.totalPages);
         setTotalItems(result.pagination.totalItems);
-        setCurrentOptions(queryOptions);
+        // Persist cursor for next loadMore() call (Shopify cursor-based pagination)
+        setCurrentOptions({
+          ...queryOptions,
+          cursor: result.pagination.nextCursor,
+        });
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to fetch products');
       } finally {
@@ -229,7 +232,7 @@ export const useProductsForDisplay = (platform?: ECommercePlatform, categoryId?:
     [categoryName]
   );
 
-  const { products, productSummaries, isLoading, error, refresh } = useUnifiedProducts(platform, options);
+  const { products, productSummaries, isLoading, error, refresh, hasMore, loadMore } = useUnifiedProducts(platform, options);
 
   // Convert to display format expected by ProductGrid
   const displayProducts = useMemo(() => {
@@ -252,6 +255,12 @@ export const useProductsForDisplay = (platform?: ECommercePlatform, categoryId?:
         isEcommerceProduct: product.platform !== ECommercePlatform.OFFLINE,
         variantId: defaultVariant?.id,
         platform: product.platform,
+        // Include variants/options so ProductGrid can open VariantPicker
+        variants: product.variants.length > 1 ? product.variants : undefined,
+        options: product.options.length > 0 ? product.options : undefined,
+        // Tax resolution fields
+        taxProfileId: product.taxProfileId,
+        taxCode: product.taxCode ?? defaultVariant?.taxCode,
       };
     });
   }, [products]);
@@ -262,5 +271,7 @@ export const useProductsForDisplay = (platform?: ECommercePlatform, categoryId?:
     isLoading,
     error,
     refresh,
+    hasMore,
+    loadMore,
   };
 };

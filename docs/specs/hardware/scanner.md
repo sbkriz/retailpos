@@ -143,11 +143,25 @@ Scanned barcodes flow through `useBarcodeScanner`, which performs a four-step pr
 
 **2.8.6** When a product is successfully matched and added, the system shall reset the banner state to idle after 1500 ms.
 
-### 2.9 Navigation — Scan-to-Basket Bridge
+### 2.9 Navigation — Scan-to-Basket Bridge (Sale Mode)
 
-**2.9.1** When `onScanSuccess(productId)` is called in `BarcodeScannerScreen`, the system shall call `navigation.navigate('Order', { scannedProductId: productId })`.
+**2.9.1** When `onScanSuccess(productId)` is called in `BarcodeScannerScreen`, the system shall call `navigation.navigate('Sale', { scannedProductId: productId })`.
 
-**2.9.2** When `useOrderScreen` detects a non-null `route.params.scannedProductId` on mount or param change, the system shall call `addToCart` with that product ID.
+**2.9.2** When `useSaleScreen` detects a non-null `route.params.scannedProductId` on mount or param change, the system shall call `addToCart` with that product ID.
+
+### 2.10 Inventory Scan Mode
+
+The scanner can also be used in the Inventory screen to locate a product by barcode and jump directly to its inventory card for editing. The same scanner hardware is reused but the callback routes to inventory instead of the basket.
+
+**2.10.1** When `InventoryScreen` activates scan mode (user taps the scan button in the header), the system shall start a scan listener via `ScannerServiceFactory` using the persisted scanner settings.
+
+**2.10.2** When a barcode is scanned in inventory mode, the system shall search `inventoryItems` for an item whose `sku` or `productId` matches the scanned value.
+
+**2.10.3** When a match is found, the system shall set `searchQuery` to the matched item's name (filtering the list to that item) and open the item in edit mode (`editingItem`).
+
+**2.10.4** When no match is found, the system shall show an alert: `'No inventory item found for barcode: {barcode}'`.
+
+**2.10.5** When `InventoryScreen` deactivates scan mode or unmounts, the system shall stop the scan listener and disconnect the scanner.
 
 ---
 
@@ -191,33 +205,36 @@ Scanned barcodes flow through `useBarcodeScanner`, which performs a four-step pr
 
 ## 6. Component Traceability
 
-| Requirement (summary)                             | Component / Service                              | Source File                                    |
-| ------------------------------------------------- | ------------------------------------------------ | ---------------------------------------------- |
-| Factory singleton, type-based resolution          | `ScannerServiceFactory.getService`               | `services/scanner/ScannerServiceFactory.ts`    |
-| Mock override via `USE_MOCK_SCANNER`              | `ScannerServiceFactory.getService`               | `services/scanner/ScannerServiceFactory.ts`    |
-| Electron camera/BT → mock                         | `ScannerServiceFactory.getService`               | `services/scanner/ScannerServiceFactory.ts`    |
-| Electron usb/qr → `ElectronScannerService`        | `ScannerServiceFactory.getService`               | `services/scanner/ScannerServiceFactory.ts`    |
-| `disconnectAll()` cleans up all services          | `ScannerServiceFactory.disconnectAll`            | `services/scanner/ScannerServiceFactory.ts`    |
-| `connect` / `disconnect` / `isConnected` contract | `ScannerServiceInterface`                        | `services/scanner/ScannerServiceInterface.ts`  |
-| `startScanListener` returns `subscriptionId`      | `ScannerServiceInterface`                        | `services/scanner/ScannerServiceInterface.ts`  |
-| `stopScanListener` removes specific listener      | `ScannerServiceInterface`                        | `services/scanner/ScannerServiceInterface.ts`  |
-| BLE configure UUIDs before connect                | `BluetoothScannerService.configure`              | `services/scanner/BluetoothScannerService.ts`  |
-| BLE 5-second device scan, name filter             | `BluetoothScannerService.discoverDevices`        | `services/scanner/BluetoothScannerService.ts`  |
-| BLE base64 decode characteristic value            | `BluetoothScannerService` characteristic handler | `services/scanner/BluetoothScannerService.ts`  |
-| USB 80 ms threshold, 3-char min, Enter terminates | `USBScannerService` keydown handler              | `services/scanner/USBScannerService.ts`        |
-| QR hardware same HID rules as USB                 | `QRHardwareScannerService` keydown handler       | `services/scanner/QRHardwareScannerService.ts` |
-| QR hardware placeholder device list               | `QRHardwareScannerService.discoverDevices`       | `services/scanner/QRHardwareScannerService.ts` |
-| Electron DOM keydown + IPC dual strategy          | `ElectronScannerService`                         | `services/scanner/ElectronScannerService.ts`   |
-| Electron single logical device `electron-hid`     | `ElectronScannerService.discoverDevices`         | `services/scanner/ElectronScannerService.ts`   |
-| Camera permission request                         | `CameraScannerService.connect`                   | `services/scanner/CameraScannerService.ts`     |
-| Camera device list (back/front)                   | `CameraScannerService.discoverDevices`           | `services/scanner/CameraScannerService.ts`     |
-| Four-step barcode lookup                          | `useBarcodeScanner.processBarcodeData`           | `hooks/useBarcodeScanner.ts`                   |
-| Auto-add on match, no dialog                      | `useBarcodeScanner.processBarcodeData`           | `hooks/useBarcodeScanner.ts`                   |
-| 1500 ms reset after success                       | `useBarcodeScanner.processBarcodeData`           | `hooks/useBarcodeScanner.ts`                   |
-| Scan result banner states                         | `BarcodeScannerScreen`                           | `screens/BarcodeScannerScreen.tsx`             |
-| Connect on mount, disconnect on unmount           | `BarcodeScannerScreen` useEffect                 | `screens/BarcodeScannerScreen.tsx`             |
-| Electron forces camera → usb                      | `BarcodeScannerScreen` mount logic               | `screens/BarcodeScannerScreen.tsx`             |
-| CameraView for camera type                        | `BarcodeScannerScreen` render                    | `screens/BarcodeScannerScreen.tsx`             |
-| Settings persisted to `keyValueRepository`        | `useScanner`                                     | `hooks/useScanner.ts`                          |
-| `onScanSuccess` → navigate to Order               | `BarcodeScannerScreen.onScanSuccess`             | `screens/BarcodeScannerScreen.tsx`             |
-| `scannedProductId` param → `addToCart`            | `useOrderScreen`                                 | `hooks/useOrderScreen.ts`                      |
+| Requirement (summary)                             | Component / Service                                     | Source File                                    |
+| ------------------------------------------------- | ------------------------------------------------------- | ---------------------------------------------- |
+| Factory singleton, type-based resolution          | `ScannerServiceFactory.getService`                      | `services/scanner/ScannerServiceFactory.ts`    |
+| Mock override via `USE_MOCK_SCANNER`              | `ScannerServiceFactory.getService`                      | `services/scanner/ScannerServiceFactory.ts`    |
+| Electron camera/BT → mock                         | `ScannerServiceFactory.getService`                      | `services/scanner/ScannerServiceFactory.ts`    |
+| Electron usb/qr → `ElectronScannerService`        | `ScannerServiceFactory.getService`                      | `services/scanner/ScannerServiceFactory.ts`    |
+| `disconnectAll()` cleans up all services          | `ScannerServiceFactory.disconnectAll`                   | `services/scanner/ScannerServiceFactory.ts`    |
+| `connect` / `disconnect` / `isConnected` contract | `ScannerServiceInterface`                               | `services/scanner/ScannerServiceInterface.ts`  |
+| `startScanListener` returns `subscriptionId`      | `ScannerServiceInterface`                               | `services/scanner/ScannerServiceInterface.ts`  |
+| `stopScanListener` removes specific listener      | `ScannerServiceInterface`                               | `services/scanner/ScannerServiceInterface.ts`  |
+| BLE configure UUIDs before connect                | `BluetoothScannerService.configure`                     | `services/scanner/BluetoothScannerService.ts`  |
+| BLE 5-second device scan, name filter             | `BluetoothScannerService.discoverDevices`               | `services/scanner/BluetoothScannerService.ts`  |
+| BLE base64 decode characteristic value            | `BluetoothScannerService` characteristic handler        | `services/scanner/BluetoothScannerService.ts`  |
+| USB 80 ms threshold, 3-char min, Enter terminates | `USBScannerService` keydown handler                     | `services/scanner/USBScannerService.ts`        |
+| QR hardware same HID rules as USB                 | `QRHardwareScannerService` keydown handler              | `services/scanner/QRHardwareScannerService.ts` |
+| QR hardware placeholder device list               | `QRHardwareScannerService.discoverDevices`              | `services/scanner/QRHardwareScannerService.ts` |
+| Electron DOM keydown + IPC dual strategy          | `ElectronScannerService`                                | `services/scanner/ElectronScannerService.ts`   |
+| Electron single logical device `electron-hid`     | `ElectronScannerService.discoverDevices`                | `services/scanner/ElectronScannerService.ts`   |
+| Camera permission request                         | `CameraScannerService.connect`                          | `services/scanner/CameraScannerService.ts`     |
+| Camera device list (back/front)                   | `CameraScannerService.discoverDevices`                  | `services/scanner/CameraScannerService.ts`     |
+| Four-step barcode lookup                          | `useBarcodeScanner.processBarcodeData`                  | `hooks/useBarcodeScanner.ts`                   |
+| Auto-add on match, no dialog                      | `useBarcodeScanner.processBarcodeData`                  | `hooks/useBarcodeScanner.ts`                   |
+| 1500 ms reset after success                       | `useBarcodeScanner.processBarcodeData`                  | `hooks/useBarcodeScanner.ts`                   |
+| Scan result banner states                         | `BarcodeScannerScreen`                                  | `screens/BarcodeScannerScreen.tsx`             |
+| Connect on mount, disconnect on unmount           | `BarcodeScannerScreen` useEffect                        | `screens/BarcodeScannerScreen.tsx`             |
+| Electron forces camera → usb                      | `BarcodeScannerScreen` mount logic                      | `screens/BarcodeScannerScreen.tsx`             |
+| CameraView for camera type                        | `BarcodeScannerScreen` render                           | `screens/BarcodeScannerScreen.tsx`             |
+| Settings persisted to `keyValueRepository`        | `useScanner`                                            | `hooks/useScanner.ts`                          |
+| `onScanSuccess` → navigate to Sale                | `BarcodeScannerScreen.onScanSuccess`                    | `screens/BarcodeScannerScreen.tsx`             |
+| `scannedProductId` param → `addToCart`            | `useSaleScreen`                                         | `hooks/useSaleScreen.ts`                       |
+| Inventory scan mode — start listener              | `InventoryScreen` scan button → `ScannerServiceFactory` | `screens/InventoryScreen.tsx`                  |
+| Inventory scan — match by SKU/productId → edit    | `InventoryScreen.handleInventoryScan`                   | `screens/InventoryScreen.tsx`                  |
+| Inventory scan — not found alert                  | `InventoryScreen.handleInventoryScan`                   | `screens/InventoryScreen.tsx`                  |

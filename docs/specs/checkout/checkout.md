@@ -234,7 +234,9 @@ The cashier may select a payment method, begin processing, and then need to swit
 
 **2.9.3** When `completePayment()` returns `success: true` and `openDrawer === true`, both `BasketContent` and `Basket` shall call `cashDrawerServiceFactory.getService().open()` as a fire-and-forget operation.
 
-**2.9.4** When `completePayment()` returns `success: true`, `BasketProvider` shall call `refreshBasket()` and `refreshUnsyncedCount()` to update the UI.
+**2.9.4** When `completePayment()` returns `success: true`, `useCheckout` shall attempt to auto-print a receipt if `PrinterServiceFactory.isConnectedToPrinter()` is `true` and `printerSettings.printReceipts` is not `false`. Receipt printing is fire-and-forget — it shall never block or fail the payment success path. This applies to both cash and card/terminal payments.
+
+**2.9.5** When `completePayment()` returns `success: true`, `BasketProvider` shall call `refreshBasket()` and `refreshUnsyncedCount()` to update the UI.
 
 ### 2.10 Order Queries
 
@@ -500,7 +502,8 @@ BasketProvider.handlePayment(selection)
 | Card/terminal payment via usePayment (Basket)          | `Basket.handlePayment` → `processPayment()`                                                                             | `screens/order/Basket.tsx`, `hooks/usePayment.ts`                               |
 | Payment recorded + basket cleared                      | `CheckoutService.completePayment` → `updatePayment` + `clearBasket`                                                     | `services/checkout/CheckoutService.ts`                                          |
 | Cash drawer flag set                                   | `CheckoutService.completePayment` (`openDrawer` logic)                                                                  | `services/checkout/CheckoutService.ts`                                          |
-| Cash drawer opened                                     | `BasketContent/Basket.handlePayment` → `cashDrawerServiceFactory.getService().open()`                                   | `screens/order/BasketContent.tsx`, `screens/order/Basket.tsx`                   |
+| Cash drawer opened                                     | `BasketContent/Basket.handlePayment` → `cashDrawerServiceFactory.getService().open()`                                   | `screens/sale/BasketContent.tsx`, `screens/sale/Basket.tsx`                     |
+| Receipt auto-printed after payment (cash + card)       | `useCheckout.handlePayment` → `PrinterServiceFactory.printReceipt()` (fire-and-forget, if connected + enabled)          | `hooks/useCheckout.ts`                                                          |
 | Payment audited                                        | `auditLogService.log('order:paid')`                                                                                     | `services/checkout/CheckoutService.ts`                                          |
 | Payment failure → order marked failed                  | `CheckoutService.completePayment` (catch → `updateStatus('failed')`)                                                    | `services/checkout/CheckoutService.ts`                                          |
 | Order cancelled                                        | `CheckoutService.cancelOrder` → `OrderRepository.updateStatus`                                                          | `services/checkout/CheckoutService.ts`                                          |

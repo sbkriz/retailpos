@@ -23,7 +23,7 @@ Website: [retailpos.org](https://retailpos.org)
 - **Sync Queue** — Retry/discard failed orders with detailed error tracking
 - **Notifications** — Real-time alerts for sync events and returns
 - **Audit Logging** — Append-only event log for orders, payments, refunds, and auth
-- **Hardware Integration** — Receipt printers (ESC/POS), barcode scanners (camera/BT/USB/QR), payment terminals, cash drawers
+- **Hardware Integration** — Receipt printers (ESC/POS), barcode scanners (camera/BT/USB/QR), payment terminals, cash drawers, kitchen display systems (KDS), customer-facing display
 - **Payment Providers** — Worldpay, Stripe, Stripe NFC, Square, Electron Stripe
 - **Authentication** — PIN, biometric, password, magstripe, RFID/NFC, platform auth
 - **Role-Based Access** — Admin, Manager, Cashier with least-privilege defaults
@@ -138,8 +138,10 @@ retailpos/
 │   ├── checkout/              # Checkout flow + order queries
 │   ├── config/                # POSConfigService + ServiceConfigBridge
 │   ├── customer/              # Platform customer lookup (9 platforms)
+│   ├── display/               # Customer-facing display (WebSocket, serial, Electron)
 │   ├── drawer/                # Cash drawer peripheral
 │   ├── inventory/             # Inventory queries + updates
+│   ├── kds/                   # Kitchen Display System (HTTP, WebSocket, Electron)
 │   ├── localapi/              # Multi-register local HTTP API
 │   ├── logger/                # Pluggable structured logger
 │   ├── notifications/         # In-app notification event bus
@@ -202,6 +204,18 @@ retailpos/
 | [ADR-012](docs/adr/ADR-012-audit-log-kv-append-only.md)               | Audit log — KV-backed append-only                          |
 | [ADR-013](docs/adr/ADR-013-scanner-hardware-abstraction.md)           | Scanner hardware abstraction — four types, one interface   |
 | [ADR-014](docs/adr/ADR-014-spec-first-development.md)                 | Spec-first development with EARS format                    |
+
+### Hardware Specs
+
+| Spec                                                        | Purpose                                     |
+| ----------------------------------------------------------- | ------------------------------------------- |
+| [Scanner](docs/specs/hardware/scanner.md)                   | Camera, BT, USB, QR hardware                |
+| [Cash Drawer](docs/specs/hardware/cash-drawer.md)           | ESC/POS, Electron IPC, no-op                |
+| [Printer](docs/specs/hardware/printer.md)                   | Thermal receipt + daily reports             |
+| [Payment Terminal](docs/specs/hardware/payment.md)          | Worldpay, Stripe, Square, Electron          |
+| [Authentication](docs/specs/hardware/auth.md)               | PIN, biometric, magstripe, RFID/NFC         |
+| [KDS](docs/specs/hardware/kds.md)                           | Kitchen display — HTTP, WebSocket, Electron |
+| [Customer Display](docs/specs/hardware/customer-display.md) | Customer-facing display — WebSocket, serial |
 
 ---
 

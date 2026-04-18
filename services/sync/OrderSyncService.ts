@@ -8,6 +8,7 @@ import { OrderRepository } from '../../repositories/OrderRepository';
 import { LoggerInterface } from '../logger/LoggerInterface';
 import { MAX_SYNC_RETRIES } from '../config/POSConfigService';
 import { isOnlinePlatform } from '../../utils/platforms';
+import { kdsServiceFactory } from '../kds/KdsServiceFactory';
 
 /**
  * Handles syncing paid orders to e-commerce platforms.
@@ -42,6 +43,7 @@ export class OrderSyncService implements OrderSyncServiceInterface {
     // Offline orders have no platform to sync to — mark as synced immediately
     if (!localOrder.platform || !isOnlinePlatform(localOrder.platform)) {
       await this.orderRepo.updateSyncSuccess(orderId, orderId);
+      this.dispatchKdsTicket(localOrder);
       return { success: true, orderId };
     }
 
@@ -57,6 +59,7 @@ export class OrderSyncService implements OrderSyncServiceInterface {
         );
         const platformOrderId = completed?.platformOrderId ?? completed?.id ?? localOrder.platformOrderId;
         await this.orderRepo.updateSyncSuccess(orderId, platformOrderId);
+        this.dispatchKdsTicket(localOrder);
         return { success: true, orderId, platformOrderId };
       }
 
@@ -77,6 +80,7 @@ export class OrderSyncService implements OrderSyncServiceInterface {
 
       const createdOrder = await orderService.createOrder(platformOrder);
       await this.orderRepo.updateSyncSuccess(orderId, createdOrder.id ?? createdOrder.platformOrderId);
+      this.dispatchKdsTicket(localOrder);
 
       return {
         success: true,
@@ -148,6 +152,22 @@ export class OrderSyncService implements OrderSyncServiceInterface {
       if (statusMatch) return parseInt(statusMatch[1], 10) >= 500;
     }
     return true;
+  }
+
+  private dispatchKdsTicket(order: { id: string; items: BasketItem[] }): void {
+    kdsServiceFactory
+      .getService()
+      .sendOrder({
+        orderId: order.id,
+        orderRef: order.id.slice(-4),
+        items: order.items.map(i => ({ id: i.productId, name: i.name, quantity: i.quantity })),
+        placedAt: Date.now(),
+      })
+      .catch(err => {
+        this.logger.warn({
+          message: `KDS ticket dispatch failed for order ${order.id}: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      });
   }
 
   private basketItemsToLineItems(items: BasketItem[]): OrderLineItem[] {

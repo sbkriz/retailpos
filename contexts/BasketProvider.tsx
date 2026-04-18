@@ -18,6 +18,9 @@ import { ECommercePlatform } from '../utils/platforms';
 import { useAuthContext } from './AuthProvider';
 import { queueManager } from '../services/queue/QueueManager';
 import { LoggerFactory } from '../services/logger/LoggerFactory';
+import { customerDisplayServiceFactory } from '../services/display/CustomerDisplayServiceFactory';
+import { buildDisplayState } from '../services/display/CustomerDisplayServiceInterface';
+import { useCurrency } from '../hooks/useCurrency';
 
 const logger = LoggerFactory.getInstance().createLogger('BasketProvider');
 
@@ -203,6 +206,19 @@ export const BasketProvider = ({ children }: Readonly<{ children: ReactNode }>) 
   const itemCount = useMemo(() => {
     return cartItems.reduce((count, item) => count + item.quantity, 0);
   }, [cartItems]);
+
+  // Push basket state to customer-facing display on every change
+  const currency = useCurrency();
+  useEffect(() => {
+    const display = customerDisplayServiceFactory.getService();
+    if (!display.isConnected()) return;
+    if (cartItems.length === 0) {
+      display.showIdle().catch(() => {});
+    } else {
+      const basketItems = cartItems.map(i => ({ name: i.name, quantity: i.quantity, price: i.price }));
+      display.update(buildDisplayState(basketItems, subtotal, tax, total, currency.code, 'basket')).catch(() => {});
+    }
+  }, [cartItems, subtotal, tax, total, currency.code]);
 
   // Refresh basket from service
   const refreshBasket = useCallback(async () => {

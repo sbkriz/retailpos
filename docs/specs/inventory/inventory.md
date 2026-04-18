@@ -98,7 +98,6 @@ The low stock threshold defaults to `10` and can be overridden per item via `Inv
 ### 2.5 Service Layer
 
 **2.5.1** When `useInventory.getInventory(productIds)` is called, the system shall call `InventoryServiceFactory.getInstance().getService(platform).getInventory(productIds)`, set `inventory` state on success, and set `error` on failure.
-
 **2.5.2** When `useInventory.updateInventory(updates)` is called, the system shall call `service.updateInventory(updates)`. If `result.failed > 0`, the system shall set `error` to `'{n} inventory updates failed'`.
 
 **2.5.3** When `useInventory.adjustInventory(productId, adjustment, variantId?)` is called, the system shall call `updateInventory([{ productId, variantId, quantity: adjustment, adjustment: true }])` and return `true` if `result.successful > 0`.
@@ -106,6 +105,24 @@ The low stock threshold defaults to `10` and can be overridden per item via `Inv
 **2.5.4** When `useInventory.setInventoryQuantity(productId, quantity, variantId?)` is called, the system shall call `updateInventory([{ productId, variantId, quantity, adjustment: false }])` and return `true` if `result.successful > 0`.
 
 **2.5.5** When `useInventory.getProductInventory(productId)` is called, the system shall call `getInventory([productId])` and return the sum of all variant quantities for that product, or `0` if no items are returned.
+
+### 2.6 Barcode Scanner Integration
+
+**2.6.1** When `InventoryScreen` renders, the system shall show a scan button (barcode icon) in the header alongside the title.
+
+**2.6.2** When the user taps the scan button, the system shall toggle `scanModeActive`. When `scanModeActive` becomes `true`, the system shall connect to the scanner using `ScannerServiceFactory` with the persisted scanner settings and start a scan listener.
+
+**2.6.3** When a barcode is received from the scan listener, the system shall call `handleInventoryScan(barcode)`.
+
+**2.6.4** When `handleInventoryScan(barcode)` is called, the system shall search `inventoryItems` for an item where `item.sku === barcode` or `item.productId === barcode`.
+
+**2.6.5** When a match is found, the system shall set `searchQuery` to the matched item's name (which filters the list to show that item) and set `editingItem` to the item's key to open it in edit mode.
+
+**2.6.6** When no match is found, the system shall show `Alert.alert('Not Found', 'No inventory item found for barcode: {barcode}')`.
+
+**2.6.7** When `scanModeActive` becomes `false` (user taps the scan button again) or `InventoryScreen` unmounts, the system shall stop the scan listener and disconnect the scanner.
+
+**2.6.8** While `scanModeActive` is `true`, the scan button shall render with a highlighted/active style to indicate scanning is in progress.
 
 ---
 
@@ -122,6 +139,8 @@ The low stock threshold defaults to `10` and can be overridden per item via `Inv
 **3.5** While `inventoryItems` is empty, `InventorySummaryFooter` shall not render.
 
 **3.6** While `ecommerceInitialized` is `false`, `loadInventory` shall return immediately without making a service call, and the empty state shall show "E-Commerce Not Configured".
+
+**3.7** While `scanModeActive` is `true`, the scan button in the header shall render with a primary-colour background to indicate active scanning.
 
 ---
 
@@ -175,3 +194,8 @@ The low stock threshold defaults to `10` and can be overridden per item via `Inv
 | Summary footer (total/low/out)            | `InventorySummaryFooter`                                     | `screens/inventory/InventorySummaryFooter.tsx`  |
 | Footer hidden when empty                  | `InventorySummaryFooter` `items.length === 0` guard          | `screens/inventory/InventorySummaryFooter.tsx`  |
 | Inventory tab role guard                  | `canAccessTab(role, 'Inventory')`                            | `utils/roleAccess.ts`                           |
+| Scan button in header                     | `InventoryScreen` header scan icon                           | `screens/InventoryScreen.tsx`                   |
+| Toggle scan mode + connect scanner        | `InventoryScreen.handleToggleScanMode`                       | `screens/InventoryScreen.tsx`                   |
+| Scan → match by SKU/productId → edit mode | `InventoryScreen.handleInventoryScan`                        | `screens/InventoryScreen.tsx`                   |
+| Scan → not found alert                    | `InventoryScreen.handleInventoryScan`                        | `screens/InventoryScreen.tsx`                   |
+| Disconnect scanner on unmount/deactivate  | `InventoryScreen` useEffect cleanup                          | `screens/InventoryScreen.tsx`                   |

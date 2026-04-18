@@ -16,8 +16,20 @@ import ReceiptSettingsTab from './settings/ReceiptSettingsTab';
 import POSConfigSettingsTab from './settings/POSConfigSettingsTab';
 import AuthMethodSettingsTab from './settings/AuthMethodSettingsTab';
 import LocalApiSettingsTab from './settings/LocalApiSettingsTab';
+import KdsSettingsTab from './settings/KdsSettingsTab';
 
-type SettingsTab = 'generic' | 'pos' | 'auth' | 'payment' | 'printer' | 'scanner' | 'ecommerce' | 'offline' | 'receipt' | 'multiregister';
+type SettingsTab =
+  | 'generic'
+  | 'pos'
+  | 'auth'
+  | 'payment'
+  | 'printer'
+  | 'scanner'
+  | 'ecommerce'
+  | 'offline'
+  | 'receipt'
+  | 'multiregister'
+  | 'kds';
 type SaveStatus = 'unsaved' | 'saving' | 'saved';
 
 const TAB_ICONS: Record<SettingsTab, string> = {
@@ -31,6 +43,7 @@ const TAB_ICONS: Record<SettingsTab, string> = {
   offline: '📴',
   receipt: '🧾',
   multiregister: '🔗',
+  kds: '🍽️',
 };
 
 const TAB_TRANSLATION_KEYS: Record<SettingsTab, string> = {
@@ -44,6 +57,7 @@ const TAB_TRANSLATION_KEYS: Record<SettingsTab, string> = {
   offline: 'settings.tabs.offline',
   receipt: 'settings.tabs.receipt',
   multiregister: 'settings.tabs.multiRegister',
+  kds: 'settings.tabs.kds',
 };
 
 const TAB_ORDER: SettingsTab[] = [
@@ -57,6 +71,7 @@ const TAB_ORDER: SettingsTab[] = [
   'offline',
   'receipt',
   'multiregister',
+  'kds',
 ];
 
 interface SettingsScreenProps {
@@ -120,6 +135,8 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ onGoBack }) => {
         return <ReceiptSettingsTab />;
       case 'multiregister':
         return <LocalApiSettingsTab />;
+      case 'kds':
+        return <KdsSettingsTab />;
     }
   };
 

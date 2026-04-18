@@ -24,7 +24,6 @@ interface CheckoutModalProps {
   itemCount: number;
   onSelectPayment: (selection: PaymentSelection) => void;
   onCancel: () => void;
-  onPrintReceipt?: () => void;
   isProcessing?: boolean;
   terminalConnected?: boolean;
 }
@@ -49,7 +48,6 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = props => {
     itemCount,
     onSelectPayment,
     onCancel,
-    onPrintReceipt,
     isProcessing = false,
     terminalConnected = false,
   } = props;
@@ -289,15 +287,6 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = props => {
 
           {/* Actions */}
           <View style={styles.actions}>
-            {onPrintReceipt && (
-              <Button
-                title={t('checkout.printReceipt')}
-                variant="outline"
-                onPress={onPrintReceipt}
-                disabled={isProcessing}
-                style={styles.printButton}
-              />
-            )}
             <Button
               title={
                 isProcessing
@@ -477,9 +466,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: lightColors.border,
     gap: spacing.sm,
-  },
-  printButton: {
-    marginBottom: spacing.xs,
   },
   // ── Cash tendering ──────────────────────────────────────────────────────
   amountDueRow: {

@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, Alert } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { lightColors, spacing, typography, borderRadius } from '../utils/theme';
 import { Input } from '../components/Input';
@@ -10,6 +10,9 @@ import InventoryItemCard, { InventoryItem } from './inventory/InventoryItemCard'
 import InventoryFilterTabs from './inventory/InventoryFilterTabs';
 import InventorySummaryFooter from './inventory/InventorySummaryFooter';
 import { useLogger } from '../hooks/useLogger';
+import { ScannerServiceFactory, ScannerType } from '../services/scanner/ScannerServiceFactory';
+import { ScannerServiceInterface } from '../services/scanner/ScannerServiceInterface';
+import { keyValueRepository } from '../repositories/KeyValueRepository';
 
 interface InventoryScreenProps {
   onGoBack?: () => void;
@@ -30,6 +33,73 @@ const InventoryScreen: React.FC<InventoryScreenProps> = ({ onGoBack }) => {
   const [editQuantity, setEditQuantity] = useState('');
   const [inlineError, setInlineError] = useState<string | null>(null);
   const logger = useLogger('InventoryScreen');
+
+  // ── Scanner state ──────────────────────────────────────────────────
+  const [scanModeActive, setScanModeActive] = useState(false);
+  const scannerServiceRef = useRef<ScannerServiceInterface | null>(null);
+  const scanListenerRef = useRef<string | null>(null);
+
+  const handleInventoryScan = useCallback(
+    (barcode: string) => {
+      const match = inventoryItems.find(item => item.sku === barcode || item.productId === barcode);
+      if (match) {
+        setSearchQuery(match.name);
+        setEditingItem(`${match.productId}-${match.variantId || ''}`);
+        setEditQuantity(match.quantity.toString());
+      } else {
+        Alert.alert('Not Found', `No inventory item found for barcode: ${barcode}`);
+      }
+    },
+    [inventoryItems]
+  );
+
+  const stopScanner = useCallback(() => {
+    if (scanListenerRef.current && scannerServiceRef.current) {
+      scannerServiceRef.current.stopScanListener(scanListenerRef.current);
+      scanListenerRef.current = null;
+    }
+    scannerServiceRef.current?.disconnect();
+    scannerServiceRef.current = null;
+  }, []);
+
+  const handleToggleScanMode = useCallback(async () => {
+    if (scanModeActive) {
+      stopScanner();
+      setScanModeActive(false);
+      return;
+    }
+    try {
+      const settings = await keyValueRepository.getObject<{ type?: string; deviceId?: string }>('scannerSettings');
+      const typeStr = settings?.type ?? 'usb';
+      const typeMap: Record<string, ScannerType> = {
+        camera: ScannerType.CAMERA,
+        bluetooth: ScannerType.BLUETOOTH,
+        usb: ScannerType.USB,
+        qr_hardware: ScannerType.QR_HARDWARE,
+      };
+      const scannerType = typeMap[typeStr] ?? ScannerType.USB;
+      const service = ScannerServiceFactory.getInstance().getService(scannerType);
+      if (!service) return;
+      const deviceId = settings?.deviceId ?? '';
+      const connected = await service.connect(deviceId);
+      if (!connected) {
+        Alert.alert('Scanner Error', 'Could not connect to scanner. Check Settings → Scanner.');
+        return;
+      }
+      scannerServiceRef.current = service;
+      scanListenerRef.current = service.startScanListener(handleInventoryScan);
+      setScanModeActive(true);
+    } catch (err) {
+      logger.error({ message: 'Failed to start inventory scanner' }, err instanceof Error ? err : new Error(String(err)));
+    }
+  }, [scanModeActive, stopScanner, handleInventoryScan, logger]);
+
+  // Stop scanner on unmount
+  useEffect(() => {
+    return () => {
+      stopScanner();
+    };
+  }, [stopScanner]);
 
   // Load inventory data
   const loadInventory = useCallback(async () => {
@@ -191,6 +261,14 @@ const InventoryScreen: React.FC<InventoryScreenProps> = ({ onGoBack }) => {
           <Text style={styles.title}>Inventory</Text>
           {inventoryItems.length > 0 && <Text style={styles.headerSubtitle}>{inventoryItems.length} items</Text>}
         </View>
+        <TouchableOpacity
+          onPress={handleToggleScanMode}
+          style={[styles.scanButton, scanModeActive && styles.scanButtonActive]}
+          accessibilityLabel={scanModeActive ? 'Stop scanning' : 'Scan barcode'}
+          accessibilityRole="button"
+        >
+          <MaterialIcons name="qr-code-scanner" size={22} color={scanModeActive ? lightColors.textOnPrimary : lightColors.primary} />
+        </TouchableOpacity>
       </View>
 
       {/* Search and Filter */}
@@ -273,6 +351,19 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.sm,
     color: lightColors.textSecondary,
     marginTop: 1,
+  },
+  scanButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: lightColors.primary,
+  },
+  scanButtonActive: {
+    backgroundColor: lightColors.primary,
+    borderColor: lightColors.primary,
   },
   searchContainer: {
     padding: spacing.md,

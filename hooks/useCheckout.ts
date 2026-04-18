@@ -22,6 +22,9 @@ import { ECommercePlatform } from '../utils/platforms';
 import { useBasketContext } from '../contexts/BasketProvider';
 import { usePayment } from './usePayment';
 import { cashDrawerServiceFactory } from '../services/drawer/CashDrawerServiceFactory';
+import { PrinterServiceFactory } from '../services/printer/PrinterServiceFactory';
+import { customerDisplayServiceFactory } from '../services/display/CustomerDisplayServiceFactory';
+import { keyValueRepository } from '../repositories/KeyValueRepository';
 import { PaymentSelection } from '../components/CheckoutModal';
 
 interface UseCheckoutOptions {
@@ -97,6 +100,12 @@ export function useCheckout({ platform, onSuccess }: UseCheckoutOptions = {}) {
       try {
         await markPaymentProcessing(currentOrder.id);
 
+        // Show payment screen on customer display
+        customerDisplayServiceFactory
+          .getService()
+          .showPayment(total, 'GBP')
+          .catch(() => {});
+
         let transactionId: string | undefined;
 
         // Card / terminal: go through PaymentService first
@@ -130,6 +139,39 @@ export function useCheckout({ platform, onSuccess }: UseCheckoutOptions = {}) {
               .open()
               .catch(() => {});
           }
+
+          // Show thank-you on customer display
+          customerDisplayServiceFactory
+            .getService()
+            .showThankYou()
+            .catch(() => {});
+
+          // Auto-print receipt if printer is connected and printReceipts is enabled
+          try {
+            const printerSettings = await keyValueRepository.getObject<{ printReceipts?: boolean }>('printerSettings');
+            const printerFactory = PrinterServiceFactory.getInstance();
+            if (printerSettings?.printReceipts !== false && printerFactory.isConnectedToPrinter()) {
+              const order = currentOrder;
+              if (order) {
+                printerFactory
+                  .printReceipt({
+                    orderId: order.id.slice(-8),
+                    items: order.items.map(i => ({ name: i.name, quantity: i.quantity, price: i.price })),
+                    subtotal,
+                    tax,
+                    total,
+                    paymentMethod: paymentMethod,
+                    date: new Date(),
+                    cashierName: order.cashierName ?? 'Cashier',
+                    customerName: order.customerName,
+                  })
+                  .catch(() => {});
+              }
+            }
+          } catch {
+            // Receipt printing is best-effort — never block the success path
+          }
+
           setCheckoutVisible(false);
           onSuccess?.(result.orderId);
         } else {
@@ -141,7 +183,7 @@ export function useCheckout({ platform, onSuccess }: UseCheckoutOptions = {}) {
         setIsProcessing(false);
       }
     },
-    [currentOrder, markPaymentProcessing, processPayment, completePayment, cancelOrder, total, itemCount, onSuccess]
+    [currentOrder, markPaymentProcessing, processPayment, completePayment, cancelOrder, total, tax, itemCount, subtotal, onSuccess]
   );
 
   return {

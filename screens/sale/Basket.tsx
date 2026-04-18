@@ -12,11 +12,10 @@ import { useCheckout } from '../../hooks/useCheckout';
 
 interface BasketProps {
   onCheckout?: () => void;
-  onPrintReceipt?: (orderId: string) => void;
   platform?: ECommercePlatform;
 }
 
-export const Basket: React.FC<BasketProps> = ({ onCheckout, onPrintReceipt, platform }) => {
+export const Basket: React.FC<BasketProps> = ({ onCheckout, platform }) => {
   const currency = useCurrency();
   const { t } = useTranslate();
   const {
@@ -47,10 +46,9 @@ export const Basket: React.FC<BasketProps> = ({ onCheckout, onPrintReceipt, plat
     clearError,
   } = useCheckout({
     platform,
-    onSuccess: orderId => {
+    onSuccess: () => {
       setIsRightPanelOpen(false);
       onCheckout?.();
-      onPrintReceipt?.(orderId);
     },
   });
 

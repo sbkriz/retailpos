@@ -33,16 +33,26 @@ import { BackgroundSyncService } from './BackgroundSyncService';
 import { notificationService } from '../notifications/NotificationService';
 import { getServiceContainer } from '../basket/BasketServiceFactory';
 
+// Prevent the module-level singleton from leaking timers
+import { backgroundSyncService } from './BackgroundSyncService';
+
 describe('BackgroundSyncService - Notification Integration', () => {
   let service: BackgroundSyncService;
 
+  beforeAll(() => {
+    // Ensure the module-level singleton is stopped before tests run
+    backgroundSyncService.stop();
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.useFakeTimers();
     service = new BackgroundSyncService();
   });
 
   afterEach(() => {
     service.stop();
+    jest.useRealTimers();
   });
 
   describe('performSync - Notification Wiring', () => {

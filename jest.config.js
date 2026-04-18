@@ -14,4 +14,8 @@ module.exports = {
       },
     ],
   },
+  // Limit workers to reduce OS-level race on worker process teardown
+  maxWorkers: '50%',
+  // Give workers extra time to exit cleanly before Jest force-kills them
+  workerIdleMemoryLimit: '512MB',
 };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, Alert, RefreshControl } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useBasketContext } from '../contexts/BasketProvider';
@@ -7,7 +7,6 @@ import { useDailyReport, DailyReportData } from '../hooks/useDailyReport';
 import type { MoreStackScreenProps } from '../navigation/types';
 import { lightColors, spacing, typography, borderRadius } from '../utils/theme';
 import { LocalOrder } from '../services/basket/BasketServiceInterface';
-import { orderRepository } from '../repositories/OrderRepository';
 import { formatMoney } from '../utils/money';
 import OrderCard from './order-history/OrderCard';
 import ShiftModal from './order-history/ShiftModal';
@@ -16,47 +15,36 @@ import ReceiptModal from './order-history/ReceiptModal';
 import { useCurrency } from '../hooks/useCurrency';
 import { useLogger } from '../hooks/useLogger';
 import { PrinterServiceFactory } from '../services/printer/PrinterServiceFactory';
+import { useOrderHistory } from '../hooks/useOrderHistory';
 
 interface OrderHistoryScreenProps extends MoreStackScreenProps<'OrderHistory'> {}
-
-/** Get start-of-day timestamp for a given date offset (0 = today, -1 = yesterday, etc.) */
-const getDayStart = (daysOffset: number = 0): number => {
-  const d = new Date();
-  d.setDate(d.getDate() + daysOffset);
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
-};
-
-const getDayEnd = (daysOffset: number = 0): number => {
-  const d = new Date();
-  d.setDate(d.getDate() + daysOffset + 1);
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
-};
 
 const formatDate = (timestamp: number): string => {
   return new Date(timestamp).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 };
 
 const OrderHistoryScreen: React.FC<OrderHistoryScreenProps> = () => {
-  const { getLocalOrders, syncOrderToPlatform, getSyncQueueStatus, unsyncedOrdersCount } = useBasketContext();
+  const { getSyncQueueStatus, unsyncedOrdersCount } = useBasketContext();
   const { user } = useAuthContext();
   const { currentShift, openShift, closeShift, generateReport, getReportLines } = useDailyReport();
   const logger = useLogger('OrderHistoryScreen');
-
   const currency = useCurrency();
-  const userRole = user?.role || 'cashier';
-  const isAdmin = userRole === 'admin';
-  const isCashier = userRole === 'cashier';
 
-  // Orders state
-  const [orders, setOrders] = useState<LocalOrder[]>([]);
-  const [_loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [syncingOrderId, setSyncingOrderId] = useState<string | null>(null);
-
-  // Date navigation (admin/manager can browse past days, cashier locked to today)
-  const [dayOffset, setDayOffset] = useState(0);
+  const {
+    orders,
+    refreshing,
+    dayOffset,
+    isToday,
+    isCashier,
+    isAdmin,
+    syncingOrderId,
+    onRefresh,
+    handlePreviousDay,
+    handleNextDay,
+    handleResyncOrder,
+    handleDeleteOrder,
+    getDayStart: getOffset,
+  } = useOrderHistory();
 
   // Shift management state
   const [showShiftModal, setShowShiftModal] = useState(false);
@@ -71,88 +59,6 @@ const OrderHistoryScreen: React.FC<OrderHistoryScreenProps> = () => {
   // Receipt preview state
   const [selectedOrder, setSelectedOrder] = useState<LocalOrder | null>(null);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
-
-  const loadOrders = useCallback(async () => {
-    try {
-      setLoading(true);
-      const fromTs = getDayStart(dayOffset);
-      const toTs = getDayEnd(dayOffset);
-
-      // Cashiers only see their own orders
-      const cashierFilter = isCashier ? user?.id : undefined;
-      const rows = await orderRepository.findByDateRange(fromTs, toTs, cashierFilter);
-
-      // Convert rows to LocalOrder format using getLocalOrders as reference
-      const allOrders = await getLocalOrders();
-      const rowIds = new Set(rows.map(r => r.id));
-      const filtered = allOrders.filter(o => rowIds.has(o.id));
-
-      // Sort newest first
-      filtered.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-      setOrders(filtered);
-    } catch (error) {
-      logger.error('Failed to load orders:', error);
-      Alert.alert('Error', 'Failed to load orders');
-    } finally {
-      setLoading(false);
-    }
-  }, [dayOffset, isCashier, user?.id, getLocalOrders, logger]);
-
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await loadOrders();
-    setRefreshing(false);
-  }, [loadOrders]);
-
-  useEffect(() => {
-    loadOrders();
-  }, [loadOrders]);
-
-  // ============ Order Actions ============
-
-  const handleResyncOrder = useCallback(
-    async (orderId: string) => {
-      try {
-        setSyncingOrderId(orderId);
-        const result = await syncOrderToPlatform(orderId);
-        if (result.success) {
-          Alert.alert('Success', 'Order synced successfully!');
-          await loadOrders();
-        } else {
-          Alert.alert('Sync Failed', result.error || 'Unknown error occurred');
-        }
-      } catch (error) {
-        logger.error('Failed to resync order:', error);
-        Alert.alert('Error', 'Failed to resync order');
-      } finally {
-        setSyncingOrderId(null);
-      }
-    },
-    [syncOrderToPlatform, loadOrders, logger]
-  );
-
-  const handleDeleteOrder = useCallback(
-    async (orderId: string) => {
-      Alert.alert('Delete Order', 'Are you sure you want to delete this order? This cannot be undone.', [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await orderRepository.delete(orderId);
-              await loadOrders();
-              Alert.alert('Deleted', 'Order removed successfully');
-            } catch (error) {
-              logger.error('Failed to delete order:', error);
-              Alert.alert('Error', 'Failed to delete order');
-            }
-          },
-        },
-      ]);
-    },
-    [loadOrders, logger]
-  );
 
   const handlePrintReceipt = useCallback((order: LocalOrder) => {
     setSelectedOrder(order);
@@ -268,16 +174,6 @@ const OrderHistoryScreen: React.FC<OrderHistoryScreenProps> = () => {
     }
   }, [currentReport, getReportLines, currency.symbol, logger]);
 
-  // ============ Date Navigation ============
-
-  const handlePreviousDay = useCallback(() => {
-    if (!isCashier) setDayOffset(prev => prev - 1);
-  }, [isCashier]);
-
-  const handleNextDay = useCallback(() => {
-    if (!isCashier && dayOffset < 0) setDayOffset(prev => prev + 1);
-  }, [isCashier, dayOffset]);
-
   // ============ Render ============
 
   const renderOrderItem = ({ item: order }: { item: LocalOrder }) => (
@@ -297,13 +193,12 @@ const OrderHistoryScreen: React.FC<OrderHistoryScreenProps> = () => {
       <MaterialIcons name="receipt-long" size={64} color={lightColors.textSecondary} />
       <Text style={styles.emptyTitle}>No Orders Found</Text>
       <Text style={styles.emptySubtitle}>
-        {isCashier ? 'Your orders for today will appear here' : `No orders for ${formatDate(getDayStart(dayOffset))}`}
+        {isCashier ? 'Your orders for today will appear here' : `No orders for ${formatDate(getOffset(dayOffset))}`}
       </Text>
     </View>
   );
 
   const syncQueueStatus = getSyncQueueStatus();
-  const isToday = dayOffset === 0;
 
   return (
     <View style={styles.container}>
@@ -330,7 +225,7 @@ const OrderHistoryScreen: React.FC<OrderHistoryScreenProps> = () => {
             <TouchableOpacity style={styles.dateNavButton} onPress={handlePreviousDay}>
               <MaterialIcons name="chevron-left" size={24} color={lightColors.primary} />
             </TouchableOpacity>
-            <Text style={styles.dateNavText}>{isToday ? 'Today' : formatDate(getDayStart(dayOffset))}</Text>
+            <Text style={styles.dateNavText}>{isToday ? 'Today' : formatDate(getOffset(dayOffset))}</Text>
             <TouchableOpacity
               style={[styles.dateNavButton, isToday && styles.dateNavButtonDisabled]}
               onPress={handleNextDay}

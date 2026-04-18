@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, 
 import { useBasketContext } from '../contexts/BasketProvider';
 import { PrinterConfig, ReceiptData } from '../services/printer/PrinterTypes';
 import { PrinterServiceFactory } from '../services/printer/PrinterServiceFactory';
+import { posConfig } from '../services/config/POSConfigService';
 import { lightColors, spacing, borderRadius, typography, elevation } from '../utils/theme';
 
 interface PrinterScreenProps {
@@ -73,8 +74,8 @@ const PrinterScreen: React.FC<PrinterScreenProps> = ({ onGoBack }) => {
           price: item.price,
         })),
         subtotal: total,
-        tax: total * 0.08, // 8% tax for example
-        total: total * 1.08,
+        tax: total * (posConfig.values.taxRate ?? 0),
+        total: total * (1 + (posConfig.values.taxRate ?? 0)),
         paymentMethod: 'Card',
         date: new Date(),
         cashierName: 'Cashier',

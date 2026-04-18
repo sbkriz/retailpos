@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { userRepository, User, UserRole, CreateUserInput } from '../repositories/UserRepository';
 import { useLogger } from './useLogger';
+import { validatePinFormat } from '../utils/userPin.utils';
 
 interface UseUsersReturn {
   users: User[];
@@ -86,8 +87,9 @@ export const useUsers = (): UseUsersReturn => {
       setError(null);
       try {
         // Validate PIN format
-        if (!/^\d{6}$/.test(newPin)) {
-          throw new Error('PIN must be exactly 6 digits');
+        const pinValidation = validatePinFormat(newPin);
+        if (!pinValidation.isValid) {
+          throw new Error(pinValidation.error);
         }
 
         // Check uniqueness

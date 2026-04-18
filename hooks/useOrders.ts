@@ -1,37 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { orderRepository, OrderRow } from '../repositories/OrderRepository';
-import { orderItemRepository, OrderItemRow } from '../repositories/OrderItemRepository';
+import { orderRepository } from '../repositories/OrderRepository';
+import { orderItemRepository } from '../repositories/OrderItemRepository';
+import { rowToOrder, OrderWithItems } from '../utils/orderRow.utils';
 
-/** Lightweight order + items type returned by this hook */
-export interface OrderWithItems {
-  id: string;
-  subtotal: number;
-  tax: number;
-  total: number;
-  status: string;
-  syncStatus: string;
-  paymentMethod: string | null;
-  customerName: string | null;
-  cashierName: string | null;
-  createdAt: Date;
-  items: OrderItemRow[];
-}
-
-function rowToOrder(row: OrderRow, items: OrderItemRow[]): OrderWithItems {
-  return {
-    id: row.id,
-    subtotal: row.subtotal,
-    tax: row.tax,
-    total: row.total,
-    status: row.status,
-    syncStatus: row.sync_status,
-    paymentMethod: row.payment_method,
-    customerName: row.customer_name,
-    cashierName: row.cashier_name,
-    createdAt: new Date(row.created_at),
-    items,
-  };
-}
+export type { OrderWithItems };
 
 export const useOrders = () => {
   const [orders, setOrders] = useState<OrderWithItems[]>([]);

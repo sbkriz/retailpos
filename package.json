@@ -18,6 +18,10 @@
     "test": "jest --no-coverage",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
+    "release": "standard-version",
+    "release:minor": "standard-version --release-as minor",
+    "release:major": "standard-version --release-as major",
+    "release:patch": "standard-version --release-as patch",
     "latest": "yarn upgrade --latest && npx expo install --fix",
     "doctor": "npx expo-doctor",
     "lint": "npx tsc --noEmit && eslint . --ext .js,.jsx,.ts,.tsx",
@@ -66,6 +70,8 @@
   },
   "devDependencies": {
     "@babel/core": "7.29.0",
+    "@commitlint/cli": "^20.5.0",
+    "@commitlint/config-conventional": "^20.5.0",
     "@eslint/js": "9.39.3",
     "@types/jest": "29.5.14",
     "@types/react": "~19.1.10",
@@ -86,6 +92,7 @@
     "lint-staged": "^16.2.7",
     "prettier": "3.8.1",
     "react-native-dotenv": "3.4.11",
+    "standard-version": "^9.5.0",
     "ts-jest": "^29.4.6",
     "typescript": "5.9.3",
     "wait-on": "^9.0.4"
@@ -154,5 +161,44 @@
     "*.{json,md}": [
       "prettier --write"
     ]
+  },
+  "standard-version": {
+    "types": [
+      {
+        "type": "feat",
+        "section": "Features"
+      },
+      {
+        "type": "fix",
+        "section": "Bug Fixes"
+      },
+      {
+        "type": "perf",
+        "section": "Performance"
+      },
+      {
+        "type": "refactor",
+        "section": "Refactoring"
+      },
+      {
+        "type": "test",
+        "section": "Tests"
+      },
+      {
+        "type": "chore",
+        "hidden": true
+      },
+      {
+        "type": "docs",
+        "hidden": true
+      },
+      {
+        "type": "style",
+        "hidden": true
+      }
+    ],
+    "skip": {
+      "changelog": false
+    }
   }
 }

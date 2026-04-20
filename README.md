@@ -2,6 +2,7 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![CI](https://github.com/n17foo/retailpos/workflows/CI/badge.svg)](https://github.com/n17foo/retailpos/actions)
+[![Release](https://github.com/n17foo/retailpos/workflows/Release/badge.svg)](https://github.com/n17foo/retailpos/actions/workflows/release.yml)
 
 A modern, cross-platform (mobile, tablet and desktop) Point of Sale (POS) system built with React Native and Expo. Supports multiple e-commerce platforms, offline operation, and hardware integration.
 
@@ -99,6 +100,53 @@ yarn lint              # ESLint + type check
 yarn lint:fix          # Auto-fix
 yarn format            # Prettier
 ```
+
+---
+
+## Releases
+
+RetailPOS uses [Conventional Commits](https://www.conventionalcommits.org/) and [`standard-version`](https://github.com/conventional-changelog/standard-version) to automate semver tagging and changelog generation.
+
+### Commit message format
+
+```
+<type>(<optional scope>): <description>
+
+feat(checkout): add split payment support     → minor bump
+fix(scanner): handle empty barcode string     → patch bump
+feat!: redesign checkout API                  → major bump
+chore: update dependencies                    → no bump (hidden)
+```
+
+| Type                         | Changelog section | Version bump |
+| ---------------------------- | ----------------- | ------------ |
+| `feat`                       | Features          | minor        |
+| `fix`                        | Bug Fixes         | patch        |
+| `perf`                       | Performance       | patch        |
+| `refactor`                   | Refactoring       | patch        |
+| `test`                       | Tests             | patch        |
+| `chore`                      | — hidden —        | none         |
+| `docs`                       | — hidden —        | none         |
+| `feat!` / `BREAKING CHANGE:` | —                 | major        |
+
+The `commit-msg` husky hook enforces this format on every commit locally.
+
+### Cutting a release locally
+
+```bash
+yarn release           # auto-detects bump from commits since last tag
+yarn release:patch     # force patch (1.0.0 → 1.0.1)
+yarn release:minor     # force minor (1.0.0 → 1.1.0)
+yarn release:major     # force major (1.0.0 → 2.0.0)
+
+git push --follow-tags origin main
+```
+
+This bumps `package.json`, updates `CHANGELOG.md`, commits both, and creates a `vX.Y.Z` git tag.
+
+### Cutting a release from GitHub
+
+Go to **Actions → Release → Run workflow**, choose the release type (`auto`, `patch`, `minor`, or `major`), and click **Run**. The workflow runs tests first and only tags if they pass.
 
 ---
 

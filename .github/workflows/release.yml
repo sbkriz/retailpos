@@ -1,0 +1,57 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: 'Release type (patch | minor | major | auto)'
+        required: true
+        default: 'auto'
+        type: choice
+        options:
+          - auto
+          - patch
+          - minor
+          - major
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile --ignore-engines
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Run tests
+        run: yarn test
+        env:
+          CI: true
+
+      - name: Release (auto — reads commits)
+        if: ${{ inputs.release_type == 'auto' }}
+        run: yarn release
+
+      - name: Release (explicit type)
+        if: ${{ inputs.release_type != 'auto' }}
+        run: yarn release --release-as ${{ inputs.release_type }}
+
+      - name: Push tag and changelog
+        run: git push --follow-tags origin main

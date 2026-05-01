@@ -43,7 +43,9 @@ jobs:
       run: cp .env.example .env
 
     - name: Run Expo Doctor
-      run: EXPO_DOCTOR_SKIP_DEPENDENCY_VERSION_CHECK=1 npx expo-doctor@latest --verbose
+      run: npx expo-doctor@latest --verbose
+      env:
+        EXPO_DOCTOR_SKIP_DEPENDENCY_VERSION_CHECK: 1
 
     - name: Run linting
       run: yarn lint

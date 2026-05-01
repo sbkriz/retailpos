@@ -6,7 +6,6 @@
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -32,7 +31,6 @@
         "backgroundImage": "./assets/adaptive-icon-background.png",
         "backgroundColor": "#5B628F"
       },
-      "edgeToEdgeEnabled": true,
       "permissions": [
         "CAMERA",
         "BLUETOOTH",

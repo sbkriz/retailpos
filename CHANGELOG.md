@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.2.0](https://github.com/n17foo/retailpos/compare/v1.1.1...v1.2.0) (2026-05-01)
+
+### Features
+
+- change the order placment base on platfrom flow ([5162106](https://github.com/n17foo/retailpos/commit/5162106936b6eea30b701b9d42c2f5c324f2f860))
+- extend the capabilities to be base on platfrom capabilites ([3230501](https://github.com/n17foo/retailpos/commit/32305011ee14322bd640225bff9ca0fc2ccca9e7))
+- extend the unit test on auth service ([4c3d90a](https://github.com/n17foo/retailpos/commit/4c3d90af8649c39ef988a04c6e422f291fbb8921))
+- update to latest package version ([2735d59](https://github.com/n17foo/retailpos/commit/2735d590852ac392938f65c56ce87c7a056bc66e))
+
+### Bug Fixes
+
+- eslint version rallback ([1eaa486](https://github.com/n17foo/retailpos/commit/1eaa486f6e50152425391090016ad574b35f549e))
+- eslint version rallback ([17333d4](https://github.com/n17foo/retailpos/commit/17333d44791094df6a2af2053f5d20dc1656e95c))
+- failed macos build by skiping version checks ([bed6e36](https://github.com/n17foo/retailpos/commit/bed6e36396ca7fc8d919424c4eb399bdc188dde1))
+- failed macos build by skiping version checks ([7260498](https://github.com/n17foo/retailpos/commit/72604980b1c22327c1465dc02bdcaef071d39e03))
+- failed macos build by skiping version checks ([e69588a](https://github.com/n17foo/retailpos/commit/e69588a3edb10b3a3e65dd77a3c52822627cf9e0))
+- failed macos build by skiping version checks ([3870655](https://github.com/n17foo/retailpos/commit/3870655bd79b57b4bb4444ff1b4edbdcd3fab312))
+
 ### [1.1.1](https://github.com/n17foo/retailpos/compare/v1.1.0...v1.1.1) (2026-04-20)
 
 ### Bug Fixes

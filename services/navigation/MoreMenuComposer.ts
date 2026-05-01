@@ -22,6 +22,9 @@ import type { MoreStackParamList } from '../../navigation/types';
 import { getPlatformDisplayName } from '../../utils/platforms';
 import type { ECommercePlatform } from '../../utils/platforms';
 
+/** Capability features that can gate a menu item — excludes basketMode which is not a CapabilityLevel */
+type CapabilityFeatureKey = Exclude<keyof PlatformCapabilities, 'basketMode'>;
+
 export type MoreMenuKey = keyof typeof MORE_MENU_DEFINITIONS;
 
 export interface ComposedMenuItem {
@@ -51,7 +54,7 @@ const MORE_MENU_DEFINITIONS = {
     route: 'OrderHistory' as keyof MoreStackParamList,
     setupGroup: 'core' as const,
     color: '#2196F3',
-    capabilityKey: undefined as keyof PlatformCapabilities | undefined,
+    capabilityKey: undefined as CapabilityFeatureKey | undefined,
     requiresAdapterReady: false,
   },
   Settings: {
@@ -60,7 +63,7 @@ const MORE_MENU_DEFINITIONS = {
     route: 'Settings' as keyof MoreStackParamList,
     setupGroup: 'core' as const,
     color: '#6200EE',
-    capabilityKey: undefined as keyof PlatformCapabilities | undefined,
+    capabilityKey: undefined as CapabilityFeatureKey | undefined,
     requiresAdapterReady: false,
   },
   Users: {
@@ -69,7 +72,7 @@ const MORE_MENU_DEFINITIONS = {
     route: 'Users' as keyof MoreStackParamList,
     setupGroup: 'core' as const,
     color: '#03DAC6',
-    capabilityKey: undefined as keyof PlatformCapabilities | undefined,
+    capabilityKey: undefined as CapabilityFeatureKey | undefined,
     requiresAdapterReady: false,
   },
   Refund: {
@@ -78,7 +81,7 @@ const MORE_MENU_DEFINITIONS = {
     route: 'Refund' as keyof MoreStackParamList,
     setupGroup: 'advanced' as const,
     color: '#FF9800',
-    capabilityKey: 'refunds' as keyof PlatformCapabilities,
+    capabilityKey: 'refunds' as CapabilityFeatureKey,
     requiresAdapterReady: true,
   },
   Printer: {
@@ -87,7 +90,7 @@ const MORE_MENU_DEFINITIONS = {
     route: 'Printer' as keyof MoreStackParamList,
     setupGroup: 'core' as const,
     color: '#2196F3',
-    capabilityKey: undefined as keyof PlatformCapabilities | undefined,
+    capabilityKey: undefined as CapabilityFeatureKey | undefined,
     requiresAdapterReady: false,
   },
   PaymentTerminal: {
@@ -96,7 +99,7 @@ const MORE_MENU_DEFINITIONS = {
     route: 'PaymentTerminal' as keyof MoreStackParamList,
     setupGroup: 'core' as const,
     color: '#4CAF50',
-    capabilityKey: undefined as keyof PlatformCapabilities | undefined,
+    capabilityKey: undefined as CapabilityFeatureKey | undefined,
     requiresAdapterReady: false,
   },
   SyncQueue: {
@@ -105,7 +108,7 @@ const MORE_MENU_DEFINITIONS = {
     route: 'SyncQueue' as keyof MoreStackParamList,
     setupGroup: 'advanced' as const,
     color: '#2196F3',
-    capabilityKey: 'orderSync' as keyof PlatformCapabilities,
+    capabilityKey: 'orderSync' as CapabilityFeatureKey,
     requiresAdapterReady: false,
   },
   Reports: {
@@ -114,7 +117,7 @@ const MORE_MENU_DEFINITIONS = {
     route: 'Reports' as keyof MoreStackParamList,
     setupGroup: 'core' as const,
     color: '#03DAC6',
-    capabilityKey: undefined as keyof PlatformCapabilities | undefined,
+    capabilityKey: undefined as CapabilityFeatureKey | undefined,
     requiresAdapterReady: false,
   },
 } as const;
@@ -139,7 +142,7 @@ export interface MoreMenuComposerInput {
    * Map of capability keys to adapter readiness.
    * If a key is absent, readiness is assumed false for 'custom' features.
    */
-  adapterReadiness?: Partial<Record<keyof PlatformCapabilities, boolean>>;
+  adapterReadiness?: Partial<Record<CapabilityFeatureKey, boolean>>;
 }
 
 /**

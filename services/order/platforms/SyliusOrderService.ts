@@ -100,11 +100,13 @@ export class SyliusOrderService extends BaseOrderService {
   }
 
   /**
-   * Add item to cart
+   * Add item to cart using productVariantCode.
+   * Sylius resolves items by variant code, not parent product code.
+   * The variantId on BasketItem holds the productVariantCode for Sylius.
    */
   private async addItemToCart(cartToken: string, item: Order['lineItems'][0]): Promise<void> {
     await this.apiClient.post(`orders/${cartToken}/items`, {
-      productCode: item.sku || item.productId,
+      productVariantCode: item.variantId || item.sku || item.productId,
       quantity: item.quantity,
     });
   }

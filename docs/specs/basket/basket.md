@@ -13,7 +13,11 @@ The basket is the in-progress order before payment. It is persisted to SQLite vi
 
 `BasketProvider` wraps the entire app and exposes the basket state and all cart operations to UI components. Two UI surfaces consume it: `BasketContent` (desktop sidebar / tablet inline) and `Basket` (mobile swipeable panel). Both share the same context but differ in UX — `Basket` uses `Alert` dialogs and integrates `usePayment` for card/terminal flows; `BasketContent` uses inline error handling and a simpler payment path.
 
-All monetary arithmetic uses `utils/money.ts` (integer-cent internally) to avoid floating-point errors. Tax rates stored on `BasketItem` at add-to-cart time are used for local basket totals display. For online platforms, the authoritative tax calculation happens when the draft order is created on the platform at checkout time — the platform's returned totals replace the basket estimates. For offline mode, the per-item `taxRate` stored at add-to-cart time remains authoritative throughout.
+All monetary arithmetic uses `utils/money.ts` (integer-cent internally) to avoid floating-point errors. Tax rates stored on `BasketItem` at add-to-cart time are used for local basket totals display. The checkout mode depends on the platform's `basketMode` capability:
+
+- **`native_draft`** (Shopify, Wix, CommerceFull): the authoritative tax calculation happens when the draft order is created on the platform at checkout time — the platform's returned totals replace the basket estimates.
+- **`remote_cart`** (WooCommerce, Magento, BigCommerce, Sylius, PrestaShop): the POS basket is authoritative; the platform order is created post-payment by `OrderSyncService`.
+- **`local_only`** (Squarespace, Offline): fully local basket; order imported to platform after payment. For offline mode, the per-item `taxRate` stored at add-to-cart time remains authoritative throughout.
 
 ### Actors
 
@@ -70,7 +74,23 @@ All monetary arithmetic uses `utils/money.ts` (integer-cent internally) to avoid
 
 **1.10** The system shall record every cancelled order to `AuditLogService` with action `order:cancelled`, including order ID.
 
-**1.11** The `taxRate` stored on each `BasketItem` is used for local basket total estimates. For online orders, the platform draft order response at checkout time is the authoritative tax source and overwrites these estimates. For offline orders, the per-item `taxRate` remains authoritative throughout the order lifecycle.
+**1.11** The `taxRate` stored on each `BasketItem` is used for local basket total estimates. For `native_draft` orders, the platform draft order response at checkout time is the authoritative tax source and overwrites these estimates. For `remote_cart` and `local_only` orders, the per-item `taxRate` remains authoritative throughout the order lifecycle.
+
+**1.12** Each `BasketItem` shall carry a sellable-unit snapshot at add-to-cart time: `variantId` (platform sellable unit id), `sku`, `optionSummary`, `taxCode`, `taxProfileId`, `taxRate`, `taxable`, `inventoryPolicy`, and `catalogVersion`. This snapshot is persisted to `order_items` so receipts and refunds remain accurate even if the platform catalog changes later.
+
+The correct sellable unit by platform:
+
+| Platform    | Sellable unit stored in `variantId`                       |
+| ----------- | --------------------------------------------------------- |
+| Shopify     | `ProductVariant.id`                                       |
+| WooCommerce | variation id for variable products; omitted for simple    |
+| Magento     | concrete simple SKU selected through configurable options |
+| BigCommerce | variant id (maps to SKU + inventory)                      |
+| Sylius      | `productVariantCode`                                      |
+| Wix         | variant id                                                |
+| PrestaShop  | combination id                                            |
+| Squarespace | `ProductVariant.id`                                       |
+| Offline     | local product id                                          |
 
 ---
 
@@ -317,12 +337,14 @@ Cashier taps "Complete Order"
   → useCheckout.handleStartCheckout()
     → BasketProvider.startCheckout(platform)
       → CheckoutService.startCheckout(platform, cashierId, cashierName)
-        ── Online ──────────────────────────────────────────────────────
+        ── native_draft (Shopify, Wix, CommerceFull) ────────────────────
         → OrderServiceFactory.getService(platform).createDraftOrder()
             → platform returns { platformOrderId, subtotal, tax, total, lineItems[].taxRate }
             → status = 'draft'
             → [on failure] fall back to basket totals, status = 'pending'
-        ── Offline ─────────────────────────────────────────────────────
+        ── remote_cart (Woo, Magento, BigCommerce, Sylius, PrestaShop) ──
+        → use basket totals + BasketItem.taxRate values, status = 'pending'
+        ── local_only (Squarespace, Offline) ────────────────────────────
         → use basket totals + BasketItem.taxRate values, status = 'pending'
         → OrderRepository.create()
         → OrderItemRepository.createMany()

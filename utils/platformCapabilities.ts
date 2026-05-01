@@ -14,12 +14,37 @@ import { ECommercePlatform } from './platforms';
 
 export type CapabilityLevel = 'supported' | 'custom' | 'not_recommended';
 
+/**
+ * Basket mode determines how the POS interacts with the platform during checkout.
+ *
+ *   native_draft   — platform has a mutable pre-order object (Draft Orders).
+ *                    POS sends items to platform at checkout start; platform
+ *                    returns authoritative tax/totals; draft is completed after payment.
+ *                    Platforms: Shopify, Wix
+ *
+ *   remote_cart    — platform has a cart/quote/in-progress order that can hold
+ *                    items before payment. POS creates a remote cart, adds items,
+ *                    and submits it as an order after payment.
+ *                    Platforms: Magento (quote), BigCommerce (Management Cart),
+ *                               Sylius (in-progress order), PrestaShop (Cart),
+ *                               WooCommerce (pending order)
+ *
+ *   local_only     — platform has no reliable pre-payment state. POS basket is
+ *                    fully local; order is created/imported on the platform after
+ *                    payment succeeds.
+ *                    Platforms: Squarespace, Offline
+ */
+export type BasketMode = 'native_draft' | 'remote_cart' | 'local_only';
+
 export interface PlatformCapabilities {
   catalog: CapabilityLevel;
   customers: CapabilityLevel;
   inventory: CapabilityLevel;
   orderSync: CapabilityLevel;
+  /** @deprecated Use basketMode instead. Kept for backward compatibility. */
   draftOrders: CapabilityLevel;
+  /** How the POS manages basket state relative to the platform */
+  basketMode: BasketMode;
   discounts: CapabilityLevel;
   giftCards: CapabilityLevel;
   refunds: CapabilityLevel;
@@ -36,6 +61,7 @@ export const PLATFORM_CAPABILITY_MATRIX: Readonly<Record<ECommercePlatform, Plat
     inventory: 'supported',
     orderSync: 'supported',
     draftOrders: 'supported',
+    basketMode: 'native_draft',
     discounts: 'supported',
     giftCards: 'supported',
     refunds: 'supported',
@@ -46,6 +72,7 @@ export const PLATFORM_CAPABILITY_MATRIX: Readonly<Record<ECommercePlatform, Plat
     inventory: 'supported',
     orderSync: 'supported',
     draftOrders: 'custom',
+    basketMode: 'remote_cart', // pending order acts as remote cart
     discounts: 'supported',
     giftCards: 'custom',
     refunds: 'custom',
@@ -55,7 +82,8 @@ export const PLATFORM_CAPABILITY_MATRIX: Readonly<Record<ECommercePlatform, Plat
     customers: 'supported',
     inventory: 'supported',
     orderSync: 'supported',
-    draftOrders: 'supported',
+    draftOrders: 'custom', // quote/cart flow, not a true draft order
+    basketMode: 'remote_cart', // Magento quote → submit → order
     discounts: 'supported',
     giftCards: 'custom',
     refunds: 'supported',
@@ -66,6 +94,7 @@ export const PLATFORM_CAPABILITY_MATRIX: Readonly<Record<ECommercePlatform, Plat
     inventory: 'supported',
     orderSync: 'supported',
     draftOrders: 'custom',
+    basketMode: 'remote_cart', // Management Cart/Checkout API
     discounts: 'supported',
     giftCards: 'custom',
     refunds: 'supported',
@@ -76,6 +105,7 @@ export const PLATFORM_CAPABILITY_MATRIX: Readonly<Record<ECommercePlatform, Plat
     inventory: 'custom',
     orderSync: 'custom',
     draftOrders: 'custom',
+    basketMode: 'remote_cart', // in-progress order (cart) → complete
     discounts: 'custom',
     giftCards: 'not_recommended',
     refunds: 'custom',
@@ -86,6 +116,7 @@ export const PLATFORM_CAPABILITY_MATRIX: Readonly<Record<ECommercePlatform, Plat
     inventory: 'supported',
     orderSync: 'supported',
     draftOrders: 'supported',
+    basketMode: 'native_draft', // Wix Draft Orders API
     discounts: 'supported',
     giftCards: 'supported',
     refunds: 'supported',
@@ -96,6 +127,7 @@ export const PLATFORM_CAPABILITY_MATRIX: Readonly<Record<ECommercePlatform, Plat
     inventory: 'supported',
     orderSync: 'supported',
     draftOrders: 'custom',
+    basketMode: 'remote_cart', // PrestaShop Cart → Order
     discounts: 'supported',
     giftCards: 'not_recommended',
     refunds: 'custom',
@@ -106,6 +138,7 @@ export const PLATFORM_CAPABILITY_MATRIX: Readonly<Record<ECommercePlatform, Plat
     inventory: 'supported',
     orderSync: 'supported',
     draftOrders: 'not_recommended',
+    basketMode: 'local_only', // POS-local basket + post-payment order import
     discounts: 'not_recommended',
     giftCards: 'not_recommended',
     refunds: 'not_recommended',
@@ -116,6 +149,7 @@ export const PLATFORM_CAPABILITY_MATRIX: Readonly<Record<ECommercePlatform, Plat
     inventory: 'supported',
     orderSync: 'supported',
     draftOrders: 'supported',
+    basketMode: 'native_draft',
     discounts: 'supported',
     giftCards: 'supported',
     refunds: 'supported',
@@ -126,6 +160,7 @@ export const PLATFORM_CAPABILITY_MATRIX: Readonly<Record<ECommercePlatform, Plat
     inventory: 'supported',
     orderSync: 'supported',
     draftOrders: 'not_recommended',
+    basketMode: 'local_only',
     discounts: 'supported',
     giftCards: 'not_recommended',
     refunds: 'supported',
@@ -142,23 +177,34 @@ export function getPlatformCapabilities(platform: ECommercePlatform | string | n
 }
 
 /**
- * Returns true only when the feature is fully supported (no custom adapter needed).
+ * Get the basket mode for a platform.
  */
-export function supportsStrict(capabilities: PlatformCapabilities, feature: keyof PlatformCapabilities): boolean {
+export function getBasketMode(capabilities: PlatformCapabilities): BasketMode {
+  return capabilities.basketMode;
+}
+
+/**
+ * Returns true only when the feature is fully supported (no custom adapter needed).
+ * Note: basketMode is not a CapabilityLevel — use getBasketMode() for it.
+ */
+export function supportsStrict(capabilities: PlatformCapabilities, feature: Exclude<keyof PlatformCapabilities, 'basketMode'>): boolean {
   return capabilities[feature] === 'supported';
 }
 
 /**
  * Returns true when the feature is supported or available via a custom adapter.
  */
-export function supportsWithCustom(capabilities: PlatformCapabilities, feature: keyof PlatformCapabilities): boolean {
+export function supportsWithCustom(
+  capabilities: PlatformCapabilities,
+  feature: Exclude<keyof PlatformCapabilities, 'basketMode'>
+): boolean {
   return capabilities[feature] === 'supported' || capabilities[feature] === 'custom';
 }
 
 /**
  * Returns true when the feature is explicitly not recommended for this platform.
  */
-export function isNotRecommended(capabilities: PlatformCapabilities, feature: keyof PlatformCapabilities): boolean {
+export function isNotRecommended(capabilities: PlatformCapabilities, feature: Exclude<keyof PlatformCapabilities, 'basketMode'>): boolean {
   return capabilities[feature] === 'not_recommended';
 }
 
@@ -168,7 +214,7 @@ export function isNotRecommended(capabilities: PlatformCapabilities, feature: ke
  */
 export function getUnavailableReason(
   capabilities: PlatformCapabilities,
-  feature: keyof PlatformCapabilities,
+  feature: Exclude<keyof PlatformCapabilities, 'basketMode'>,
   platformName: string
 ): string {
   const level = capabilities[feature];
@@ -181,8 +227,8 @@ export function getUnavailableReason(
   return '';
 }
 
-function featureLabel(feature: keyof PlatformCapabilities): string {
-  const labels: Record<keyof PlatformCapabilities, string> = {
+function featureLabel(feature: Exclude<keyof PlatformCapabilities, 'basketMode'>): string {
+  const labels: Record<Exclude<keyof PlatformCapabilities, 'basketMode'>, string> = {
     catalog: 'Catalog',
     customers: 'Customer management',
     inventory: 'Inventory sync',

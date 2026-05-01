@@ -6,7 +6,13 @@ import { Button } from '../../components/Button';
 import { useTranslate } from '../../hooks/useTranslate';
 import { ECommercePlatform } from '../../utils/platforms';
 import { useLogger } from '../../hooks/useLogger';
-import { getPlatformCapabilities, PlatformCapabilities, CapabilityLevel, getUnavailableReason } from '../../utils/platformCapabilities';
+import {
+  getPlatformCapabilities,
+  PlatformCapabilities,
+  CapabilityLevel,
+  BasketMode,
+  getUnavailableReason,
+} from '../../utils/platformCapabilities';
 import { getPlatformDisplayName } from '../../utils/platforms';
 
 // Platform display names
@@ -24,16 +30,36 @@ const PLATFORM_NAMES: Record<string, string> = {
 };
 
 /** Feature rows shown in the capability summary panel */
-const CAPABILITY_FEATURES: Array<{ key: keyof PlatformCapabilities; label: string }> = [
+const CAPABILITY_FEATURES: Array<{ key: Exclude<keyof PlatformCapabilities, 'basketMode' | 'draftOrders'>; label: string }> = [
   { key: 'catalog', label: 'Catalog & variants' },
   { key: 'customers', label: 'Customer management' },
   { key: 'inventory', label: 'Inventory sync' },
   { key: 'orderSync', label: 'Order sync' },
-  { key: 'draftOrders', label: 'Draft orders / platform totals' },
   { key: 'discounts', label: 'Discounts & coupons' },
   { key: 'giftCards', label: 'Gift cards' },
   { key: 'refunds', label: 'Refunds' },
 ];
+
+const BASKET_MODE_LABEL: Record<BasketMode, { label: string; description: string; color: string; bg: string }> = {
+  native_draft: {
+    label: 'Native draft',
+    description: 'Platform creates a draft order with server-calculated tax',
+    color: '#2e7d32',
+    bg: '#e8f5e9',
+  },
+  remote_cart: {
+    label: 'Remote cart',
+    description: 'POS basket is local; platform cart/quote created post-payment',
+    color: '#e65100',
+    bg: '#fff3e0',
+  },
+  local_only: {
+    label: 'Local only',
+    description: 'Fully local basket; order imported to platform after payment',
+    color: '#1565c0',
+    bg: '#e3f2fd',
+  },
+};
 
 const CAPABILITY_BADGE: Record<CapabilityLevel, { label: string; color: string; bg: string }> = {
   supported: { label: 'Supported', color: '#2e7d32', bg: '#e8f5e9' },
@@ -53,11 +79,24 @@ interface CapabilitySummaryPanelProps {
 const CapabilitySummaryPanel: React.FC<CapabilitySummaryPanelProps> = ({ platform }) => {
   const capabilities = useMemo(() => getPlatformCapabilities(platform), [platform]);
   const platformName = getPlatformDisplayName(platform);
+  const basketModeInfo = BASKET_MODE_LABEL[capabilities.basketMode];
 
   return (
     <View style={capStyles.container}>
       <Text style={capStyles.title}>Platform capability summary</Text>
       <Text style={capStyles.subtitle}>{platformName}</Text>
+
+      {/* Basket mode — shown first as it affects checkout behaviour */}
+      <View style={capStyles.row}>
+        <Text style={capStyles.featureLabel}>Basket / checkout mode</Text>
+        <View style={[capStyles.badge, { backgroundColor: basketModeInfo.bg }]}>
+          <Text style={[capStyles.badgeText, { color: basketModeInfo.color }]}>{basketModeInfo.label}</Text>
+        </View>
+        <Text style={capStyles.reason} numberOfLines={2}>
+          {basketModeInfo.description}
+        </Text>
+      </View>
+
       {CAPABILITY_FEATURES.map(({ key, label }) => {
         const level = capabilities[key];
         const badge = CAPABILITY_BADGE[level];

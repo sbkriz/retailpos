@@ -24,6 +24,7 @@ import { keyValueRepository } from '../../repositories/KeyValueRepository';
 import { LoggerFactory } from '../logger/LoggerFactory';
 
 const ECOMMERCE_SETTINGS_KEY = 'ecommerceSettings';
+type CapabilityFeature = Exclude<keyof PlatformCapabilities, 'basketMode'>;
 
 export class PlatformCapabilityService {
   private static instance: PlatformCapabilityService;
@@ -81,35 +82,35 @@ export class PlatformCapabilityService {
   /**
    * Capability level for a specific feature.
    */
-  public getFeatureLevel(feature: keyof PlatformCapabilities): CapabilityLevel {
+  public getFeatureLevel(feature: CapabilityFeature): CapabilityLevel {
     return this.getCapabilities()[feature];
   }
 
   /**
    * True only when the feature is fully supported (no custom adapter needed).
    */
-  public supportsStrict(feature: keyof PlatformCapabilities): boolean {
+  public supportsStrict(feature: CapabilityFeature): boolean {
     return supportsStrict(this.getCapabilities(), feature);
   }
 
   /**
    * True when the feature is supported or available via a custom adapter.
    */
-  public supportsWithCustom(feature: keyof PlatformCapabilities): boolean {
+  public supportsWithCustom(feature: CapabilityFeature): boolean {
     return supportsWithCustom(this.getCapabilities(), feature);
   }
 
   /**
    * True when the feature is explicitly not recommended for this platform.
    */
-  public isNotRecommended(feature: keyof PlatformCapabilities): boolean {
+  public isNotRecommended(feature: CapabilityFeature): boolean {
     return isNotRecommended(this.getCapabilities(), feature);
   }
 
   /**
    * Human-readable reason string for why a feature is unavailable.
    */
-  public getUnavailableReason(feature: keyof PlatformCapabilities): string {
+  public getUnavailableReason(feature: CapabilityFeature): string {
     return getUnavailableReason(this.getCapabilities(), feature, getPlatformDisplayName(this.getPlatform()));
   }
 

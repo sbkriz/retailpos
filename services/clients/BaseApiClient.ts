@@ -22,7 +22,7 @@ export interface BaseApiClientConfig {
 /**
  * Abstract base class for all platform API clients.
  *
- * Provides shared HTTP methods (get, post, put, delete), URL normalisation,
+ * Provides shared HTTP methods (get, post, put, patch, delete), URL normalisation,
  * auth-header injection, timeout handling, and structured error logging.
  * Platform-specific subclasses only need to implement:
  *   - `getAuthStrategy()` — how to authenticate
@@ -98,6 +98,13 @@ export abstract class BaseApiClient<TConfig extends BaseApiClientConfig = BaseAp
    */
   public async put<T = any>(path: string, body?: unknown): Promise<T> {
     return this.request<T>('PUT', this.buildApiUrl(path), body);
+  }
+
+  /**
+   * Authenticated PATCH request.
+   */
+  public async patch<T = any>(path: string, body?: unknown): Promise<T> {
+    return this.request<T>('PATCH', this.buildApiUrl(path), body);
   }
 
   /**

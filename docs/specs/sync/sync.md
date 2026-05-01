@@ -9,16 +9,18 @@
 
 ## Context
 
-After a payment is completed locally, the order must be synchronised to the e-commerce platform. Sync behavior is capability-driven:
+After a payment is completed locally, the order must be synchronised to the e-commerce platform. Sync behavior is capability-driven by `basketMode`:
 
-- **Draft-capable platforms** (`draftOrders === supported`):
+- **`native_draft` platforms** (Shopify, Wix, CommerceFull):
   - If `platformOrderId` exists, sync completes the existing draft via `orderService.completeOrder()`.
-- **Non-draft platforms** (`draftOrders !== supported`):
-  - Sync creates a new order via `orderService.createOrder()`.
+- **`remote_cart` platforms** (WooCommerce, Magento, BigCommerce, Sylius, PrestaShop):
+  - No draft was created at checkout time. Sync creates a new order via `orderService.createOrder()`.
+- **`local_only` platforms** (Squarespace):
+  - Sync imports the order via `orderService.createOrder()` (Squarespace Orders API supports third-party POS imports).
 - **Offline platform**:
   - No platform API call; order is marked synced locally.
 
-This replaces the older interpretation that draft completion is the typical default for all online platforms.
+This replaces the older two-mode interpretation (`draftOrders === supported` / `draftOrders !== supported`).
 
 `OrderSyncService` owns the sync lifecycle. It is called immediately after payment by `CheckoutService.completePayment()` (best-effort, non-blocking) and is also available for manual retry via `SyncQueueScreen`. `useSyncQueue` provides the hook layer for the screen. Retry logic uses an in-memory counter with exponential-backoff classification — network and 5xx errors are retryable; 4xx errors are not.
 
@@ -62,9 +64,9 @@ pending → synced        (sync succeeded)
 
 **1.2** The system shall skip orders already marked `syncStatus === 'synced'` and return `success: true` immediately without making a platform API call.
 
-**1.3** For orders with a `platformOrderId` (draft created at checkout), the system shall call `orderService.completeOrder(platformOrderId, paymentMethod)` to mark the existing draft as paid rather than creating a duplicate order.
+**1.3** For orders with a `platformOrderId` (draft created at checkout on `native_draft` platforms), the system shall call `orderService.completeOrder(platformOrderId, paymentMethod)` to mark the existing draft as paid rather than creating a duplicate order.
 
-**1.4** For orders without a `platformOrderId` and with an online platform, the system shall call `orderService.createOrder(platformOrder)` to create a new order on the platform.
+**1.4** For orders without a `platformOrderId` and with an online platform (`remote_cart` or `local_only` mode), the system shall call `orderService.createOrder(platformOrder)` to create a new order on the platform.
 
 **1.5** For offline orders (`platform === OFFLINE` or `undefined`), the system shall skip all platform API calls and immediately mark the order `sync_status = 'synced'` — offline orders are fully self-contained in SQLite and require no external sync.
 

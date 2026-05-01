@@ -51,10 +51,53 @@ export class SquarespaceOrderService extends BaseOrderService {
     };
   }
 
-  async createOrder(_order: Order): Promise<Order> {
-    // Squarespace doesn't support order creation via API
-    // Orders are created through the Squarespace checkout process
-    throw new Error('Squarespace API does not support order creation. Orders must be placed through the Squarespace storefront.');
+  async createOrder(order: Order): Promise<Order> {
+    if (!this.isInitialized()) {
+      throw new Error('Squarespace order service not initialized');
+    }
+
+    // Squarespace supports importing third-party POS orders via the Orders API.
+    // The order must already be paid — this is called post-payment by OrderSyncService.
+    try {
+      const sqOrder = this.mapToSquarespaceImportOrder(order);
+      const data = await this.apiClient.post<any>('commerce/orders', sqOrder);
+      return this.mapToOrder(data);
+    } catch (error) {
+      this.logger.error({ message: 'Error importing order to Squarespace' }, error instanceof Error ? error : new Error(String(error)));
+      throw error;
+    }
+  }
+
+  /**
+   * Map our order to Squarespace's order import format.
+   * Squarespace Orders API accepts third-party sales-channel orders.
+   */
+  private mapToSquarespaceImportOrder(order: Order): any {
+    return {
+      channelName: 'POS',
+      externalOrderReference: order.id,
+      lineItems: order.lineItems.map(item => ({
+        variantId: item.variantId,
+        quantity: item.quantity,
+        unitPricePaid: {
+          value: String(Math.round(item.price * 100)),
+          currency: 'USD',
+        },
+      })),
+      customerEmail: order.customerEmail,
+      billingAddress: order.billingAddress
+        ? {
+            firstName: order.billingAddress.firstName,
+            lastName: order.billingAddress.lastName,
+            address1: order.billingAddress.address1,
+            city: order.billingAddress.city,
+            state: order.billingAddress.province,
+            postalCode: order.billingAddress.zip,
+            countryCode: order.billingAddress.countryCode,
+          }
+        : undefined,
+      fulfillmentStatus: 'PENDING',
+    };
   }
 
   async getOrder(orderId: string): Promise<Order | null> {

@@ -17,19 +17,28 @@ Orders are persisted to SQLite in two tables: `orders` (header) and `order_items
 
 This spec is **capability-driven** and supersedes the older universal draft-first assumption.
 
-For online platforms, `startCheckout()` follows one of two modes:
+For online platforms, `startCheckout()` follows one of three modes determined by `getBasketMode(getPlatformCapabilities(platform))`:
 
-1. **Draft-capable mode** (`draftOrders === supported`)
+1. **`native_draft` mode** (Shopify, Wix, CommerceFull)
    - The basket items are sent to the platform via `OrderServiceFactory.getService(platform).createDraftOrder()`.
    - The platform returns authoritative `tax`, `subtotal`, `total`, and per-line `taxAmount` / `taxRate`.
    - Platform values replace local estimates on `LocalOrder` and `order_items`.
    - `platformOrderId` is stored for completion/sync.
-2. **Local-authoritative mode** (`draftOrders !== supported`)
-   - No draft order is created in `startCheckout()`.
-   - Local basket totals and `BasketItem.taxRate` remain authoritative.
-   - `platformOrderId` remains `null` until background sync creates the remote order.
+   - `status` is set to `'draft'`.
 
-The selected mode is controlled by platform capability profile, not by `isOnlinePlatform()` alone.
+2. **`remote_cart` mode** (WooCommerce, Magento, BigCommerce, Sylius, PrestaShop)
+   - No draft is created at `startCheckout()` time.
+   - Local basket totals and `BasketItem.taxRate` remain authoritative.
+   - `platformOrderId` remains `null` until background sync creates the remote order post-payment.
+   - `status` is set to `'pending'`.
+
+3. **`local_only` mode** (Squarespace, Offline)
+   - Fully local basket — no platform API is called at any point in the checkout flow.
+   - Local basket totals and `BasketItem.taxRate` remain authoritative.
+   - `platformOrderId` remains `null`; order is imported to the platform after payment via `OrderSyncService`.
+   - `status` is set to `'pending'`.
+
+The selected mode is controlled by `basketMode` in the platform capability profile, not by `isOnlinePlatform()` alone.
 
 ### Offline Mode
 
@@ -81,15 +90,16 @@ pending → synced
 
 ### Key Defaults
 
-| Field                                 | Default                            | Source                                                        |
-| ------------------------------------- | ---------------------------------- | ------------------------------------------------------------- |
-| `status` on create (online)           | `draft`                            | `OrderRepository.create()` when platform draft succeeds       |
-| `status` on create (offline/fallback) | `pending`                          | `OrderRepository.create()` when no platform draft             |
-| `sync_status` on create               | `pending`                          | `OrderRepository.create()`                                    |
-| `openDrawer` on cash                  | `false`                            | `posConfig.values.drawerOpenOnCash`                           |
-| `taxRate` on order item (offline)     | Snapshot from `BasketItem.taxRate` | `CheckoutService.startCheckout()`                             |
-| `taxRate` on order item (online)      | From platform draft order response | `CheckoutService.startCheckout()`                             |
-| Draft order creation                  | Online platforms only              | `OrderServiceFactory.getService(platform).createDraftOrder()` |
+| Field                                  | Default                            | Source                                                        |
+| -------------------------------------- | ---------------------------------- | ------------------------------------------------------------- |
+| `status` on create (`native_draft`)    | `draft`                            | `OrderRepository.create()` when platform draft succeeds       |
+| `status` on create (other modes)       | `pending`                          | `OrderRepository.create()` when no platform draft             |
+| `sync_status` on create                | `pending`                          | `OrderRepository.create()`                                    |
+| `openDrawer` on cash                   | `false`                            | `posConfig.values.drawerOpenOnCash`                           |
+| `taxRate` on order item (offline)      | Snapshot from `BasketItem.taxRate` | `CheckoutService.startCheckout()`                             |
+| `taxRate` on order item (native_draft) | From platform draft order response | `CheckoutService.startCheckout()`                             |
+| `taxRate` on order item (remote_cart)  | Snapshot from `BasketItem.taxRate` | `CheckoutService.startCheckout()`                             |
+| Draft order creation                   | `native_draft` platforms only      | `OrderServiceFactory.getService(platform).createDraftOrder()` |
 
 ---
 
@@ -111,13 +121,15 @@ pending → synced
 
 **1.8** The system shall map `OrderRow` + `OrderItemRow[]` to a fully typed `LocalOrder` with `BasketItem[]` whenever an order is read back from SQLite.
 
-**1.9** For online platforms where `draftOrders === supported`, the system shall create a draft order at `startCheckout()` via `OrderServiceFactory.getService(platform).createDraftOrder()` before persisting locally.
+**1.9** For online platforms where `basketMode === 'native_draft'`, the system shall create a draft order at `startCheckout()` via `OrderServiceFactory.getService(platform).createDraftOrder()` before persisting locally.
 
-**1.10** A draft order (`status: 'draft'`) represents a basket that has been sent to the platform for tax calculation but not yet paid. The cashier may return to the basket from a draft order — this deletes the platform draft and the local draft row, leaving the basket intact for editing.
+**1.10** A draft order (`status: 'draft'`) represents a basket that has been sent to the platform for tax calculation but not yet paid. The cashier may return to the basket from a draft order — this deletes the platform draft and the local draft row, leaving the basket intact for editing. This applies only to `native_draft` platforms.
 
 **1.11** Only one draft order may be active at a time per basket. When `startCheckout()` is called while a draft order already exists, the system shall cancel the existing draft before creating a new one.
 
-**1.12** For offline mode (`platform === OFFLINE` or `undefined`), the system shall skip all platform API calls throughout the checkout lifecycle — no draft creation, no `completeOrder()` call, and no sync to a platform. The order is fully self-contained in SQLite.
+**1.12** For `local_only` mode (`platform === OFFLINE`, `undefined`, or Squarespace), the system shall skip all platform API calls throughout the checkout lifecycle — no draft creation, no `completeOrder()` call. For Squarespace, the order is imported post-payment via `OrderSyncService.createOrder()`.
+
+**1.13** For `remote_cart` mode platforms (WooCommerce, Magento, BigCommerce, Sylius, PrestaShop), the system shall use local basket totals at checkout time. The platform order is created post-payment by `OrderSyncService.createOrder()` — no draft is created at checkout start.
 
 ---
 
@@ -127,7 +139,7 @@ pending → synced
 
 **2.1.1** When `startCheckout(platform?, cashierId?, cashierName?)` is called, the system shall call `basketService.getBasket()` and throw `'Cannot checkout with empty basket'` if `basket.items` is empty.
 
-**2.1.2** When the basket is non-empty, `platform` is online, and `draftOrders === supported` for that platform, the system shall call `OrderServiceFactory.getService(platform).createDraftOrder(order)` before persisting locally.
+**2.1.2** When the basket is non-empty, `platform` is online, and `basketMode === 'native_draft'` for that platform, the system shall call `OrderServiceFactory.getService(platform).createDraftOrder(order)` before persisting locally.
 
 **2.1.3** When the platform draft order call succeeds, the system shall use platform-returned `subtotal`, `tax`, `total`, and per-line `taxAmount` / `taxRate` values to build `LocalOrder` and `order_items`.
 
@@ -135,7 +147,7 @@ pending → synced
 
 **2.1.5** When draft creation is attempted and fails (network error, API error, or service not initialised), the system shall log a warning and fall back to locally-resolved basket totals — checkout shall not be blocked.
 
-**2.1.6** When `platform` is `OFFLINE`, `undefined`, or online with `draftOrders !== supported`, the system shall skip draft creation and use locally-resolved basket totals and `BasketItem.taxRate` values.
+**2.1.6** When `platform` is `OFFLINE`, `undefined`, or online with `basketMode !== 'native_draft'`, the system shall skip draft creation and use locally-resolved basket totals and `BasketItem.taxRate` values.
 
 **2.1.7** When the order data is finalised (from platform or local), the system shall generate a UUID for the local order, set `status: 'draft'` for online orders (platform draft created) or `status: 'pending'` for offline/fallback orders, and `syncStatus: 'pending'`, and snapshot all basket fields (`discountAmount`, `discountCode`, `customerEmail`, `customerName`, `note`).
 
@@ -387,13 +399,15 @@ Cashier taps "Complete Order"
       → basketService.getBasket()                    ← validate non-empty
       → generateUUID()                               ← orderId
 
-      ── Online platforms ──────────────────────────────────────────────
+      ── native_draft platforms (Shopify, Wix, CommerceFull) ──────────
       → OrderServiceFactory.getService(platform).createDraftOrder(basketAsOrder)
           → platform API creates draft order
           → returns { platformOrderId, subtotal, tax, total, lineItems[].taxRate }
           → status = 'draft'
           → [on failure] log warning, fall back to basket totals, status = 'pending'
-      ── Offline / fallback ────────────────────────────────────────────
+      ── remote_cart platforms (Woo, Magento, BigCommerce, Sylius, PrestaShop) ──
+      → skip draft creation, use basket totals, status = 'pending'
+      ── local_only platforms (Squarespace, Offline) ───────────────────
       → use basket.subtotal / tax / total + BasketItem.taxRate values
       → status = 'pending'
 

@@ -17,6 +17,9 @@ import { evaluateCapabilityGate, MenuItemStatus } from '../../utils/menuCapabili
 import { getPlatformDisplayName } from '../../utils/platforms';
 import type { ECommercePlatform } from '../../utils/platforms';
 
+/** Capability features that can gate a settings tab — excludes basketMode which is not a CapabilityLevel */
+type CapabilityFeatureKey = Exclude<keyof PlatformCapabilities, 'basketMode'>;
+
 export type SettingsTabKey =
   | 'generic'
   | 'pos'
@@ -44,7 +47,7 @@ interface TabDefinition {
   translationKey: string;
   icon: string;
   /** Tabs without a capabilityKey are always shown (core tabs) */
-  capabilityKey?: keyof PlatformCapabilities;
+  capabilityKey?: CapabilityFeatureKey;
   requiresAdapterReady?: boolean;
 }
 

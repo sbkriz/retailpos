@@ -11,7 +11,7 @@ import { posConfig } from '../config/POSConfigService';
 import { generateUUID } from '../../utils/uuid';
 import { auditLogService } from '../audit/AuditLogService';
 import { OrderServiceFactory } from '../order/OrderServiceFactory';
-import { getPlatformCapabilities, supportsStrict } from '../../utils/platformCapabilities';
+import { getPlatformCapabilities, getBasketMode } from '../../utils/platformCapabilities';
 
 /**
  * Handles checkout flow and order queries.
@@ -35,9 +35,10 @@ export class CheckoutService implements CheckoutServiceInterface {
     const now = Date.now();
     const orderId = generateUUID();
 
-    // ── Draft order on platform (capability-driven) ────────────────────
-    // Draft-capable mode: draftOrders === 'supported' → create draft, use platform totals.
-    // Local-authoritative mode: draftOrders !== 'supported' → skip draft, keep basket totals.
+    // ── Basket mode branching ──────────────────────────────────────────
+    // native_draft  → create platform draft, use platform totals
+    // remote_cart   → skip draft at checkout start; order created post-payment via sync
+    // local_only    → fully local; order imported to platform after payment
     // See: docs/specs/checkout/checkout.md §Checkout Capability Modes
     let subtotal = basket.subtotal;
     let tax = basket.tax;
@@ -46,9 +47,9 @@ export class CheckoutService implements CheckoutServiceInterface {
     let status: LocalOrderStatus = 'pending';
     let platformTaxRates: (number | undefined)[] = basket.items.map(() => undefined);
 
-    const isDraftCapable = platform && isOnlinePlatform(platform) && supportsStrict(getPlatformCapabilities(platform), 'draftOrders');
+    const basketMode = platform && isOnlinePlatform(platform) ? getBasketMode(getPlatformCapabilities(platform)) : 'local_only';
 
-    if (isDraftCapable) {
+    if (basketMode === 'native_draft') {
       try {
         const orderService = OrderServiceFactory.getInstance().getService(platform!);
         const draftOrder = await orderService.createDraftOrder({
@@ -83,12 +84,14 @@ export class CheckoutService implements CheckoutServiceInterface {
         platformTaxRates = basket.items.map((_, i) => draftOrder.lineItems[i]?.taxRate);
       } catch (err) {
         this.logger.warn(
-          { message: `Draft order creation failed for ${platform}, falling back to basket totals` },
+          { message: `Draft order creation failed for ${platform} (native_draft mode), falling back to basket totals` },
           err instanceof Error ? err : new Error(String(err))
         );
         // status stays 'pending', totals stay from basket
       }
     }
+    // remote_cart and local_only: basket totals are authoritative.
+    // For remote_cart, the platform order is created post-payment by OrderSyncService.
 
     const localOrder: LocalOrder = {
       id: orderId,
@@ -193,13 +196,13 @@ export class CheckoutService implements CheckoutServiceInterface {
       await this.orderRepo.updatePayment(orderId, paymentMethod, transactionId ?? null);
 
       // If this order has a platform draft, mark it as paid on the platform.
-      // Only attempt completeOrder() for draft-capable platforms — non-draft
-      // platforms never create a platformOrderId at checkout time, so this
-      // branch is naturally skipped for them.
+      // Only attempt completeOrder() for native_draft platforms — remote_cart and
+      // local_only platforms never create a platformOrderId at checkout time.
       const orderRow = await this.orderRepo.findById(orderId);
       if (orderRow?.platform_order_id && orderRow.platform) {
         const platform = orderRow.platform as ECommercePlatform;
-        if (isOnlinePlatform(platform) && supportsStrict(getPlatformCapabilities(platform), 'draftOrders')) {
+        const mode = isOnlinePlatform(platform) ? getBasketMode(getPlatformCapabilities(platform)) : 'local_only';
+        if (mode === 'native_draft') {
           try {
             const orderService = OrderServiceFactory.getInstance().getService(platform);
             await orderService.completeOrder(orderRow.platform_order_id, paymentMethod, transactionId);

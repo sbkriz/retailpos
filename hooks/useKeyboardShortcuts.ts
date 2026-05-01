@@ -12,7 +12,11 @@ export interface KeyboardShortcut {
 
 /**
  * Hook that registers keyboard shortcuts for desktop/Electron/web environments.
- * No-op on native mobile platforms.
+ * No-op on native mobile platforms (iOS/Android).
+ *
+ * Intentionally active on both Electron and browser — the POS can be used
+ * from a browser tab on a desktop machine. If you need Electron-only shortcuts,
+ * gate the `enabled` parameter with `usePlatform().isElectron`.
  */
 export const useKeyboardShortcuts = (shortcuts: KeyboardShortcut[], enabled: boolean = true) => {
   const handleKeyDown = useCallback(
@@ -36,7 +40,7 @@ export const useKeyboardShortcuts = (shortcuts: KeyboardShortcut[], enabled: boo
   );
 
   useEffect(() => {
-    // Only register on web/desktop
+    // Keyboard events only exist on web (Electron + browser). No-op on native.
     if (Platform.OS !== 'web') return;
     if (typeof window === 'undefined') return;
 

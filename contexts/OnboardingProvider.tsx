@@ -1,6 +1,7 @@
 import React, { createContext, useState, useContext, useMemo, ReactNode, useEffect } from 'react';
 import { keyValueRepository } from '../repositories/KeyValueRepository';
 import { LoggerFactory } from '../services/logger/LoggerFactory';
+import { setupProgressService } from '../services/setup/SetupProgressService';
 
 const logger = LoggerFactory.getInstance().createLogger('OnboardingProvider');
 
@@ -24,6 +25,8 @@ export const OnboardingProvider = ({ children }: Readonly<{ children: ReactNode 
         if (status === 'completed') {
           setIsOnboardedState(true);
         }
+        // Load setup progress so SetupProgressService cache is warm
+        await setupProgressService.load();
       } catch (error) {
         logger.error({ message: 'Failed to load onboarding status' }, error instanceof Error ? error : new Error(String(error)));
       } finally {

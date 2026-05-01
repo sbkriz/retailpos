@@ -11,6 +11,7 @@ import { posConfig } from '../config/POSConfigService';
 import { generateUUID } from '../../utils/uuid';
 import { auditLogService } from '../audit/AuditLogService';
 import { OrderServiceFactory } from '../order/OrderServiceFactory';
+import { getPlatformCapabilities, supportsStrict } from '../../utils/platformCapabilities';
 
 /**
  * Handles checkout flow and order queries.
@@ -34,7 +35,10 @@ export class CheckoutService implements CheckoutServiceInterface {
     const now = Date.now();
     const orderId = generateUUID();
 
-    // ── Draft order on platform (online only) ──────────────────────────
+    // ── Draft order on platform (capability-driven) ────────────────────
+    // Draft-capable mode: draftOrders === 'supported' → create draft, use platform totals.
+    // Local-authoritative mode: draftOrders !== 'supported' → skip draft, keep basket totals.
+    // See: docs/specs/checkout/checkout.md §Checkout Capability Modes
     let subtotal = basket.subtotal;
     let tax = basket.tax;
     let total = basket.total;
@@ -42,9 +46,11 @@ export class CheckoutService implements CheckoutServiceInterface {
     let status: LocalOrderStatus = 'pending';
     let platformTaxRates: (number | undefined)[] = basket.items.map(() => undefined);
 
-    if (platform && isOnlinePlatform(platform)) {
+    const isDraftCapable = platform && isOnlinePlatform(platform) && supportsStrict(getPlatformCapabilities(platform), 'draftOrders');
+
+    if (isDraftCapable) {
       try {
-        const orderService = OrderServiceFactory.getInstance().getService(platform);
+        const orderService = OrderServiceFactory.getInstance().getService(platform!);
         const draftOrder = await orderService.createDraftOrder({
           customerEmail: basket.customerEmail,
           customerName: basket.customerName,
@@ -186,11 +192,14 @@ export class CheckoutService implements CheckoutServiceInterface {
     try {
       await this.orderRepo.updatePayment(orderId, paymentMethod, transactionId ?? null);
 
-      // If this order has a platform draft, mark it as paid on the platform
+      // If this order has a platform draft, mark it as paid on the platform.
+      // Only attempt completeOrder() for draft-capable platforms — non-draft
+      // platforms never create a platformOrderId at checkout time, so this
+      // branch is naturally skipped for them.
       const orderRow = await this.orderRepo.findById(orderId);
       if (orderRow?.platform_order_id && orderRow.platform) {
         const platform = orderRow.platform as ECommercePlatform;
-        if (isOnlinePlatform(platform)) {
+        if (isOnlinePlatform(platform) && supportsStrict(getPlatformCapabilities(platform), 'draftOrders')) {
           try {
             const orderService = OrderServiceFactory.getInstance().getService(platform);
             await orderService.completeOrder(orderRow.platform_order_id, paymentMethod, transactionId);

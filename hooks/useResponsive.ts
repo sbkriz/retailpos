@@ -20,6 +20,9 @@ export interface ResponsiveInfo {
 /**
  * Hook that provides responsive breakpoint information based on window dimensions.
  * Updates automatically when the window is resized.
+ *
+ * This hook is dimension-only. For environment detection (Electron vs browser
+ * vs native) alongside dimensions, use `usePlatform()` from hooks/usePlatform.ts.
  */
 export const useResponsive = (): ResponsiveInfo => {
   const { width, height } = useWindowDimensions();

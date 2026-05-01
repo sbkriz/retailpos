@@ -18,7 +18,11 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true,
+      // sandbox: false is required so the preload script can use require('electron')
+      // to access contextBridge and ipcRenderer. Security is maintained by
+      // contextIsolation: true (renderer cannot access Node APIs) and
+      // nodeIntegration: false (renderer has no require at all).
+      sandbox: false,
     },
     show: false,
     backgroundColor: '#F5F5F5',
@@ -117,6 +121,7 @@ function buildMenu() {
 
 // IPC Handlers
 function registerIpcHandlers() {
+  // ── App / window ──────────────────────────────────────────────────────────
   ipcMain.handle('get-app-version', () => app.getVersion());
   ipcMain.handle('get-platform', () => process.platform);
 
@@ -136,6 +141,138 @@ function registerIpcHandlers() {
 
   ipcMain.handle('close-window', () => {
     if (mainWindow) mainWindow.close();
+  });
+
+  // ── Printer IPC ───────────────────────────────────────────────────────────
+  // Delegates to the Node.js printer bridge (net / usb / serialport).
+  // Returns false / empty array on any error so the renderer can degrade
+  // gracefully without throwing.
+
+  ipcMain.handle('printer-send-raw-data', async (_event, base64Data, config) => {
+    try {
+      const { sendRawData } = require('./ipc/printerBridge');
+      return await sendRawData(base64Data, config);
+    } catch (err) {
+      console.error('[IPC] printer-send-raw-data failed:', err);
+      return false;
+    }
+  });
+
+  ipcMain.handle('printer-discover', async () => {
+    try {
+      const { discoverPrinters } = require('./ipc/printerBridge');
+      return await discoverPrinters();
+    } catch (err) {
+      console.error('[IPC] printer-discover failed:', err);
+      return [];
+    }
+  });
+
+  ipcMain.handle('printer-get-status', async (_event, config) => {
+    try {
+      const { getPrinterStatus } = require('./ipc/printerBridge');
+      return await getPrinterStatus(config);
+    } catch (err) {
+      console.error('[IPC] printer-get-status failed:', err);
+      return { isOnline: false, hasPaper: false };
+    }
+  });
+
+  // ── Cash drawer IPC ───────────────────────────────────────────────────────
+
+  ipcMain.handle('drawer-open', async (_event, config, pin) => {
+    try {
+      const { openDrawer } = require('./ipc/printerBridge');
+      return await openDrawer(config, pin ?? 2);
+    } catch (err) {
+      console.error('[IPC] drawer-open failed:', err);
+      return false;
+    }
+  });
+
+  ipcMain.handle('drawer-is-open', async (_event, config) => {
+    try {
+      const { isDrawerOpen } = require('./ipc/printerBridge');
+      return await isDrawerOpen(config);
+    } catch (err) {
+      console.error('[IPC] drawer-is-open failed:', err);
+      return undefined;
+    }
+  });
+
+  // ── Scanner IPC ───────────────────────────────────────────────────────────
+  // HID barcode scanners appear as keyboard devices. We listen for rapid
+  // keystroke sequences (< 100 ms between chars) and emit them as scan events.
+
+  ipcMain.handle('scanner-start-listening', _event => {
+    // The renderer-side ElectronScannerService handles DOM keydown events
+    // directly. This handler is a no-op stub kept for future HID-level
+    // integration via node-hid if DOM-level scanning proves insufficient.
+    return true;
+  });
+
+  // ── Payment IPC ───────────────────────────────────────────────────────────
+  // Stripe Terminal JS SDK runs in the renderer process (it is a browser SDK).
+  // These handlers are stubs — the renderer calls the SDK directly and only
+  // uses IPC for operations that require Node.js (e.g. fetching connection
+  // tokens from a backend without exposing the secret key to the renderer).
+
+  ipcMain.handle('payment-init', async (_event, config) => {
+    try {
+      const { initPayment } = require('./ipc/paymentBridge');
+      return await initPayment(config);
+    } catch (err) {
+      console.error('[IPC] payment-init failed:', err);
+      return false;
+    }
+  });
+
+  ipcMain.handle('payment-discover-readers', async () => {
+    try {
+      const { discoverReaders } = require('./ipc/paymentBridge');
+      return await discoverReaders();
+    } catch (err) {
+      console.error('[IPC] payment-discover-readers failed:', err);
+      return [];
+    }
+  });
+
+  ipcMain.handle('payment-connect-reader', async (_event, readerId) => {
+    try {
+      const { connectReader } = require('./ipc/paymentBridge');
+      return await connectReader(readerId);
+    } catch (err) {
+      console.error('[IPC] payment-connect-reader failed:', err);
+      return false;
+    }
+  });
+
+  ipcMain.handle('payment-collect', async (_event, request) => {
+    try {
+      const { collectPayment } = require('./ipc/paymentBridge');
+      return await collectPayment(request);
+    } catch (err) {
+      console.error('[IPC] payment-collect failed:', err);
+      return { success: false, errorMessage: String(err) };
+    }
+  });
+
+  ipcMain.handle('payment-cancel', async () => {
+    try {
+      const { cancelPayment } = require('./ipc/paymentBridge');
+      return await cancelPayment();
+    } catch (err) {
+      console.error('[IPC] payment-cancel failed:', err);
+    }
+  });
+
+  ipcMain.handle('payment-disconnect', async () => {
+    try {
+      const { disconnectReader } = require('./ipc/paymentBridge');
+      return await disconnectReader();
+    } catch (err) {
+      console.error('[IPC] payment-disconnect failed:', err);
+    }
   });
 }
 

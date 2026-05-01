@@ -2,6 +2,7 @@ import { ECommercePlatform } from '../../utils/platforms';
 import { LoggerFactory } from '../logger/LoggerFactory';
 import { keyValueRepository } from '../../repositories/KeyValueRepository';
 import { SHOPIFY_API_VERSION, COMMERCEFULL_API_VERSION } from './apiVersions';
+import { platformCapabilityService } from '../platform/PlatformCapabilityService';
 
 // NOTE: Factory imports are lazy-loaded inside methods to break require cycles.
 // The cycle was: ServiceConfigBridge → factory → platform service → ServiceConfigBridge
@@ -110,6 +111,10 @@ export class ServiceConfigBridge {
 
       // Configure all services based on the selected platform
       await this.configureServicesForPlatform(settings);
+
+      // Warm up the capability service cache and emit a startup summary
+      await platformCapabilityService.loadFromStorage();
+      platformCapabilityService.logCapabilitySummary();
 
       this.isConfigured = true;
       this.logger.info(`Services configured for platform: ${settings.platform}`);

@@ -11,7 +11,7 @@
 
 Settings is the configuration hub for the POS. It is accessible from More → Settings and is restricted to `admin` and `manager` roles — cashiers cannot access it.
 
-`SettingsScreen` is a tabbed interface with ten configuration sections. Navigation between tabs adapts to the device form factor: a side nav on desktop, a scrollable tab bar on tablet, and a modal dropdown on mobile. Each tab renders an independent settings component. A `FloatingSaveBar` appears when unsaved changes are pending.
+`SettingsScreen` is a tabbed interface with core tabs and capability-driven advanced tabs. Navigation between tabs adapts to the device form factor: a side nav on desktop, a scrollable tab bar on tablet, and a modal dropdown on mobile. Each tab renders an independent settings component. A `FloatingSaveBar` appears when unsaved changes are pending.
 
 `useSettings` reads and writes all settings to `KeyValueRepository` (SQLite key-value store). `SettingsProvider` wraps the hook in a React context so any child component can read or update settings without prop drilling.
 
@@ -29,6 +29,9 @@ Settings is the configuration hub for the POS. It is accessible from More → Se
 | `offline`       | Offline        | 📴   | Offline mode management, sync controls             |
 | `receipt`       | Receipt        | 🧾   | Header, footer, print options                      |
 | `multiregister` | Multi-Register | 🔗   | Local API server config for multi-register setups  |
+| `theme`         | Theme          | 🎨   | Color theme selection — aligns POS to brand colors |
+
+Core tabs are always available to authorized roles; advanced tabs and feature actions can be hidden or disabled by selected platform capability profile. The `theme` tab is always available (core tab, no capability gate).
 
 ### Role Access
 
@@ -54,6 +57,10 @@ Settings is the configuration hub for the POS. It is accessible from More → Se
 
 **1.6** `SettingsProvider` shall wrap `useSettings` in a React context so child components can call `useSettingsData()` without prop drilling.
 
+**1.7** Settings tab visibility shall be computed using role + platform capability profile. Role access alone is insufficient for advanced feature availability.
+
+**1.8** More menu visibility for setup and management entries shall support capability-aware composition in addition to role-based filtering.
+
 ---
 
 ## 2. Event-Driven Requirements
@@ -70,11 +77,13 @@ Settings is the configuration hub for the POS. It is accessible from More → Se
 
 **2.2.2** When the user selects a tab (side nav, tab bar, or dropdown), the system shall set `activeTab` to the selected tab key and render the corresponding settings component.
 
+**2.2.2.a** The list of rendered tabs shall come from capability-aware composition (e.g., `SettingsTabComposer`) so unsupported advanced setup areas are not shown as fully available.
+
 **2.2.3** When the user selects a tab from the mobile dropdown, the system shall close the dropdown modal and update `activeTab`.
 
 ### 2.3 Layout — Desktop
 
-**2.3.1** When `isDesktop` is `true`, `SettingsScreen` shall render a side navigation panel (220px wide) listing all ten tabs with icon and label, and a scrollable content area to the right.
+**2.3.1** When `isDesktop` is `true`, `SettingsScreen` shall render a side navigation panel (220px wide) listing the currently available tabs with icon and label, and a scrollable content area to the right.
 
 **2.3.2** When a side nav item is active, the system shall render it with a left border accent and highlighted background.
 
@@ -88,7 +97,7 @@ Settings is the configuration hub for the POS. It is accessible from More → Se
 
 **2.5.1** When `isMobile` is `true`, `SettingsScreen` shall render a single-row dropdown trigger showing the active tab's icon and label.
 
-**2.5.2** When the user taps the dropdown trigger, the system shall open a modal overlay listing all ten tabs with icon, label, and a checkmark on the active tab.
+**2.5.2** When the user taps the dropdown trigger, the system shall open a modal overlay listing the currently available tabs with icon, label, and a checkmark on the active tab.
 
 **2.5.3** When the user taps outside the dropdown modal, the system shall close it without changing the active tab.
 
@@ -150,51 +159,73 @@ The `setup.md` feature doc covers the More menu (MoreNavigator) which is the ent
 
 ### 7.1 Role-Based Menu Items
 
-The actual menu access per role (from `utils/roleAccess.ts`):
+The actual menu access per role (from `utils/roleAccess.ts` + `MoreMenuComposer`):
 
-| Menu Item         | Screen                  | admin | manager | cashier |
-| ----------------- | ----------------------- | ----- | ------- | ------- |
-| Order History     | `OrderHistoryScreen`    | ✅    | ✅      | ✅      |
-| Settings          | `SettingsScreen`        | ✅    | ✅      | ❌      |
-| User Management   | `UsersScreen`           | ✅    | ❌      | ❌      |
-| Returns & Refunds | `ReturnsScreen`         | ✅    | ✅      | ❌      |
-| Printer           | `PrinterScreen`         | ✅    | ✅      | ✅      |
-| Payment Terminal  | `PaymentTerminalScreen` | ✅    | ✅      | ✅      |
-| Sync Queue        | `SyncQueueScreen`       | ✅    | ✅      | ❌      |
-| Reports           | `ReportingScreen`       | ✅    | ✅      | ❌      |
-| Logout            | —                       | ✅    | ✅      | ✅      |
+| Menu Item        | Screen                  | admin | manager | cashier | Capability gate |
+| ---------------- | ----------------------- | ----- | ------- | ------- | --------------- |
+| Order History    | `OrderHistoryScreen`    | ✅    | ✅      | ✅      | None            |
+| Refund           | `RefundScreen`          | ✅    | ✅      | ❌      | `refunds`       |
+| Sync Queue       | `SyncQueueScreen`       | ✅    | ✅      | ❌      | `orderSync`     |
+| Reports          | `ReportingScreen`       | ✅    | ✅      | ❌      | None            |
+| Printer          | `PrinterScreen`         | ✅    | ✅      | ✅      | None            |
+| Payment Terminal | `PaymentTerminalScreen` | ✅    | ✅      | ✅      | None            |
+| User Management  | `UsersScreen`           | ✅    | ❌      | ❌      | None            |
+| Settings         | `SettingsScreen`        | ✅    | ✅      | ❌      | None            |
+| Theme            | `ThemeSettingsTab`      | ✅    | ✅      | ✅      | None (always)   |
+| Logout           | —                       | ✅    | ✅      | ✅      | None (always)   |
 
-> **Note:** The `setup.md` feature doc incorrectly states that cashiers can access Settings and Returns, and refers to "Daily Orders" instead of "Order History". The table above reflects the actual code.
+Items with a capability gate are hidden (not just disabled) when the platform marks that feature `not_recommended`. Items with a `custom` capability level are shown as disabled with a reason subtitle unless the adapter is ready.
+
+The More menu also shows:
+
+- A **"Finish setup" banner** at the top when `SetupProgressService.hasDeferredSetup()` returns `true`, linking to Settings.
+- A **theme indicator strip** showing the active theme's color swatches and name, linking directly to the Theme screen.
 
 ### 7.2 Requirements
 
-**7.2.1** When `MoreMenuScreen` renders, the system shall call `canAccessMoreMenuItem(userRole, item.key)` for each menu item and include only those that return `true`, plus Logout which is always shown.
+**7.2.1** When `MoreMenuScreen` renders, the system shall call `composeMoreMenu({ userRole, platform, capabilities })` and render only items with `status: 'enabled'` or `status: 'disabled'`. Items with `status: 'hidden'` are excluded entirely.
 
-**7.2.2** When the user taps a menu item, the system shall navigate to the corresponding stack screen via `navigation.navigate(key)`.
+**7.2.2** When the user taps an enabled menu item, the system shall navigate to the corresponding stack screen via `navigation.navigate(key)`.
 
-**7.2.3** When a stack screen is navigated to, the system shall render a `Suspense` fallback (`ActivityIndicator`) while the lazy-loaded component resolves.
+**7.2.3** When a menu item has `status: 'disabled'`, the system shall render it at reduced opacity with a reason subtitle and a block icon — it shall not be tappable.
 
-**7.2.4** When `userRole` is `undefined` (not yet resolved), the system shall default to `'cashier'` — the least-privilege role — ensuring no elevated items are shown before role is confirmed.
+**7.2.4** When a stack screen is navigated to, the system shall render a `Suspense` fallback (`ActivityIndicator`) while the lazy-loaded component resolves.
 
-| Requirement (summary)                         | Component / Service                               | Source File                     |
-| --------------------------------------------- | ------------------------------------------------- | ------------------------------- |
-| Cashier role → access denied view             | `SettingsScreen` role guard                       | `screens/SettingsScreen.tsx`    |
-| Settings hidden from cashier in More menu     | `canAccessMoreMenuItem`                           | `utils/roleAccess.ts`           |
-| Default tab `'generic'` on mount              | `SettingsScreen` useState                         | `screens/SettingsScreen.tsx`    |
-| Tab selection updates `activeTab`             | `SettingsScreen` tab handlers                     | `screens/SettingsScreen.tsx`    |
-| Desktop: side nav 220px + scrollable content  | `SettingsScreen` isDesktop branch                 | `screens/SettingsScreen.tsx`    |
-| Tablet: horizontal scrollable tab bar         | `SettingsScreen` tablet branch                    | `screens/SettingsScreen.tsx`    |
-| Mobile: dropdown trigger + modal              | `SettingsScreen` isMobile branch                  | `screens/SettingsScreen.tsx`    |
-| Dropdown closes on outside tap                | `SettingsScreen` Modal `onRequestClose`           | `screens/SettingsScreen.tsx`    |
-| `FloatingSaveBar` shown when unsaved          | `SettingsScreen` saveStatus guard                 | `screens/SettingsScreen.tsx`    |
-| All settings loaded from KV store on mount    | `useSettings.fetchSettings`                       | `hooks/useSettings.ts`          |
-| `getSetting(key, default)` with fallback      | `useSettings.getSetting`                          | `hooks/useSettings.ts`          |
-| `updateSetting` persists + updates map        | `useSettings.updateSetting`                       | `hooks/useSettings.ts`          |
-| `updateSetting` failure → re-fetch + re-throw | `useSettings.updateSetting` catch                 | `hooks/useSettings.ts`          |
-| `SettingsProvider` wraps hook in context      | `SettingsProvider`                                | `contexts/SettingsProvider.tsx` |
-| `useSettingsData()` throws outside provider   | `useSettingsData` guard                           | `contexts/SettingsProvider.tsx` |
-| Role access map for More menu items           | `MORE_MENU_ACCESS`                                | `utils/roleAccess.ts`           |
-| More menu item filtering per role             | `MoreMenuScreen` filter + `canAccessMoreMenuItem` | `navigation/MoreNavigator.tsx`  |
-| Logout always visible                         | `MoreMenuScreen` menu construction                | `navigation/MoreNavigator.tsx`  |
-| Lazy-loaded screens with Suspense fallback    | `MoreNavigator` Stack.Screen wrappers             | `navigation/MoreNavigator.tsx`  |
-| `undefined` role defaults to `'cashier'`      | `canAccessMoreMenuItem` effectiveRole             | `utils/roleAccess.ts`           |
+**7.2.5** When `userRole` is `undefined` (not yet resolved), the system shall default to `'cashier'` — the least-privilege role — ensuring no elevated items are shown before role is confirmed.
+
+**7.2.6** When `SetupProgressService.hasDeferredSetup()` returns `true`, the system shall render a "Finish setup" banner above the menu list that navigates to Settings on tap.
+
+**7.2.7** The system shall always render a theme indicator strip showing the active theme's color swatches and name. Tapping it shall navigate to the `Theme` screen.
+
+**7.2.8** Logout shall always be the last item and shall not be subject to role or capability gating.
+
+| Requirement (summary)                         | Component / Service                       | Source File                                  |
+| --------------------------------------------- | ----------------------------------------- | -------------------------------------------- |
+| Cashier role → access denied view             | `SettingsScreen` role guard               | `screens/SettingsScreen.tsx`                 |
+| Settings hidden from cashier in More menu     | `canAccessMoreMenuItem`                   | `utils/roleAccess.ts`                        |
+| Default tab `'generic'` on mount              | `SettingsScreen` useState                 | `screens/SettingsScreen.tsx`                 |
+| Tab list from `composeSettingsTabs()`         | `SettingsTabComposer`                     | `services/navigation/SettingsTabComposer.ts` |
+| Tab selection updates `activeTab`             | `SettingsScreen` tab handlers             | `screens/SettingsScreen.tsx`                 |
+| Desktop: side nav 220px + scrollable content  | `SettingsScreen` isDesktop branch         | `screens/SettingsScreen.tsx`                 |
+| Tablet: horizontal scrollable tab bar         | `SettingsScreen` tablet branch            | `screens/SettingsScreen.tsx`                 |
+| Mobile: dropdown trigger + modal              | `SettingsScreen` isMobile branch          | `screens/SettingsScreen.tsx`                 |
+| Dropdown closes on outside tap                | `SettingsScreen` Modal `onRequestClose`   | `screens/SettingsScreen.tsx`                 |
+| `FloatingSaveBar` shown when unsaved          | `SettingsScreen` saveStatus guard         | `screens/SettingsScreen.tsx`                 |
+| All settings loaded from KV store on mount    | `useSettings.fetchSettings`               | `hooks/useSettings.ts`                       |
+| `getSetting(key, default)` with fallback      | `useSettings.getSetting`                  | `hooks/useSettings.ts`                       |
+| `updateSetting` persists + updates map        | `useSettings.updateSetting`               | `hooks/useSettings.ts`                       |
+| `updateSetting` failure → re-fetch + re-throw | `useSettings.updateSetting` catch         | `hooks/useSettings.ts`                       |
+| `SettingsProvider` wraps hook in context      | `SettingsProvider`                        | `contexts/SettingsProvider.tsx`              |
+| `useSettingsData()` throws outside provider   | `useSettingsData` guard                   | `contexts/SettingsProvider.tsx`              |
+| Theme persisted to `app.theme` KV key         | `ThemeProvider.setTheme`                  | `contexts/ThemeProvider.tsx`                 |
+| Theme loaded on startup                       | `ThemeProvider` useEffect                 | `contexts/ThemeProvider.tsx`                 |
+| Theme picker UI                               | `ThemeSettingsTab`                        | `screens/settings/ThemeSettingsTab.tsx`      |
+| Theme presets registry                        | `THEME_PRESETS`, `getThemePreset`         | `utils/themes.ts`                            |
+| `ThemeColors` derived from `lightColors`      | `type ThemeColors = typeof lightColors`   | `utils/themes.ts`                            |
+| More menu composed by role + capability       | `composeMoreMenu`                         | `services/navigation/MoreMenuComposer.ts`    |
+| More menu capability gating                   | `evaluateCombinedAccess`                  | `utils/menuCapabilityAccess.ts`              |
+| Deferred setup banner in More menu            | `MoreMenuScreen` + `SetupProgressService` | `navigation/MoreNavigator.tsx`               |
+| Theme indicator strip in More menu            | `MoreMenuScreen` theme banner             | `navigation/MoreNavigator.tsx`               |
+| Logout always visible                         | `MoreMenuScreen` menu construction        | `navigation/MoreNavigator.tsx`               |
+| Lazy-loaded screens with Suspense fallback    | `MoreNavigator` Stack.Screen wrappers     | `navigation/MoreNavigator.tsx`               |
+| `undefined` role defaults to `'cashier'`      | `canAccessMoreMenuItem` effectiveRole     | `utils/roleAccess.ts`                        |

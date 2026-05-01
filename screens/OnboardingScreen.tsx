@@ -1,3 +1,22 @@
+/**
+ * OnboardingScreen
+ *
+ * Minimal 3-phase onboarding wizard per docs/specs/onboarding/wizard.md §1A.
+ *
+ * Phases:
+ *   1. platform_setup   — platform selection + credentials (or offline basics)
+ *   2. admin_user_setup — create first admin user
+ *   3. peripherals_setup — printer / scanner / payment terminal (skippable)
+ *
+ * All non-critical setup is deferred to More → Settings after first login.
+ * Setup progress is persisted via SetupProgressService so deferred tasks
+ * surface as reminders in the More menu.
+ *
+ * Legacy step names (welcome, staff_setup, pos_setup, auth_method_setup,
+ * summary) are deprecated per spec §1.9 and are no longer part of the
+ * mandatory onboarding path.
+ */
+
 import React, { useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -6,42 +25,55 @@ import { useEcommerceSettings } from '../hooks/useEcommerceSettings';
 import { ProgressIndicator } from '../components/ProgressIndicator';
 import { spacing } from '../utils/theme';
 import { useTranslate } from '../hooks/useTranslate';
+import { setupProgressService } from '../services/setup/SetupProgressService';
+import { platformCapabilityService } from '../services/platform/PlatformCapabilityService';
+import { useLogger } from '../hooks/useLogger';
 
-import WelcomeStep from './onboarding/WelcomeStep';
+// Step components — reused from existing onboarding screens
 import PlatformSelectionStep from './onboarding/PlatformSelectionStep';
 import PlatformConfigurationStep from './onboarding/PlatformConfigurationStep';
 import OfflineSetupStep, { OfflineStoreConfig } from './onboarding/OfflineSetupStep';
-import StaffSetupStep from './onboarding/StaffSetupStep';
-import PaymentProviderStep from './onboarding/PaymentProviderStep';
+import AdminUserStep from './onboarding/AdminUserStep';
 import PrinterSetupStep from './onboarding/PrinterSetupStep';
 import ScannerSetupStep from './onboarding/ScannerSetupStep';
-import AdminUserStep from './onboarding/AdminUserStep';
-import POSSetupStep from './onboarding/POSSetupStep';
-import type { POSSetupValues } from './onboarding/POSSetupStep';
-import AuthMethodSetupStep from './onboarding/AuthMethodSetupStep';
-import SummaryStep from './onboarding/SummaryStep';
-import { posConfig } from '../services/config/POSConfigService';
-import { useLogger } from '../hooks/useLogger';
+import PaymentProviderStep from './onboarding/PaymentProviderStep';
 
-type OnboardingStep =
-  | 'welcome'
-  | 'platform_selection'
-  | 'platform_configuration'
-  | 'offline_setup'
-  | 'staff_setup'
-  | 'pos_setup'
-  | 'auth_method_setup'
-  | 'payment_provider_setup'
-  | 'printer_setup'
-  | 'scanner_setup'
-  | 'admin_user'
-  | 'summary';
+/**
+ * The three mandatory onboarding phases.
+ * Sub-steps within each phase are handled internally.
+ */
+type OnboardingPhase =
+  | 'platform_setup' // Phase 1: platform selection + credentials
+  | 'admin_user_setup' // Phase 2: create first admin user
+  | 'peripherals_setup'; // Phase 3: printer / scanner / payment (skippable)
+
+/**
+ * Sub-steps within the platform_setup phase.
+ * Kept internal to avoid polluting the phase type.
+ */
+type PlatformSubStep = 'platform_selection' | 'platform_configuration' | 'offline_setup';
+
+/**
+ * Sub-steps within the peripherals_setup phase.
+ */
+type PeripheralsSubStep = 'payment' | 'printer' | 'scanner';
+
+/** Deferred feature keys surfaced in More menu after onboarding */
+const DEFERRED_FEATURES = ['discounts', 'giftcards', 'refunds', 'staff', 'pos_config', 'auth_methods'];
 
 const OnboardingScreen: React.FC = () => {
   const { t } = useTranslate();
   const { setIsOnboarded } = useOnboardingContext();
   const { saveSettings, updateSettings: updateEcommerceSettings } = useEcommerceSettings();
-  const [currentStep, setCurrentStep] = useState<OnboardingStep>('welcome');
+  const logger = useLogger('OnboardingScreen');
+
+  // Phase-level state
+  const [currentPhase, setCurrentPhase] = useState<OnboardingPhase>('platform_setup');
+
+  // Sub-step within platform_setup
+  const [platformSubStep, setPlatformSubStep] = useState<PlatformSubStep>('platform_selection');
+
+  // Platform data collected in phase 1
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
   const [ecommerceConfig, setEcommerceConfig] = useState<Record<string, string>>({});
   const [offlineConfig, setOfflineConfig] = useState<OfflineStoreConfig>({
@@ -50,28 +82,22 @@ const OnboardingScreen: React.FC = () => {
     currency: 'GBP',
   });
 
-  const logger = useLogger('OnboardingScreen');
-
-  const isOffline = selectedPlatform === 'offline';
-
-  const handleNextFromWelcome = () => {
-    setCurrentStep('platform_selection');
-  };
+  // ─── Phase 1: Platform setup ────────────────────────────────────────────────
 
   const handlePlatformSelect = (platformId: string) => {
     setSelectedPlatform(platformId);
     if (platformId === 'offline') {
-      setCurrentStep('offline_setup');
+      setPlatformSubStep('offline_setup');
     } else {
-      setCurrentStep('platform_configuration');
+      setPlatformSubStep('platform_configuration');
     }
   };
 
   const handleBackToPlatformSelection = () => {
-    setCurrentStep('platform_selection');
+    setPlatformSubStep('platform_selection');
   };
 
-  const handleNextFromPlatformConfig = async () => {
+  const handlePlatformConfigComplete = async () => {
     if (selectedPlatform) {
       const newSettings = {
         enabled: true,
@@ -80,11 +106,13 @@ const OnboardingScreen: React.FC = () => {
       };
       updateEcommerceSettings(newSettings);
       await saveSettings();
+      platformCapabilityService.setPlatform(selectedPlatform as Parameters<typeof platformCapabilityService.setPlatform>[0]);
     }
-    setCurrentStep('payment_provider_setup');
+    await setupProgressService.completePhase('platform');
+    setCurrentPhase('admin_user_setup');
   };
 
-  const handleNextFromOfflineSetup = async (config: OfflineStoreConfig) => {
+  const handleOfflineSetupComplete = async (config: OfflineStoreConfig) => {
     setOfflineConfig(config);
     const newSettings = {
       enabled: true,
@@ -97,217 +125,131 @@ const OnboardingScreen: React.FC = () => {
     };
     updateEcommerceSettings(newSettings);
     await saveSettings();
-    // Go to admin user step first, then staff setup
-    setCurrentStep('admin_user');
+    platformCapabilityService.setPlatform('offline');
+    await setupProgressService.completePhase('platform');
+    setCurrentPhase('admin_user_setup');
   };
 
-  const handleNextFromStaffSetup = () => {
-    setCurrentStep('payment_provider_setup');
-  };
+  // ─── Phase 2: Admin user setup ──────────────────────────────────────────────
 
-  const handleBackToPlatformConfig = () => {
-    setCurrentStep('platform_configuration');
-  };
-
-  const handleNextFromPayment = () => {
-    setCurrentStep('printer_setup');
-  };
-
-  const handleBackToPayment = () => {
-    setCurrentStep('payment_provider_setup');
-  };
-
-  const handleNextFromPrinter = () => {
-    setCurrentStep('scanner_setup');
-  };
-
-  const handleBackToPrinter = () => {
-    setCurrentStep('printer_setup');
-  };
-
-  const handleNextFromScanner = () => {
-    setCurrentStep('pos_setup');
-  };
-
-  const handleNextFromPOSSetup = async (values: POSSetupValues) => {
-    await posConfig.updateAll({
-      storeName: values.storeName,
-      storeAddress: values.storeAddress,
-      storePhone: values.storePhone,
-      taxRate: parseFloat(values.taxRate) / 100,
-      currencySymbol: values.currencySymbol,
-      maxSyncRetries: parseInt(values.maxSyncRetries, 10) || 3,
-      drawerOpenOnCash: values.drawerOpenOnCash,
-    });
-    setCurrentStep('auth_method_setup');
-  };
-
-  const handleNextFromAuthMethodSetup = () => {
-    setCurrentStep('admin_user');
-  };
-
-  const handleBackToAuthMethodSetup = () => {
-    setCurrentStep('auth_method_setup');
-  };
-
-  const handleBackToPOSSetup = () => {
-    setCurrentStep('pos_setup');
-  };
-
-  const handleBackToScanner = () => {
-    setCurrentStep('scanner_setup');
-  };
-
-  const handleNextFromAdminUser = () => {
-    if (isOffline) {
-      setCurrentStep('staff_setup');
-    } else {
-      setCurrentStep('summary');
-    }
+  const handleAdminUserComplete = async () => {
+    await setupProgressService.completePhase('user');
+    setCurrentPhase('peripherals_setup');
   };
 
   const handleBackToAdminUser = () => {
-    setCurrentStep('admin_user');
+    setCurrentPhase('admin_user_setup');
   };
 
-  const handleOnboardingComplete = () => {
-    // In a real app, we would save all the collected settings here.
-    logger.info('Onboarding complete!', { platform: selectedPlatform, config: ecommerceConfig });
+  // ─── Phase 3: Peripherals setup ─────────────────────────────────────────────
+
+  // Peripherals are split into sub-steps: payment → printer → scanner
+  const [peripheralsSubStep, setPeripheralsSubStep] = useState<PeripheralsSubStep>('payment');
+
+  const handlePaymentComplete = () => setPeripheralsSubStep('printer');
+  const handlePrinterComplete = () => setPeripheralsSubStep('scanner');
+  const handlePrinterSkip = () => setPeripheralsSubStep('scanner');
+
+  const handlePeripheralsComplete = async () => {
+    await setupProgressService.completePhase('peripherals');
+    await completeOnboarding();
+  };
+
+  const handlePeripheralsSkip = async () => {
+    // Peripherals skipped — defer to More → Settings
+    await setupProgressService.completePhase('peripherals');
+    await completeOnboarding();
+  };
+
+  // ─── Onboarding completion ───────────────────────────────────────────────────
+
+  const completeOnboarding = async () => {
+    logger.info('Onboarding complete', { platform: selectedPlatform });
+    await setupProgressService.markOnboardingComplete(DEFERRED_FEATURES);
     setIsOnboarded(true);
   };
 
-  const renderStep = () => {
-    switch (currentStep) {
-      case 'welcome':
-        return <WelcomeStep onNext={handleNextFromWelcome} />;
-      case 'platform_selection':
-        return <PlatformSelectionStep onSelectPlatform={handlePlatformSelect} />;
-      case 'platform_configuration':
-        if (selectedPlatform) {
-          return (
-            <PlatformConfigurationStep
-              platformId={selectedPlatform}
-              config={ecommerceConfig}
-              setConfig={setEcommerceConfig}
-              onBack={handleBackToPlatformSelection}
-              onComplete={handleNextFromPlatformConfig}
-            />
-          );
+  // ─── Progress indicator ──────────────────────────────────────────────────────
+
+  const PHASE_ORDER: OnboardingPhase[] = ['platform_setup', 'admin_user_setup', 'peripherals_setup'];
+  const currentPhaseNumber = PHASE_ORDER.indexOf(currentPhase) + 1;
+
+  const PHASE_LABELS = [t('onboarding.steps.platform'), t('onboarding.steps.admin'), t('onboarding.steps.peripherals')];
+
+  // ─── Render ──────────────────────────────────────────────────────────────────
+
+  const renderPhase = () => {
+    switch (currentPhase) {
+      case 'platform_setup':
+        switch (platformSubStep) {
+          case 'platform_selection':
+            return <PlatformSelectionStep onSelectPlatform={handlePlatformSelect} />;
+
+          case 'platform_configuration':
+            return selectedPlatform ? (
+              <PlatformConfigurationStep
+                platformId={selectedPlatform}
+                config={ecommerceConfig}
+                setConfig={setEcommerceConfig}
+                onBack={handleBackToPlatformSelection}
+                onComplete={handlePlatformConfigComplete}
+              />
+            ) : (
+              <PlatformSelectionStep onSelectPlatform={handlePlatformSelect} />
+            );
+
+          case 'offline_setup':
+            return (
+              <OfflineSetupStep
+                config={offlineConfig}
+                setConfig={setOfflineConfig}
+                onBack={handleBackToPlatformSelection}
+                onComplete={handleOfflineSetupComplete}
+              />
+            );
         }
-        return <WelcomeStep onNext={handleNextFromWelcome} />;
-      case 'offline_setup':
-        return (
-          <OfflineSetupStep
-            config={offlineConfig}
-            setConfig={setOfflineConfig}
-            onBack={handleBackToPlatformSelection}
-            onComplete={handleNextFromOfflineSetup}
-          />
-        );
-      case 'staff_setup':
-        return (
-          <StaffSetupStep
-            onBack={isOffline ? handleBackToPlatformSelection : handleBackToAdminUser}
-            onComplete={handleNextFromStaffSetup}
-          />
-        );
-      case 'payment_provider_setup':
-        return (
-          <PaymentProviderStep
-            onBack={isOffline ? () => setCurrentStep('staff_setup') : handleBackToPlatformConfig}
-            onNext={handleNextFromPayment}
-          />
-        );
-      case 'printer_setup':
-        return <PrinterSetupStep onBack={handleBackToPayment} onNext={handleNextFromPrinter} onSkip={handleNextFromPrinter} />;
-      case 'scanner_setup':
-        return <ScannerSetupStep onBack={handleBackToPrinter} onComplete={handleNextFromScanner} onSkip={handleNextFromScanner} />;
-      case 'pos_setup':
-        return <POSSetupStep onBack={handleBackToScanner} onComplete={handleNextFromPOSSetup} />;
-      case 'auth_method_setup':
-        return (
-          <AuthMethodSetupStep
-            onBack={handleBackToPOSSetup}
-            onComplete={handleNextFromAuthMethodSetup}
-            selectedPlatform={selectedPlatform}
-          />
-        );
-      case 'admin_user':
+        break;
+
+      case 'admin_user_setup':
         return (
           <AdminUserStep
-            onBack={isOffline ? () => setCurrentStep('offline_setup') : handleBackToAuthMethodSetup}
-            onComplete={handleNextFromAdminUser}
+            onBack={() => {
+              // Back to platform setup — reset to selection
+              setPlatformSubStep('platform_selection');
+              setCurrentPhase('platform_setup');
+            }}
+            onComplete={handleAdminUserComplete}
           />
         );
-      case 'summary':
-        return <SummaryStep onBack={handleBackToAdminUser} onConfirm={handleOnboardingComplete} />;
-      default:
-        return <WelcomeStep onNext={handleNextFromWelcome} />;
-    }
-  };
 
-  const STEP_LABELS = isOffline
-    ? [
-        t('onboarding.steps.welcome'),
-        t('onboarding.steps.platform'),
-        t('onboarding.steps.storeSetup'),
-        t('onboarding.steps.admin'),
-        t('onboarding.steps.staff'),
-        t('onboarding.steps.payment'),
-        t('onboarding.steps.printer'),
-        t('onboarding.steps.scanner'),
-        t('onboarding.steps.posConfig'),
-        t('onboarding.steps.auth'),
-        t('onboarding.steps.summary'),
-      ]
-    : [
-        t('onboarding.steps.welcome'),
-        t('onboarding.steps.platform'),
-        t('onboarding.steps.configure'),
-        t('onboarding.steps.payment'),
-        t('onboarding.steps.printer'),
-        t('onboarding.steps.scanner'),
-        t('onboarding.steps.posConfig'),
-        t('onboarding.steps.auth'),
-        t('onboarding.steps.admin'),
-        t('onboarding.steps.summary'),
-      ];
-  const STEP_ORDER: OnboardingStep[] = isOffline
-    ? [
-        'welcome',
-        'platform_selection',
-        'offline_setup',
-        'admin_user',
-        'staff_setup',
-        'payment_provider_setup',
-        'printer_setup',
-        'scanner_setup',
-        'pos_setup',
-        'auth_method_setup',
-        'summary',
-      ]
-    : [
-        'welcome',
-        'platform_selection',
-        'platform_configuration',
-        'payment_provider_setup',
-        'printer_setup',
-        'scanner_setup',
-        'pos_setup',
-        'auth_method_setup',
-        'admin_user',
-        'summary',
-      ];
-  const currentStepNumber = STEP_ORDER.indexOf(currentStep) + 1;
+      case 'peripherals_setup':
+        switch (peripheralsSubStep) {
+          case 'payment':
+            return <PaymentProviderStep onBack={handleBackToAdminUser} onNext={handlePaymentComplete} />;
+          case 'printer':
+            return (
+              <PrinterSetupStep onBack={() => setPeripheralsSubStep('payment')} onNext={handlePrinterComplete} onSkip={handlePrinterSkip} />
+            );
+          case 'scanner':
+            return (
+              <ScannerSetupStep
+                onBack={() => setPeripheralsSubStep('printer')}
+                onComplete={handlePeripheralsComplete}
+                onSkip={handlePeripheralsSkip}
+              />
+            );
+        }
+        break;
+    }
+    return null;
+  };
 
   return (
     <SafeAreaView style={styles.container}>
-      {currentStep !== 'welcome' && (
-        <View style={styles.progressContainer}>
-          <ProgressIndicator currentStep={currentStepNumber} totalSteps={STEP_ORDER.length} labels={STEP_LABELS} />
-        </View>
-      )}
-      {renderStep()}
+      <View style={styles.progressContainer}>
+        <ProgressIndicator currentStep={currentPhaseNumber} totalSteps={PHASE_ORDER.length} labels={PHASE_LABELS} />
+      </View>
+      {renderPhase()}
     </SafeAreaView>
   );
 };

@@ -1,12 +1,17 @@
-import React, { lazy, Suspense } from 'react';
+import React, { lazy, Suspense, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
 import { MaterialIcons } from '@expo/vector-icons';
 import type { MoreStackParamList, MoreStackScreenProps } from './types';
-import { lightColors, spacing, typography, borderRadius, elevation } from '../utils/theme';
-import { canAccessMoreMenuItem } from '../utils/roleAccess';
+import { spacing, typography, borderRadius, elevation } from '../utils/theme';
 import type { UserRole } from '../repositories/UserRepository';
+import { composeMoreMenu } from '../services/navigation/MoreMenuComposer';
+import { getPlatformCapabilities } from '../utils/platformCapabilities';
+import { useEcommerceSettings } from '../hooks/useEcommerceSettings';
+import { setupProgressService } from '../services/setup/SetupProgressService';
+import { useTheme } from '../contexts/ThemeProvider';
+import type { ECommercePlatform } from '../utils/platforms';
 
 const SettingsScreen = lazy(() => import('../screens/SettingsScreen'));
 const RefundScreen = lazy(() => import('../screens/RefundScreen'));
@@ -16,12 +21,16 @@ const UsersScreen = lazy(() => import('../screens/UsersScreen'));
 const OrderHistoryScreen = lazy(() => import('../screens/OrderHistoryScreen'));
 const SyncQueueScreen = lazy(() => import('../screens/SyncQueueScreen'));
 const ReportingScreen = lazy(() => import('../screens/ReportingScreen'));
+const ThemeSettingsTab = lazy(() => import('../screens/settings/ThemeSettingsTab'));
 
-const LazyFallback = () => (
-  <View style={styles.fallback}>
-    <ActivityIndicator size="large" color={lightColors.primary} />
-  </View>
-);
+const LazyFallback = () => {
+  const { colors } = useTheme();
+  return (
+    <View style={styles.fallback}>
+      <ActivityIndicator size="large" color={colors.primary} />
+    </View>
+  );
+};
 
 const Stack = createNativeStackNavigator<MoreStackParamList>();
 
@@ -31,94 +40,109 @@ interface MoreMenuScreenProps {
 }
 
 /**
- * More Menu Screen - Shows list of additional options
+ * More Menu Screen - Shows list of additional options.
+ * Items are composed dynamically based on user role + platform capabilities.
  */
 const MoreMenuScreen: React.FC<MoreMenuScreenProps> = ({ userRole, onLogout }) => {
   const navigation = useNavigation<MoreStackScreenProps<'MoreMenu'>['navigation']>();
+  const { ecommerceSettings } = useEcommerceSettings();
+  const { colors, preset } = useTheme();
 
-  const allMenuItems = [
-    {
-      key: 'OrderHistory' as const,
-      icon: 'receipt-long' as const,
-      label: 'Order History',
-      onPress: () => navigation.navigate('OrderHistory'),
-      color: lightColors.info,
-    },
-    {
-      key: 'Settings' as const,
-      icon: 'settings' as const,
-      label: 'Settings',
-      onPress: () => navigation.navigate('Settings'),
-      color: lightColors.primary,
-    },
-    {
-      key: 'Users' as const,
-      icon: 'people' as const,
-      label: 'User Management',
-      onPress: () => navigation.navigate('Users'),
-      color: lightColors.secondary,
-    },
-    {
-      key: 'Refund' as const,
-      icon: 'receipt-long' as const,
-      label: 'Refund',
-      onPress: () => navigation.navigate('Refund'),
-      color: lightColors.warning,
-    },
-    {
-      key: 'Printer' as const,
-      icon: 'print' as const,
-      label: 'Printer',
-      onPress: () => navigation.navigate('Printer'),
-      color: lightColors.info,
-    },
-    {
-      key: 'PaymentTerminal' as const,
-      icon: 'payment' as const,
-      label: 'Payment Terminal',
-      onPress: () => navigation.navigate('PaymentTerminal', {}),
-      color: lightColors.success,
-    },
-    {
-      key: 'SyncQueue' as const,
-      icon: 'sync' as const,
-      label: 'Sync Queue',
-      onPress: () => navigation.navigate('SyncQueue'),
-      color: lightColors.info,
-    },
-    {
-      key: 'Reports' as const,
-      icon: 'bar-chart' as const,
-      label: 'Reports',
-      onPress: () => navigation.navigate('Reports'),
-      color: lightColors.secondary,
-    },
-  ];
+  const platform = (ecommerceSettings.platform ?? 'offline') as ECommercePlatform;
+  const capabilities = useMemo(() => getPlatformCapabilities(platform), [platform]);
+  const hasDeferredSetup = setupProgressService.hasDeferredSetup();
 
-  const menuItems = [
-    ...allMenuItems.filter(item => canAccessMoreMenuItem(userRole, item.key)),
-    {
-      key: 'Logout' as const,
-      icon: 'logout' as const,
-      label: 'Logout',
-      onPress: onLogout,
-      color: lightColors.error,
-    },
-  ];
+  const composedItems = useMemo(() => composeMoreMenu({ userRole, platform, capabilities }), [userRole, platform, capabilities]);
+
+  const handleNavigate = (route: keyof MoreStackParamList) => {
+    if (route === 'PaymentTerminal') {
+      navigation.navigate('PaymentTerminal', {});
+    } else {
+      navigation.navigate(route as Exclude<keyof MoreStackParamList, 'PaymentTerminal' | 'MoreMenu'>);
+    }
+  };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>More Options</Text>
-      <View style={styles.menuList}>
-        {menuItems.map((item, index) => (
-          <TouchableOpacity key={index} style={styles.menuItem} onPress={item.onPress}>
-            <View style={[styles.iconContainer, { backgroundColor: item.color + '20' }]}>
-              <MaterialIcons name={item.icon} size={24} color={item.color} />
-            </View>
-            <Text style={styles.menuLabel}>{item.label}</Text>
-            <MaterialIcons name="chevron-right" size={24} color={lightColors.textSecondary} />
-          </TouchableOpacity>
-        ))}
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <Text style={[styles.title, { color: colors.textPrimary }]}>More Options</Text>
+
+      {/* Deferred setup reminder */}
+      {hasDeferredSetup && (
+        <TouchableOpacity
+          style={[styles.setupBanner, { backgroundColor: colors.warning + '18', borderColor: colors.warning + '40' }]}
+          onPress={() => navigation.navigate('Settings')}
+        >
+          <MaterialIcons name="build" size={20} color={colors.warning} />
+          <Text style={[styles.setupBannerText, { color: colors.textPrimary }]}>Finish setup — some features need configuration</Text>
+          <MaterialIcons name="chevron-right" size={20} color={colors.warning} />
+        </TouchableOpacity>
+      )}
+
+      {/* Active theme indicator */}
+      <TouchableOpacity
+        style={[styles.themeBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}
+        onPress={() => navigation.navigate('Theme')}
+        accessibilityLabel={`Current theme: ${preset.name}. Tap to change.`}
+      >
+        <View style={styles.themeSwatches}>
+          {preset.swatch.map((color, i) => (
+            <View key={i} style={[styles.themeSwatch, { backgroundColor: color, borderColor: colors.border }]} />
+          ))}
+        </View>
+        <Text style={[styles.themeBannerText, { color: colors.textSecondary }]}>
+          Theme: <Text style={[styles.themeBannerName, { color: colors.textPrimary }]}>{preset.name}</Text>
+        </Text>
+        <MaterialIcons name="palette" size={18} color={colors.primary} />
+      </TouchableOpacity>
+
+      <View style={[styles.menuList, { backgroundColor: colors.surface }]}>
+        {composedItems.map((item, index) => {
+          const isDisabled = item.status === 'disabled';
+          return (
+            <TouchableOpacity
+              key={item.key}
+              style={[
+                styles.menuItem,
+                { borderBottomColor: colors.border },
+                index === composedItems.length - 1 && styles.menuItemLast,
+                isDisabled && styles.menuItemDisabled,
+              ]}
+              onPress={() => !isDisabled && handleNavigate(item.route)}
+              disabled={isDisabled}
+              accessibilityState={{ disabled: isDisabled }}
+            >
+              <View style={[styles.iconContainer, { backgroundColor: item.color + '20' }]}>
+                <MaterialIcons
+                  name={item.icon as React.ComponentProps<typeof MaterialIcons>['name']}
+                  size={24}
+                  color={isDisabled ? colors.textSecondary : item.color}
+                />
+              </View>
+              <View style={styles.menuLabelContainer}>
+                <Text style={[styles.menuLabel, { color: colors.textPrimary }, isDisabled && { color: colors.textSecondary }]}>
+                  {item.label}
+                </Text>
+                {isDisabled && item.reason ? (
+                  <Text style={[styles.menuSubtitle, { color: colors.textSecondary }]} numberOfLines={1}>
+                    {item.reason}
+                  </Text>
+                ) : null}
+              </View>
+              <MaterialIcons name={isDisabled ? 'block' : 'chevron-right'} size={20} color={colors.textSecondary} />
+            </TouchableOpacity>
+          );
+        })}
+
+        {/* Logout is always last and role-independent */}
+        <TouchableOpacity style={[styles.menuItem, styles.menuItemLast, { borderBottomColor: colors.border }]} onPress={onLogout}>
+          <View style={[styles.iconContainer, { backgroundColor: colors.error + '20' }]}>
+            <MaterialIcons name="logout" size={24} color={colors.error} />
+          </View>
+          <View style={styles.menuLabelContainer}>
+            <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Logout</Text>
+          </View>
+          <MaterialIcons name="chevron-right" size={20} color={colors.textSecondary} />
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -134,13 +158,14 @@ interface MoreNavigatorProps {
  * Contains Order History, Settings, Returns, Printer, and PaymentTerminal screens
  */
 export const MoreNavigator: React.FC<MoreNavigatorProps> = ({ userRole, onLogout }) => {
+  const { colors } = useTheme();
   return (
     <Stack.Navigator
       id="MoreStack"
       screenOptions={{
         headerShown: true,
-        headerStyle: { backgroundColor: lightColors.surface },
-        headerTintColor: lightColors.textPrimary,
+        headerStyle: { backgroundColor: colors.surface },
+        headerTintColor: colors.textPrimary,
         headerTitleStyle: { fontWeight: '600' },
       }}
     >
@@ -203,6 +228,13 @@ export const MoreNavigator: React.FC<MoreNavigatorProps> = ({ userRole, onLogout
           </Suspense>
         )}
       </Stack.Screen>
+      <Stack.Screen name="Theme" options={{ title: 'Theme' }}>
+        {() => (
+          <Suspense fallback={<LazyFallback />}>
+            <ThemeSettingsTab />
+          </Suspense>
+        )}
+      </Stack.Screen>
     </Stack.Navigator>
   );
 };
@@ -210,18 +242,57 @@ export const MoreNavigator: React.FC<MoreNavigatorProps> = ({ userRole, onLogout
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: lightColors.background,
     padding: spacing.md,
   },
   title: {
     fontSize: typography.fontSize.xl,
     fontWeight: '700',
-    color: lightColors.textPrimary,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
     marginTop: spacing.md,
   },
+  setupBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+  },
+  setupBannerText: {
+    flex: 1,
+    fontSize: typography.fontSize.sm,
+    marginHorizontal: spacing.sm,
+    fontWeight: '500',
+  },
+  themeBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: borderRadius.md,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    ...elevation.none,
+  },
+  themeSwatches: {
+    flexDirection: 'row',
+    borderRadius: borderRadius.sm,
+    overflow: 'hidden',
+    marginRight: spacing.sm,
+    width: 36,
+    height: 20,
+  },
+  themeSwatch: {
+    flex: 1,
+    borderWidth: 0,
+  },
+  themeBannerText: {
+    flex: 1,
+    fontSize: typography.fontSize.sm,
+  },
+  themeBannerName: {
+    fontWeight: '600',
+  },
   menuList: {
-    backgroundColor: lightColors.surface,
     borderRadius: borderRadius.lg,
     ...elevation.low,
   },
@@ -230,7 +301,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: lightColors.border,
+  },
+  menuItemLast: {
+    borderBottomWidth: 0,
+  },
+  menuItemDisabled: {
+    opacity: 0.6,
   },
   iconContainer: {
     width: 40,
@@ -240,11 +316,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: spacing.md,
   },
-  menuLabel: {
+  menuLabelContainer: {
     flex: 1,
+  },
+  menuLabel: {
     fontSize: typography.fontSize.md,
     fontWeight: '500',
-    color: lightColors.textPrimary,
+  },
+  menuSubtitle: {
+    fontSize: typography.fontSize.xs,
+    marginTop: 2,
   },
   fallback: {
     flex: 1,

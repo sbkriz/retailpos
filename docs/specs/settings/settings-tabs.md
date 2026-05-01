@@ -3,7 +3,7 @@
 > **System**: RetailPOS – Settings Tab Content
 > **Actor**: Manager, Admin
 > **Date**: 2026-04-13
-> **Source**: `screens/settings/GenericSettingsTab.tsx`, `screens/settings/POSConfigSettingsTab.tsx`, `screens/settings/AuthMethodSettingsTab.tsx`, `screens/settings/PaymentSettingsTab.tsx`, `screens/settings/EcommerceSettingsTab.tsx`, `screens/settings/OfflineManagementTab.tsx`, `screens/settings/LocalApiSettingsTab.tsx`, `screens/settings/PrinterSettingsTab.tsx`, `screens/settings/ScannerSettingsTab.tsx`, `screens/settings/ReceiptSettingsTab.tsx`
+> **Source**: `screens/settings/GenericSettingsTab.tsx`, `screens/settings/POSConfigSettingsTab.tsx`, `screens/settings/AuthMethodSettingsTab.tsx`, `screens/settings/PaymentSettingsTab.tsx`, `screens/settings/EcommerceSettingsTab.tsx`, `screens/settings/OfflineManagementTab.tsx`, `screens/settings/LocalApiSettingsTab.tsx`, `screens/settings/PrinterSettingsTab.tsx`, `screens/settings/ScannerSettingsTab.tsx`, `screens/settings/ReceiptSettingsTab.tsx`, `screens/settings/ThemeSettingsTab.tsx`
 
 ---
 
@@ -117,6 +117,10 @@ Cross-references to other specs:
 
 **5.3** The platform selector shall render radio buttons for all supported platforms: Shopify, WooCommerce, BigCommerce, Magento, Sylius, Wix, PrestaShop, Squarespace, CommerceFull, Offline.
 
+**5.3.a** When a platform is selected, the system shall render a **Platform Capability Summary** panel showing feature status for at least: catalog, customers, inventory, order sync, draft orders, discounts, gift cards, and refunds.
+
+**5.3.b** The capability summary shall use the standard levels `supported`, `custom`, and `not_recommended`, and shall include short explanatory text for any feature not marked `supported`.
+
 **5.4** When the selected platform is `offline`, the system shall show an info box explaining local-only mode and a store name field. No API credential fields are shown.
 
 **5.5** When the selected platform is `wix` or `squarespace`, the Store URL field shall be hidden (these platforms use API key + site ID only).
@@ -134,6 +138,18 @@ Cross-references to other specs:
 **5.8** When the user taps Save, the system shall call `saveChanges()` and show a success alert.
 
 **5.9** The Save button shall be disabled when `!hasUnsavedChanges` or `!ecommerceSettings.enabled`.
+
+**5.10** The system shall persist the selected platform's capability profile identifier (or version marker) with the platform settings so runtime menu and settings composition can remain deterministic.
+
+**5.11** Capability summary content shall be read from the centralized capability source (`platformCapabilities` / `PlatformCapabilityService`), not hardcoded in the tab component.
+
+### Capability-driven visibility for settings tabs
+
+**5.12** `SettingsScreen` shall support capability-driven tab visibility. Core tabs (`generic`, `pos`, `auth`, `payment`, `printer`, `scanner`, `ecommerce`) remain visible; advanced tabs and feature actions may be hidden or disabled based on selected platform capability.
+
+**5.13** Where a feature is `custom`, settings UI may render as disabled with a "requires adapter setup" note unless adapter readiness is true.
+
+**5.14** Where a feature is `not_recommended`, corresponding setup controls shall be hidden by default or rendered disabled with a non-actionable informational message.
 
 ---
 
@@ -223,6 +239,41 @@ Cross-references to other specs:
 
 ---
 
+## Tab 11 — Theme (`ThemeSettingsTab`)
+
+**Purpose**: Select a color theme that aligns the POS to the business's brand. The selected theme is applied immediately across the entire UI and persisted across restarts.
+
+**11.1** When `ThemeSettingsTab` mounts, the system shall read the active theme id from `ThemeProvider` via `useTheme()` and render all available presets.
+
+**11.2** The system shall render each theme as a card showing: three color swatches (primary, secondary, background), the theme name, a description, and a dark-mode indicator where applicable.
+
+**11.3** When the user taps a theme card, the system shall call `setTheme(id)` immediately — the change takes effect without a separate save button.
+
+**11.4** `setTheme(id)` shall persist the selected theme id to `keyValueRepository` under the key `'app.theme'` and update the `ThemeProvider` context so all components re-render with the new palette.
+
+**11.5** The active theme card shall render with a primary-colour border and a checkmark icon.
+
+**11.6** The `default` theme shall match the original RetailPOS color palette exactly — selecting it restores the original appearance.
+
+**11.7** Theme colors shall be derived from `utils/themes.ts`. The `ThemeColors` type is `typeof lightColors` from `utils/theme.ts` — `utils/theme.ts` remains the single source of truth for the base palette.
+
+**11.8** `ThemeSettingsTab` is a core tab — it is always visible to authorized roles and is not subject to platform capability gating.
+
+### Available Presets
+
+| Theme id  | Name    | Description                                     | Dark |
+| --------- | ------- | ----------------------------------------------- | ---- |
+| `default` | Default | Clean blue and orange — original RetailPOS look | No   |
+| `dark`    | Dark    | Easy on the eyes in low-light environments      | Yes  |
+| `ocean`   | Ocean   | Deep teal and blue — calm and professional      | No   |
+| `forest`  | Forest  | Natural greens — food and wellness businesses   | No   |
+| `sunset`  | Sunset  | Warm coral and amber — energetic and inviting   | No   |
+| `slate`   | Slate   | Neutral grey-blue — understated and corporate   | No   |
+| `rose`    | Rose    | Elegant pink and plum — boutique and beauty     | No   |
+| `amber`   | Amber   | Warm gold and brown — artisan and café          | No   |
+
+---
+
 ## Edge Cases
 
 **E.1** `POSConfigSettingsTab` — if `posConfig.values` has no values yet (first run before onboarding completes), all fields will be empty. The save validation will catch the missing store name.
@@ -239,21 +290,25 @@ Cross-references to other specs:
 
 ## Component Traceability
 
-| Tab            | Key action                                           | Source File                                  |
-| -------------- | ---------------------------------------------------- | -------------------------------------------- |
-| General        | `changeLanguage(code)`                               | `screens/settings/GenericSettingsTab.tsx`    |
-| POS Config     | `posConfig.updateAll(values)`                        | `screens/settings/POSConfigSettingsTab.tsx`  |
-| POS Config     | Tax rate validation (0–100)                          | `screens/settings/POSConfigSettingsTab.tsx`  |
-| Auth           | `authConfig.setAllowedMethods` + `setPrimaryMethod`  | `screens/settings/AuthMethodSettingsTab.tsx` |
-| Auth           | `setHardwareAvailable` on magstripe/RFID             | `screens/settings/AuthMethodSettingsTab.tsx` |
-| Payment        | `saveSettings(paymentSettings)`                      | `screens/settings/PaymentSettingsTab.tsx`    |
-| Payment        | `testConnection(provider)`                           | `screens/settings/PaymentSettingsTab.tsx`    |
-| E-commerce     | `saveChanges()` → `ServiceConfigBridge`              | `screens/settings/EcommerceSettingsTab.tsx`  |
-| E-commerce     | `testEcommerceConnection()`                          | `screens/settings/EcommerceSettingsTab.tsx`  |
-| Offline        | Sub-navigator: products / categories / users         | `screens/settings/OfflineManagementTab.tsx`  |
-| Receipt        | `receiptConfigService.updateConfig`                  | `screens/settings/ReceiptSettingsTab.tsx`    |
-| Printer        | `printerService.connectToPrinter` / `testConnection` | `screens/settings/PrinterSettingsTab.tsx`    |
-| Scanner        | `saveSettings` to `keyValueRepository`               | `screens/settings/ScannerSettingsTab.tsx`    |
-| Multi-Register | `localApiConfig.save` + `localApiServer.start/stop`  | `screens/settings/LocalApiSettingsTab.tsx`   |
-| Multi-Register | `localApiDiscovery.scanSubnet` with progress         | `screens/settings/LocalApiSettingsTab.tsx`   |
-| Multi-Register | `localApiClient.testConnection`                      | `screens/settings/LocalApiSettingsTab.tsx`   |
+| Tab            | Key action                                            | Source File                                  |
+| -------------- | ----------------------------------------------------- | -------------------------------------------- |
+| General        | `changeLanguage(code)`                                | `screens/settings/GenericSettingsTab.tsx`    |
+| POS Config     | `posConfig.updateAll(values)`                         | `screens/settings/POSConfigSettingsTab.tsx`  |
+| POS Config     | Tax rate validation (0–100)                           | `screens/settings/POSConfigSettingsTab.tsx`  |
+| Auth           | `authConfig.setAllowedMethods` + `setPrimaryMethod`   | `screens/settings/AuthMethodSettingsTab.tsx` |
+| Auth           | `setHardwareAvailable` on magstripe/RFID              | `screens/settings/AuthMethodSettingsTab.tsx` |
+| Payment        | `saveSettings(paymentSettings)`                       | `screens/settings/PaymentSettingsTab.tsx`    |
+| Payment        | `testConnection(provider)`                            | `screens/settings/PaymentSettingsTab.tsx`    |
+| E-commerce     | `saveChanges()` → `ServiceConfigBridge`               | `screens/settings/EcommerceSettingsTab.tsx`  |
+| E-commerce     | `testEcommerceConnection()`                           | `screens/settings/EcommerceSettingsTab.tsx`  |
+| E-commerce     | `CapabilitySummaryPanel` reads `platformCapabilities` | `screens/settings/EcommerceSettingsTab.tsx`  |
+| Offline        | Sub-navigator: products / categories / users          | `screens/settings/OfflineManagementTab.tsx`  |
+| Receipt        | `receiptConfigService.updateConfig`                   | `screens/settings/ReceiptSettingsTab.tsx`    |
+| Printer        | `printerService.connectToPrinter` / `testConnection`  | `screens/settings/PrinterSettingsTab.tsx`    |
+| Scanner        | `saveSettings` to `keyValueRepository`                | `screens/settings/ScannerSettingsTab.tsx`    |
+| Multi-Register | `localApiConfig.save` + `localApiServer.start/stop`   | `screens/settings/LocalApiSettingsTab.tsx`   |
+| Multi-Register | `localApiDiscovery.scanSubnet` with progress          | `screens/settings/LocalApiSettingsTab.tsx`   |
+| Multi-Register | `localApiClient.testConnection`                       | `screens/settings/LocalApiSettingsTab.tsx`   |
+| Theme          | `useTheme().setTheme(id)` → persists to `app.theme`   | `screens/settings/ThemeSettingsTab.tsx`      |
+| Theme          | `ThemeProvider` context re-renders entire UI          | `contexts/ThemeProvider.tsx`                 |
+| Theme          | Preset registry + `ThemeColors` type                  | `utils/themes.ts`                            |

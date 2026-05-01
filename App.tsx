@@ -11,6 +11,7 @@ import { AuthProvider } from './contexts/AuthProvider';
 import { OnboardingProvider } from './contexts/OnboardingProvider';
 import { DataProvider } from './contexts/DataProvider';
 import { SettingsProvider } from './contexts/SettingsProvider';
+import { ThemeProvider } from './contexts/ThemeProvider';
 import { useLogger } from './hooks/useLogger';
 import { useTranslate } from './hooks/useTranslate';
 import { lightColors } from './utils/theme';
@@ -175,7 +176,9 @@ export default function App() {
   return (
     <GestureHandlerRootView style={styles.root}>
       <I18nextProvider i18n={i18n}>
-        <AppContent />
+        <ThemeProvider>
+          <AppContent />
+        </ThemeProvider>
       </I18nextProvider>
     </GestureHandlerRootView>
   );

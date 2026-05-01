@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, TextInput } from 'react-native';
 import { useEcommerceSettings } from '../../hooks/useEcommerceSettings';
 import { lightColors, spacing, borderRadius, typography, elevation, semanticColors } from '../../utils/theme';
@@ -6,6 +6,8 @@ import { Button } from '../../components/Button';
 import { useTranslate } from '../../hooks/useTranslate';
 import { ECommercePlatform } from '../../utils/platforms';
 import { useLogger } from '../../hooks/useLogger';
+import { getPlatformCapabilities, PlatformCapabilities, CapabilityLevel, getUnavailableReason } from '../../utils/platformCapabilities';
+import { getPlatformDisplayName } from '../../utils/platforms';
 
 // Platform display names
 const PLATFORM_NAMES: Record<string, string> = {
@@ -20,6 +22,117 @@ const PLATFORM_NAMES: Record<string, string> = {
   commercefull: 'CommerceFull',
   offline: 'Offline',
 };
+
+/** Feature rows shown in the capability summary panel */
+const CAPABILITY_FEATURES: Array<{ key: keyof PlatformCapabilities; label: string }> = [
+  { key: 'catalog', label: 'Catalog & variants' },
+  { key: 'customers', label: 'Customer management' },
+  { key: 'inventory', label: 'Inventory sync' },
+  { key: 'orderSync', label: 'Order sync' },
+  { key: 'draftOrders', label: 'Draft orders / platform totals' },
+  { key: 'discounts', label: 'Discounts & coupons' },
+  { key: 'giftCards', label: 'Gift cards' },
+  { key: 'refunds', label: 'Refunds' },
+];
+
+const CAPABILITY_BADGE: Record<CapabilityLevel, { label: string; color: string; bg: string }> = {
+  supported: { label: 'Supported', color: '#2e7d32', bg: '#e8f5e9' },
+  custom: { label: 'Custom adapter', color: '#e65100', bg: '#fff3e0' },
+  not_recommended: { label: 'Not supported', color: '#b71c1c', bg: '#ffebee' },
+};
+
+interface CapabilitySummaryPanelProps {
+  platform: string;
+}
+
+/**
+ * Platform Capability Summary panel.
+ * Reads from the centralized capability matrix — no hardcoded values.
+ * Satisfies settings-tabs.md §5.3.a, §5.3.b, §5.11.
+ */
+const CapabilitySummaryPanel: React.FC<CapabilitySummaryPanelProps> = ({ platform }) => {
+  const capabilities = useMemo(() => getPlatformCapabilities(platform), [platform]);
+  const platformName = getPlatformDisplayName(platform);
+
+  return (
+    <View style={capStyles.container}>
+      <Text style={capStyles.title}>Platform capability summary</Text>
+      <Text style={capStyles.subtitle}>{platformName}</Text>
+      {CAPABILITY_FEATURES.map(({ key, label }) => {
+        const level = capabilities[key];
+        const badge = CAPABILITY_BADGE[level];
+        const reason = level !== 'supported' ? getUnavailableReason(capabilities, key, platformName) : '';
+        return (
+          <View key={key} style={capStyles.row}>
+            <Text style={capStyles.featureLabel}>{label}</Text>
+            <View style={[capStyles.badge, { backgroundColor: badge.bg }]}>
+              <Text style={[capStyles.badgeText, { color: badge.color }]}>{badge.label}</Text>
+            </View>
+            {reason ? (
+              <Text style={capStyles.reason} numberOfLines={2}>
+                {reason}
+              </Text>
+            ) : null}
+          </View>
+        );
+      })}
+    </View>
+  );
+};
+
+const capStyles = StyleSheet.create({
+  container: {
+    backgroundColor: lightColors.background,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: lightColors.border,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  title: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.semiBold as '600',
+    color: lightColors.textPrimary,
+    marginBottom: 2,
+  },
+  subtitle: {
+    fontSize: typography.fontSize.xs,
+    color: lightColors.textSecondary,
+    marginBottom: spacing.sm,
+  },
+  row: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    flexWrap: 'wrap' as const,
+    paddingVertical: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: lightColors.divider,
+  },
+  featureLabel: {
+    flex: 1,
+    fontSize: typography.fontSize.xs,
+    color: lightColors.textPrimary,
+    paddingRight: spacing.xs,
+    paddingTop: 2,
+  },
+  badge: {
+    borderRadius: borderRadius.round,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
+    alignSelf: 'flex-start' as const,
+  },
+  badgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  reason: {
+    width: '100%',
+    fontSize: 10,
+    color: lightColors.textSecondary,
+    marginTop: 2,
+    fontStyle: 'italic' as const,
+  },
+});
 
 const EcommerceSettingsTab: React.FC = () => {
   const { t } = useTranslate();
@@ -257,6 +370,9 @@ const EcommerceSettingsTab: React.FC = () => {
               ))}
             </View>
           </View>
+
+          {/* Platform Capability Summary — spec §5.3.a, §5.3.b */}
+          {ecommerceSettings.platform && <CapabilitySummaryPanel platform={ecommerceSettings.platform} />}
 
           {ecommerceSettings.platform !== 'offline' &&
             ecommerceSettings.platform !== 'wix' &&

@@ -43,6 +43,7 @@ export type MoreStackParamList = {
   OrderHistory: undefined;
   SyncQueue: undefined;
   Reports: undefined;
+  Theme: undefined;
 };
 
 /**

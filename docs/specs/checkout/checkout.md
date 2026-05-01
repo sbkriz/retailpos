@@ -13,14 +13,23 @@ Checkout is the process of converting a basket into a persisted `LocalOrder` and
 
 Orders are persisted to SQLite in two tables: `orders` (header) and `order_items` (line items). Each `order_item` carries a `tax_rate` snapshot — for offline orders this is the `taxRate` carried on the `BasketItem` at add-to-cart time; for online orders it is overwritten with the authoritative value returned by the platform draft order API.
 
-### Draft Order (Online Platforms)
+### Checkout Capability Modes (Online Platforms)
 
-For all online platforms, `startCheckout()` creates a **draft order** on the platform before persisting locally. This is the authoritative tax calculation step:
+This spec is **capability-driven** and supersedes the older universal draft-first assumption.
 
-1. The basket items are sent to the platform via `OrderServiceFactory.getService(platform).createDraftOrder()`.
-2. The platform returns a draft order with server-calculated `tax`, `subtotal`, `total`, and per-line `taxAmount` / `taxRate`.
-3. These platform values **replace** the locally-carried basket figures on the `LocalOrder` and `order_items`.
-4. The `platformOrderId` is stored on the local order for later sync.
+For online platforms, `startCheckout()` follows one of two modes:
+
+1. **Draft-capable mode** (`draftOrders === supported`)
+   - The basket items are sent to the platform via `OrderServiceFactory.getService(platform).createDraftOrder()`.
+   - The platform returns authoritative `tax`, `subtotal`, `total`, and per-line `taxAmount` / `taxRate`.
+   - Platform values replace local estimates on `LocalOrder` and `order_items`.
+   - `platformOrderId` is stored for completion/sync.
+2. **Local-authoritative mode** (`draftOrders !== supported`)
+   - No draft order is created in `startCheckout()`.
+   - Local basket totals and `BasketItem.taxRate` remain authoritative.
+   - `platformOrderId` remains `null` until background sync creates the remote order.
+
+The selected mode is controlled by platform capability profile, not by `isOnlinePlatform()` alone.
 
 ### Offline Mode
 
@@ -102,7 +111,7 @@ pending → synced
 
 **1.8** The system shall map `OrderRow` + `OrderItemRow[]` to a fully typed `LocalOrder` with `BasketItem[]` whenever an order is read back from SQLite.
 
-**1.9** For all online platforms, the system shall create a draft order on the platform at `startCheckout()` time via `OrderServiceFactory.getService(platform).createDraftOrder()` before persisting locally, so that platform-calculated tax, discounts, and totals are captured in the local order record.
+**1.9** For online platforms where `draftOrders === supported`, the system shall create a draft order at `startCheckout()` via `OrderServiceFactory.getService(platform).createDraftOrder()` before persisting locally.
 
 **1.10** A draft order (`status: 'draft'`) represents a basket that has been sent to the platform for tax calculation but not yet paid. The cashier may return to the basket from a draft order — this deletes the platform draft and the local draft row, leaving the basket intact for editing.
 
@@ -118,15 +127,15 @@ pending → synced
 
 **2.1.1** When `startCheckout(platform?, cashierId?, cashierName?)` is called, the system shall call `basketService.getBasket()` and throw `'Cannot checkout with empty basket'` if `basket.items` is empty.
 
-**2.1.2** When the basket is non-empty and `platform` is an online platform, the system shall call `OrderServiceFactory.getService(platform).createDraftOrder(order)` to create a draft order on the platform before persisting locally.
+**2.1.2** When the basket is non-empty, `platform` is online, and `draftOrders === supported` for that platform, the system shall call `OrderServiceFactory.getService(platform).createDraftOrder(order)` before persisting locally.
 
-**2.1.3** When the platform draft order call succeeds, the system shall use the platform-returned `subtotal`, `tax`, `total`, and per-line `taxAmount` / `taxRate` values to build the `LocalOrder` and `order_items`, replacing the locally-resolved basket totals.
+**2.1.3** When the platform draft order call succeeds, the system shall use platform-returned `subtotal`, `tax`, `total`, and per-line `taxAmount` / `taxRate` values to build `LocalOrder` and `order_items`.
 
 **2.1.4** When the platform draft order call succeeds, the system shall store the platform's returned order ID as `platformOrderId` on the `LocalOrder`.
 
-**2.1.5** When the platform draft order call fails (network error, API error, or service not initialised), the system shall log a warning and fall back to the basket's locally-resolved totals — checkout shall not be blocked by a draft order failure.
+**2.1.5** When draft creation is attempted and fails (network error, API error, or service not initialised), the system shall log a warning and fall back to locally-resolved basket totals — checkout shall not be blocked.
 
-**2.1.6** When `platform` is `OFFLINE` or `undefined`, the system shall skip the draft order step entirely and use the basket's locally-resolved totals and `BasketItem.taxRate` values directly.
+**2.1.6** When `platform` is `OFFLINE`, `undefined`, or online with `draftOrders !== supported`, the system shall skip draft creation and use locally-resolved basket totals and `BasketItem.taxRate` values.
 
 **2.1.7** When the order data is finalised (from platform or local), the system shall generate a UUID for the local order, set `status: 'draft'` for online orders (platform draft created) or `status: 'pending'` for offline/fallback orders, and `syncStatus: 'pending'`, and snapshot all basket fields (`discountAmount`, `discountCode`, `customerEmail`, `customerName`, `note`).
 

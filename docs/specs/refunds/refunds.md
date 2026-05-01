@@ -27,9 +27,32 @@ Platform refund services (`ShopifyRefundService`, `WooCommerceRefundService`, et
 | `payment_terminal` | Refund via card terminal transaction ID              | `processPaymentRefund(transactionId, amount, reason?)` |
 | Return-triggered   | Monetary refund issued as part of a return           | `processReturn({ issueRefund: true })`                 |
 
-### Supported Platforms
+### Refund Capability Matrix (Platform)
 
-Shopify, WooCommerce, Magento, BigCommerce, Sylius, Wix, PrestaShop, Squarespace, CommerceFull, Offline
+Legend:
+
+- `S` = Supported (platform-native)
+- `C` = Custom adapter required (tenant/project-specific)
+- `NR` = Not recommended for parity promise
+
+| Platform     | Refund capability | Suggested mode      |
+| ------------ | ----------------- | ------------------- |
+| Shopify      | S                 | `platform_native`   |
+| WooCommerce  | C                 | `custom_adapter`    |
+| Magento      | S                 | `platform_native`   |
+| BigCommerce  | S                 | `platform_native`   |
+| Sylius       | C                 | `custom_adapter`    |
+| Wix          | S                 | `platform_native`   |
+| PrestaShop   | C                 | `custom_adapter`    |
+| Squarespace  | NR                | `local_record_only` |
+| CommerceFull | S                 | `platform_native`   |
+| Offline      | S                 | `local_record_only` |
+
+`refundMode` semantics:
+
+- `platform_native`: call platform refund API directly
+- `custom_adapter`: call platform-specific adapter; capability must be explicitly enabled and ready
+- `local_record_only`: do not call remote refund API; allow local return flow and local refund records only
 
 ### Key Data Shapes
 

@@ -1,4 +1,4 @@
-import React, { FC, useState } from 'react';
+import React, { FC, useState, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform, Modal } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { lightColors, spacing, typography, borderRadius, elevation, semanticColors } from '../utils/theme';
@@ -17,62 +17,16 @@ import POSConfigSettingsTab from './settings/POSConfigSettingsTab';
 import AuthMethodSettingsTab from './settings/AuthMethodSettingsTab';
 import InstoreApiSettingsTab from './settings/InstoreApiSettingsTab';
 import KdsSettingsTab from './settings/KdsSettingsTab';
+import ThemeSettingsTab from './settings/ThemeSettingsTab';
+import { composeSettingsTabs } from '../services/navigation/SettingsTabComposer';
+import { getPlatformCapabilities } from '../utils/platformCapabilities';
+import { useEcommerceSettings } from '../hooks/useEcommerceSettings';
+import { useTheme } from '../contexts/ThemeProvider';
+import type { ECommercePlatform } from '../utils/platforms';
+import type { SettingsTabKey } from '../services/navigation/SettingsTabComposer';
 
-type SettingsTab =
-  | 'generic'
-  | 'pos'
-  | 'auth'
-  | 'payment'
-  | 'printer'
-  | 'scanner'
-  | 'ecommerce'
-  | 'offline'
-  | 'receipt'
-  | 'multiregister'
-  | 'kds';
+type SettingsTab = SettingsTabKey;
 type SaveStatus = 'unsaved' | 'saving' | 'saved';
-
-const TAB_ICONS: Record<SettingsTab, string> = {
-  generic: '⚙️',
-  pos: '🏪',
-  auth: '🔐',
-  payment: '💳',
-  printer: '🖨',
-  scanner: '📷',
-  ecommerce: '🛒',
-  offline: '📴',
-  receipt: '🧾',
-  multiregister: '🔗',
-  kds: '🍽️',
-};
-
-const TAB_TRANSLATION_KEYS: Record<SettingsTab, string> = {
-  generic: 'settings.tabs.general',
-  pos: 'settings.tabs.posConfig',
-  auth: 'settings.tabs.authentication',
-  payment: 'settings.tabs.payment',
-  printer: 'settings.tabs.printer',
-  scanner: 'settings.tabs.scanner',
-  ecommerce: 'settings.tabs.ecommerce',
-  offline: 'settings.tabs.offline',
-  receipt: 'settings.tabs.receipt',
-  multiregister: 'settings.tabs.multiRegister',
-  kds: 'settings.tabs.kds',
-};
-
-const TAB_ORDER: SettingsTab[] = [
-  'generic',
-  'pos',
-  'auth',
-  'payment',
-  'printer',
-  'scanner',
-  'ecommerce',
-  'offline',
-  'receipt',
-  'multiregister',
-  'kds',
-];
 
 interface SettingsScreenProps {
   onGoBack?: () => void;
@@ -83,16 +37,25 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ onGoBack }) => {
   const { isMobile, isDesktop } = useResponsive();
   const { t } = useTranslate();
   const { user } = useAuthContext();
+  const { ecommerceSettings } = useEcommerceSettings();
+  const { colors } = useTheme();
 
   const [activeTab, setActiveTab] = useState<SettingsTab>('generic');
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
   const [dropdownVisible, setDropdownVisible] = useState(false);
 
+  // Compose tabs dynamically based on selected platform capabilities
+  const platform = (ecommerceSettings.platform ?? 'offline') as ECommercePlatform;
+  const capabilities = useMemo(() => getPlatformCapabilities(platform), [platform]);
+  const composedTabs = useMemo(() => composeSettingsTabs({ platform, capabilities }), [platform, capabilities]);
+
   // Settings are restricted to admin and manager roles
   if (user?.role === 'cashier') {
     return (
-      <View style={styles.accessDenied}>
-        <Text style={styles.accessDeniedText}>Access denied. Settings require manager or admin role.</Text>
+      <View style={[styles.accessDenied, { backgroundColor: colors.background }]}>
+        <Text style={[styles.accessDeniedText, { color: colors.textSecondary }]}>
+          Access denied. Settings require manager or admin role.
+        </Text>
       </View>
     );
   }
@@ -105,8 +68,9 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ onGoBack }) => {
     }
   };
 
-  const activeTabLabel = t(TAB_TRANSLATION_KEYS[activeTab]);
-  const activeTabIcon = TAB_ICONS[activeTab];
+  const activeTabDef = composedTabs.find(tab => tab.key === activeTab) ?? composedTabs[0];
+  const activeTabLabel = activeTabDef ? t(activeTabDef.translationKey) : '';
+  const activeTabIcon = activeTabDef?.icon ?? '⚙️';
 
   const handleSelectTab = (tabId: SettingsTab) => {
     setActiveTab(tabId);
@@ -137,41 +101,66 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ onGoBack }) => {
         return <InstoreApiSettingsTab />;
       case 'kds':
         return <KdsSettingsTab />;
+      case 'theme':
+        return <ThemeSettingsTab />;
     }
   };
 
   // ===== DESKTOP: Side navigation =====
   if (isDesktop) {
     return (
-      <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={100}>
-        <View style={styles.header}>
+      <KeyboardAvoidingView
+        style={[styles.container, { backgroundColor: colors.background }]}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={100}
+      >
+        <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
           {onGoBack && (
             <TouchableOpacity style={styles.backButton} onPress={handleGoBack}>
-              <Text style={styles.backButtonText}>{t('settings.backButton')}</Text>
+              <Text style={[styles.backButtonText, { color: colors.primary }]}>{t('settings.backButton')}</Text>
             </TouchableOpacity>
           )}
-          <Text style={styles.headerTitle}>{t('settings.title')}</Text>
+          <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{t('settings.title')}</Text>
         </View>
 
         <View style={styles.desktopLayout}>
           {/* Left nav */}
-          <View style={styles.sideNav}>
-            {TAB_ORDER.map(tabId => (
+          <View style={[styles.sideNav, { backgroundColor: colors.surface, borderRightColor: colors.border }]}>
+            {composedTabs.map(tab => (
               <TouchableOpacity
-                key={tabId}
-                style={[styles.sideNavItem, activeTab === tabId && styles.sideNavItemActive]}
-                onPress={() => setActiveTab(tabId)}
+                key={tab.key}
+                style={[
+                  styles.sideNavItem,
+                  activeTab === tab.key && [styles.sideNavItemActive, { backgroundColor: colors.hover, borderLeftColor: colors.primary }],
+                ]}
+                onPress={() => tab.status === 'enabled' && setActiveTab(tab.key)}
+                disabled={tab.status === 'disabled'}
+                accessibilityState={{ disabled: tab.status === 'disabled' }}
               >
-                <Text style={styles.sideNavIcon}>{TAB_ICONS[tabId]}</Text>
-                <Text style={[styles.sideNavLabel, activeTab === tabId && styles.sideNavLabelActive]}>
-                  {t(TAB_TRANSLATION_KEYS[tabId])}
-                </Text>
+                <Text style={styles.sideNavIcon}>{tab.icon}</Text>
+                <View style={styles.sideNavLabelWrapper}>
+                  <Text
+                    style={[
+                      styles.sideNavLabel,
+                      { color: colors.textSecondary },
+                      activeTab === tab.key && [styles.sideNavLabelActive, { color: colors.primary }],
+                      tab.status === 'disabled' && styles.sideNavLabelDisabled,
+                    ]}
+                  >
+                    {t(tab.translationKey)}
+                  </Text>
+                  {tab.status === 'disabled' && tab.reason ? (
+                    <Text style={[styles.sideNavSubtitle, { color: colors.textSecondary }]} numberOfLines={1}>
+                      {tab.reason}
+                    </Text>
+                  ) : null}
+                </View>
               </TouchableOpacity>
             ))}
           </View>
 
           {/* Content */}
-          <ScrollView style={styles.desktopContent}>{renderTabContent()}</ScrollView>
+          <ScrollView style={[styles.desktopContent, { backgroundColor: colors.background }]}>{renderTabContent()}</ScrollView>
         </View>
 
         <FloatingSaveBar
@@ -186,39 +175,64 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ onGoBack }) => {
 
   // ===== MOBILE / TABLET =====
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={100}>
-      <View style={styles.header}>
+    <KeyboardAvoidingView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={100}
+    >
+      <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
         {onGoBack && (
           <TouchableOpacity style={styles.backButton} onPress={handleGoBack}>
-            <Text style={styles.backButtonText}>{t('settings.backButton')}</Text>
+            <Text style={[styles.backButtonText, { color: colors.primary }]}>{t('settings.backButton')}</Text>
           </TouchableOpacity>
         )}
-        <Text style={styles.headerTitle}>{t('settings.title')}</Text>
+        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{t('settings.title')}</Text>
       </View>
 
       {/* Mobile: Dropdown selector instead of cramped tab bar */}
       {isMobile ? (
         <View>
-          <TouchableOpacity style={styles.dropdown} onPress={() => setDropdownVisible(true)}>
+          <TouchableOpacity
+            style={[styles.dropdown, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}
+            onPress={() => setDropdownVisible(true)}
+          >
             <Text style={styles.dropdownIcon}>{activeTabIcon}</Text>
-            <Text style={styles.dropdownLabel}>{activeTabLabel}</Text>
-            <Text style={styles.dropdownArrow}>▾</Text>
+            <Text style={[styles.dropdownLabel, { color: colors.textPrimary }]}>{activeTabLabel}</Text>
+            <Text style={[styles.dropdownArrow, { color: colors.textSecondary }]}>▾</Text>
           </TouchableOpacity>
 
           <Modal visible={dropdownVisible} transparent animationType="fade" onRequestClose={() => setDropdownVisible(false)}>
             <TouchableOpacity style={styles.dropdownOverlay} activeOpacity={1} onPress={() => setDropdownVisible(false)}>
-              <View style={styles.dropdownMenu}>
-                {TAB_ORDER.map(tabId => (
+              <View style={[styles.dropdownMenu, { backgroundColor: colors.surface }]}>
+                {composedTabs.map(tab => (
                   <TouchableOpacity
-                    key={tabId}
-                    style={[styles.dropdownItem, activeTab === tabId && styles.dropdownItemActive]}
-                    onPress={() => handleSelectTab(tabId)}
+                    key={tab.key}
+                    style={[
+                      styles.dropdownItem,
+                      { borderBottomColor: colors.divider },
+                      activeTab === tab.key && [styles.dropdownItemActive, { backgroundColor: colors.hover }],
+                    ]}
+                    onPress={() => tab.status === 'enabled' && handleSelectTab(tab.key)}
+                    disabled={tab.status === 'disabled'}
                   >
-                    <Text style={styles.dropdownItemIcon}>{TAB_ICONS[tabId]}</Text>
-                    <Text style={[styles.dropdownItemText, activeTab === tabId && styles.dropdownItemTextActive]}>
-                      {t(TAB_TRANSLATION_KEYS[tabId])}
-                    </Text>
-                    {activeTab === tabId && <Text style={styles.dropdownCheck}>✓</Text>}
+                    <Text style={styles.dropdownItemIcon}>{tab.icon}</Text>
+                    <View style={styles.dropdownItemLabelWrapper}>
+                      <Text
+                        style={[
+                          styles.dropdownItemText,
+                          { color: colors.textPrimary },
+                          activeTab === tab.key && [styles.dropdownItemTextActive, { color: colors.primary }],
+                        ]}
+                      >
+                        {t(tab.translationKey)}
+                      </Text>
+                      {tab.status === 'disabled' && tab.reason ? (
+                        <Text style={[styles.sideNavSubtitle, { color: colors.textSecondary }]} numberOfLines={1}>
+                          {tab.reason}
+                        </Text>
+                      ) : null}
+                    </View>
+                    {activeTab === tab.key && <Text style={[styles.dropdownCheck, { color: colors.primary }]}>✓</Text>}
                   </TouchableOpacity>
                 ))}
               </View>
@@ -230,18 +244,35 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ onGoBack }) => {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          style={styles.tabBarScroll}
+          style={[styles.tabBarScroll, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}
           contentContainerStyle={styles.tabBarContent}
         >
-          {TAB_ORDER.map(tabId => (
-            <TouchableOpacity key={tabId} style={[styles.tab, activeTab === tabId && styles.activeTab]} onPress={() => setActiveTab(tabId)}>
-              <Text style={[styles.tabText, activeTab === tabId && styles.activeTabText]}>{t(TAB_TRANSLATION_KEYS[tabId])}</Text>
+          {composedTabs.map(tab => (
+            <TouchableOpacity
+              key={tab.key}
+              style={[
+                styles.tab,
+                activeTab === tab.key && [styles.activeTab, { borderBottomColor: colors.primary }],
+                tab.status === 'disabled' && styles.tabDisabled,
+              ]}
+              onPress={() => tab.status === 'enabled' && setActiveTab(tab.key)}
+              disabled={tab.status === 'disabled'}
+            >
+              <Text
+                style={[
+                  styles.tabText,
+                  { color: colors.textSecondary },
+                  activeTab === tab.key && [styles.activeTabText, { color: colors.primary }],
+                ]}
+              >
+                {t(tab.translationKey)}
+              </Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
       )}
 
-      <ScrollView style={styles.content}>{renderTabContent()}</ScrollView>
+      <ScrollView style={[styles.content, { backgroundColor: colors.background }]}>{renderTabContent()}</ScrollView>
 
       <FloatingSaveBar
         visible={saveStatus === 'unsaved'}
@@ -314,6 +345,9 @@ const styles = StyleSheet.create({
     width: 24,
     textAlign: 'center',
   },
+  sideNavLabelWrapper: {
+    flex: 1,
+  },
   sideNavLabel: {
     fontSize: typography.fontSize.md,
     color: lightColors.textSecondary,
@@ -321,6 +355,15 @@ const styles = StyleSheet.create({
   sideNavLabelActive: {
     color: lightColors.primary,
     fontWeight: '600',
+  },
+  sideNavLabelDisabled: {
+    color: lightColors.textSecondary,
+    opacity: 0.5,
+  },
+  sideNavSubtitle: {
+    fontSize: typography.fontSize.xs,
+    color: lightColors.textSecondary,
+    marginTop: 2,
   },
   desktopContent: {
     flex: 1,
@@ -378,6 +421,9 @@ const styles = StyleSheet.create({
     width: 24,
     textAlign: 'center',
   },
+  dropdownItemLabelWrapper: {
+    flex: 1,
+  },
   dropdownItemText: {
     flex: 1,
     fontSize: typography.fontSize.md,
@@ -411,6 +457,9 @@ const styles = StyleSheet.create({
   },
   activeTab: {
     borderBottomColor: lightColors.primary,
+  },
+  tabDisabled: {
+    opacity: 0.4,
   },
   tabText: {
     fontSize: typography.fontSize.md,

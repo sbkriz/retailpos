@@ -9,7 +9,16 @@
 
 ## Context
 
-After a payment is completed locally, the order must be synchronised to the e-commerce platform. For online platforms where a draft order was created at checkout time (`platformOrderId` is set), sync means marking that draft as paid via `orderService.completeOrder()`. For orders without a `platformOrderId` (offline fallback or draft creation failed), sync means creating a new order on the platform via `orderService.createOrder()`.
+After a payment is completed locally, the order must be synchronised to the e-commerce platform. Sync behavior is capability-driven:
+
+- **Draft-capable platforms** (`draftOrders === supported`):
+  - If `platformOrderId` exists, sync completes the existing draft via `orderService.completeOrder()`.
+- **Non-draft platforms** (`draftOrders !== supported`):
+  - Sync creates a new order via `orderService.createOrder()`.
+- **Offline platform**:
+  - No platform API call; order is marked synced locally.
+
+This replaces the older interpretation that draft completion is the typical default for all online platforms.
 
 `OrderSyncService` owns the sync lifecycle. It is called immediately after payment by `CheckoutService.completePayment()` (best-effort, non-blocking) and is also available for manual retry via `SyncQueueScreen`. `useSyncQueue` provides the hook layer for the screen. Retry logic uses an in-memory counter with exponential-backoff classification — network and 5xx errors are retryable; 4xx errors are not.
 

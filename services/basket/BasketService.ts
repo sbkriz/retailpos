@@ -4,6 +4,7 @@ import { BasketRepository, BasketRow } from '../../repositories/BasketRepository
 import { LoggerInterface } from '../logger/LoggerInterface';
 import { multiplyMoney, sumMoney, roundMoney } from '../../utils/money';
 import { generateUUID } from '../../utils/uuid';
+import { localCustomerService } from '../customer/LocalCustomerService';
 
 /**
  * Basket service — cart CRUD only.
@@ -87,6 +88,12 @@ export class BasketService implements BasketServiceInterface {
     basket.customerName = name;
     basket.updatedAt = new Date();
     await this.updateBasketInDb(basket);
+
+    // Upsert local customer profile (non-blocking)
+    if (email) {
+      localCustomerService.upsert({ email, name }).catch(() => {});
+    }
+
     return basket;
   }
 

@@ -17,7 +17,7 @@
  *  - On cash tender back button: setStep('method'), no API call
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { ECommercePlatform } from '../utils/platforms';
 import { useBasketContext } from '../contexts/BasketProvider';
 import { usePayment } from './usePayment';
@@ -26,6 +26,8 @@ import { PrinterServiceFactory } from '../services/printer/PrinterServiceFactory
 import { customerDisplayServiceFactory } from '../services/display/CustomerDisplayServiceFactory';
 import { keyValueRepository } from '../repositories/KeyValueRepository';
 import { PaymentSelection } from '../components/CheckoutModal';
+import { PaymentLine } from '../services/order/order';
+import { generateUUID } from '../utils/uuid';
 
 interface UseCheckoutOptions {
   platform?: ECommercePlatform;
@@ -52,6 +54,10 @@ export function useCheckout({ platform, onSuccess }: UseCheckoutOptions = {}) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [checkoutVisible, setCheckoutVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // ── Split tender state ───────────────────────────────────────────────
+  const [splitMode, setSplitMode] = useState(false);
+  const [paymentLines, setPaymentLines] = useState<PaymentLine[]>([]);
 
   // ── Start checkout — creates platform draft ──────────────────────────
   const handleStartCheckout = useCallback(async () => {
@@ -89,6 +95,44 @@ export function useCheckout({ platform, onSuccess }: UseCheckoutOptions = {}) {
       setError((err as Error).message);
     }
   }, [currentOrder, cancelDraftOrder, cancelOrder]);
+
+  // ── Split tender helpers ─────────────────────────────────────────────
+  const addPaymentLine = useCallback((line: Omit<PaymentLine, 'id' | 'processedAt'>) => {
+    const full: PaymentLine = { ...line, id: generateUUID(), processedAt: Date.now() };
+    setPaymentLines(prev => [...prev, full]);
+  }, []);
+
+  const removePaymentLine = useCallback((lineId: string) => {
+    setPaymentLines(prev => prev.filter(p => p.id !== lineId));
+  }, []);
+
+  const remainingDue = useMemo(() => {
+    const collected = paymentLines.filter(p => p.amount > 0).reduce((s, p) => s + p.amount, 0);
+    return Math.max(0, total - collected);
+  }, [paymentLines, total]);
+
+  const handleCompleteSplit = useCallback(async () => {
+    if (!currentOrder || remainingDue > 0.01) return;
+    setIsProcessing(true);
+    setError(null);
+    try {
+      await markPaymentProcessing(currentOrder.id);
+      const primaryLine = paymentLines.find(p => p.amount > 0);
+      const result = await completePayment(currentOrder.id, primaryLine?.method ?? 'other', primaryLine?.transactionId, paymentLines);
+      if (result.success) {
+        setSplitMode(false);
+        setPaymentLines([]);
+        setCheckoutVisible(false);
+        onSuccess?.(result.orderId);
+      } else {
+        setError(result.error ?? 'Payment failed');
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [currentOrder, remainingDue, paymentLines, markPaymentProcessing, completePayment, onSuccess]);
 
   // ── Process payment ──────────────────────────────────────────────────
   const handlePayment = useCallback(
@@ -204,5 +248,13 @@ export function useCheckout({ platform, onSuccess }: UseCheckoutOptions = {}) {
     handleCancelCheckout,
     handlePayment,
     clearError: () => setError(null),
+    // Split tender
+    splitMode,
+    setSplitMode,
+    paymentLines,
+    addPaymentLine,
+    removePaymentLine,
+    remainingDue,
+    handleCompleteSplit,
   };
 }

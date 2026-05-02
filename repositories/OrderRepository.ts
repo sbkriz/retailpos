@@ -27,6 +27,7 @@ export interface OrderRow {
   updated_at: number;
   paid_at: number | null;
   synced_at: number | null;
+  payments_json: string | null;
 }
 
 export interface CreateOrderInput {
@@ -44,6 +45,7 @@ export interface CreateOrderInput {
   cashierName: string | null;
   platformOrderId?: string | null;
   status?: string;
+  paymentsJson?: string | null;
 }
 
 /**
@@ -60,6 +62,7 @@ export interface OrderRepository {
   findByDateRange(fromTimestamp: number, toTimestamp: number, cashierId?: string): Promise<OrderRow[]>;
   updateStatus(orderId: string, status: string): Promise<void>;
   updatePayment(orderId: string, paymentMethod: string, transactionId: string | null): Promise<void>;
+  updatePaymentLines(orderId: string, paymentMethod: string, transactionId: string | null, paymentsJson: string): Promise<void>;
   updateSyncSuccess(orderId: string, platformOrderId: string): Promise<void>;
   updateSyncError(orderId: string, syncStatus: string, errorMessage: string): Promise<void>;
   delete(orderId: string): Promise<void>;

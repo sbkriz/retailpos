@@ -44,6 +44,10 @@ export type MoreStackParamList = {
   SyncQueue: undefined;
   Reports: undefined;
   Theme: undefined;
+  PermissionSets: undefined;
+  Exchange: { orderId: string } | undefined;
+  CustomerProfile: { email: string };
+  Customers: undefined;
 };
 
 /**

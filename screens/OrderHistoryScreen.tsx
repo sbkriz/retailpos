@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, Alert, RefreshControl } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { useBasketContext } from '../contexts/BasketProvider';
 import { useAuthContext } from '../contexts/AuthProvider';
 import { useDailyReport, DailyReportData } from '../hooks/useDailyReport';
@@ -26,6 +27,7 @@ const formatDate = (timestamp: number): string => {
 const OrderHistoryScreen: React.FC<OrderHistoryScreenProps> = () => {
   const { getSyncQueueStatus, unsyncedOrdersCount } = useBasketContext();
   const { user } = useAuthContext();
+  const navigation = useNavigation<MoreStackScreenProps<'OrderHistory'>['navigation']>();
   const { currentShift, openShift, closeShift, generateReport, getReportLines } = useDailyReport();
   const logger = useLogger('OrderHistoryScreen');
   const currency = useCurrency();
@@ -64,6 +66,13 @@ const OrderHistoryScreen: React.FC<OrderHistoryScreenProps> = () => {
     setSelectedOrder(order);
     setShowReceiptModal(true);
   }, []);
+
+  const handleExchange = useCallback(
+    (orderId: string) => {
+      navigation.navigate('Exchange', { orderId });
+    },
+    [navigation]
+  );
 
   const handlePrintReceiptConfirm = useCallback(async () => {
     if (!selectedOrder) return;
@@ -178,7 +187,13 @@ const OrderHistoryScreen: React.FC<OrderHistoryScreenProps> = () => {
 
   const renderOrderItem = ({ item: order }: { item: LocalOrder }) => (
     <View>
-      <OrderCard order={order} isSyncing={syncingOrderId === order.id} onResync={handleResyncOrder} onPrintReceipt={handlePrintReceipt} />
+      <OrderCard
+        order={order}
+        isSyncing={syncingOrderId === order.id}
+        onResync={handleResyncOrder}
+        onPrintReceipt={handlePrintReceipt}
+        onExchange={handleExchange}
+      />
       {isAdmin && (
         <TouchableOpacity style={styles.deleteOrderButton} onPress={() => handleDeleteOrder(order.id)}>
           <MaterialIcons name="delete-outline" size={16} color={lightColors.error} />

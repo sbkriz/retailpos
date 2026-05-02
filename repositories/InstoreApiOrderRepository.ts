@@ -43,6 +43,11 @@ export class InstoreApiOrderRepository implements OrderRepository {
     await instoreApiClient.updateOrderPayment(orderId, paymentMethod, transactionId ?? undefined);
   }
 
+  async updatePaymentLines(orderId: string, paymentMethod: string, transactionId: string | null, paymentsJson: string): Promise<void> {
+    void paymentsJson;
+    await instoreApiClient.updateOrderPayment(orderId, paymentMethod, transactionId ?? undefined);
+  }
+
   async updateSyncSuccess(orderId: string, platformOrderId: string): Promise<void> {
     // Sync success is managed by the server — no-op on client
     void orderId;

@@ -11,6 +11,7 @@ interface OrderCardProps {
   isSyncing: boolean;
   onResync: (orderId: string) => void;
   onPrintReceipt: (order: LocalOrder) => void;
+  onExchange?: (orderId: string) => void;
 }
 
 const getOrderStatusColor = (order: LocalOrder) => {
@@ -25,7 +26,7 @@ const getOrderStatusText = (order: LocalOrder) => {
   return 'Pending';
 };
 
-export const OrderCard: React.FC<OrderCardProps> = ({ order, isSyncing, onResync, onPrintReceipt }) => {
+export const OrderCard: React.FC<OrderCardProps> = ({ order, isSyncing, onResync, onPrintReceipt, onExchange }) => {
   const currency = useCurrency();
   const statusColor = getOrderStatusColor(order);
 
@@ -62,6 +63,13 @@ export const OrderCard: React.FC<OrderCardProps> = ({ order, isSyncing, onResync
           <MaterialIcons name="print" size={16} color={lightColors.primary} />
           <Text style={styles.printButtonText}>Print</Text>
         </TouchableOpacity>
+
+        {(order.status === 'paid' || order.status === 'synced') && onExchange && (
+          <TouchableOpacity style={styles.exchangeButton} onPress={() => onExchange(order.id)}>
+            <MaterialIcons name="swap-horiz" size={16} color={lightColors.secondary} />
+            <Text style={styles.exchangeButtonText}>Exchange</Text>
+          </TouchableOpacity>
+        )}
 
         {order.syncStatus !== 'synced' && (
           <TouchableOpacity
@@ -163,6 +171,22 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.sm,
     fontWeight: '600',
     color: lightColors.primary,
+  },
+  exchangeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: lightColors.secondary + '20',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
+    flex: 1,
+  },
+  exchangeButtonText: {
+    marginLeft: spacing.xs,
+    fontSize: typography.fontSize.sm,
+    fontWeight: '600',
+    color: lightColors.secondary,
   },
   resyncButton: {
     flexDirection: 'row',

@@ -120,12 +120,32 @@ const MORE_MENU_DEFINITIONS = {
     capabilityKey: undefined as CapabilityFeatureKey | undefined,
     requiresAdapterReady: false,
   },
+  Exchange: {
+    label: 'Exchange',
+    icon: 'swap-horiz',
+    route: 'Exchange' as keyof MoreStackParamList,
+    setupGroup: 'advanced' as const,
+    color: '#FF9800',
+    capabilityKey: 'refunds' as CapabilityFeatureKey,
+    requiresAdapterReady: false,
+  },
+  Customers: {
+    label: 'Customers',
+    icon: 'people-outline',
+    route: 'Customers' as keyof MoreStackParamList,
+    setupGroup: 'core' as const,
+    color: '#9C27B0',
+    capabilityKey: undefined as CapabilityFeatureKey | undefined,
+    requiresAdapterReady: false,
+  },
 } as const;
 
 /** Stable display order for menu items */
 const MENU_ORDER: Array<keyof typeof MORE_MENU_DEFINITIONS> = [
   'OrderHistory',
   'Refund',
+  'Exchange',
+  'Customers',
   'SyncQueue',
   'Reports',
   'Printer',

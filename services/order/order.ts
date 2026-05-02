@@ -1,6 +1,19 @@
 import { ECommercePlatform } from '../../utils/platforms';
 import { BasketItem } from '../basket/basket';
 
+export type PaymentMethod = 'cash' | 'card' | 'card_terminal' | 'store_credit' | 'loyalty' | 'gift_card' | 'other';
+
+export interface PaymentLine {
+  id: string;
+  method: PaymentMethod;
+  amount: number; // positive = payment, negative = refund/credit
+  transactionId?: string;
+  cardBrand?: string;
+  last4?: string;
+  processedAt: number; // Unix ms
+  note?: string;
+}
+
 /**
  * Status of a local order
  */
@@ -34,6 +47,8 @@ export interface LocalOrder {
   note?: string;
   paymentMethod?: string;
   paymentTransactionId?: string;
+  /** Multi-tender payment lines. Populated for split-tender orders. */
+  payments?: PaymentLine[];
   cashierId?: string;
   cashierName?: string;
   status: LocalOrderStatus;
@@ -56,6 +71,7 @@ export interface CheckoutResult {
   error?: string;
   /** Signals the UI to open the cash drawer (true when payment method is cash) */
   openDrawer?: boolean;
+  payments?: PaymentLine[];
 }
 
 /**

@@ -74,7 +74,15 @@ export class OrderSyncService implements OrderSyncServiceInterface {
           ? [{ code: localOrder.discountCode, amount: localOrder.discountAmount ?? 0, type: 'fixed_amount' }]
           : undefined,
         paymentStatus: 'paid',
-        note: localOrder.note,
+        note:
+          [
+            localOrder.note,
+            localOrder.payments && localOrder.payments.length > 1
+              ? `Split payment: ${localOrder.payments.map(p => `${p.method} ${p.amount.toFixed(2)}`).join(', ')}`
+              : undefined,
+          ]
+            .filter(Boolean)
+            .join(' | ') || undefined,
         createdAt: localOrder.createdAt,
       };
 

@@ -1,8 +1,8 @@
 # Inventory – EARS Requirements
 
-> **System**: RetailPOS – Inventory Management
+> **System**: RetailPOS – Inventory Management & Procurement
 > **Actor**: Manager, Admin, System
-> **Date**: 2026-04-13
+> **Date**: 2026-05-02
 > **Source**: `services/inventory/InventoryServiceInterface.ts`, `services/inventory/InventoryServiceFactory.ts`, `hooks/useInventory.ts`, `screens/InventoryScreen.tsx`, `screens/inventory/InventoryItemCard.tsx`, `screens/inventory/InventoryFilterTabs.tsx`, `screens/inventory/InventorySummaryFooter.tsx`
 
 ---
@@ -12,6 +12,31 @@
 The Inventory screen allows managers and admins to view and adjust stock levels for all products. It is accessible from the Inventory tab in the main navigation (visible to `admin` and `manager` roles only — cashiers do not have the Inventory tab).
 
 Inventory data is fetched from the active e-commerce platform via `InventoryServiceFactory`. The screen loads the product list first, then queries inventory levels for all product IDs in a single call. Adjustments (increment/decrement) and absolute quantity sets are both supported.
+
+### Procurement Extension (Gap — Not Yet Implemented)
+
+Procurement is a local-first domain that sits above the platform inventory adapters. It does not require per-platform implementations — purchase orders, vendor records, and receiving workflows are managed in SQLite and push stock adjustments to the platform via the existing `InventoryServiceFactory` on receiving. This section documents the target behaviour for the procurement gap.
+
+**Platform capability gating:** Procurement screens and workflows are always available regardless of platform. The only capability-gated step is the inventory push on receiving — this uses the existing `inventory` capability key. If `inventory: 'not_recommended'` for the active platform, stock adjustments are recorded locally only and not pushed to the platform.
+
+**New services required:**
+
+- `ProcurementService` — manages purchase orders and receiving
+- `VendorService` — manages vendor/supplier records
+- `InventoryCountService` — manages stock-take sessions
+- `TransferOrderService` — manages stock transfers between locations/registers
+
+**New SQLite tables required:**
+
+- `vendors` — supplier records
+- `purchase_orders` — PO header (vendor, status, expected date)
+- `purchase_order_items` — PO lines (product, variant, ordered qty, received qty, unit cost)
+- `inventory_counts` — stock-take session header
+- `inventory_count_items` — counted quantities per product/variant
+- `transfer_orders` — transfer header (from/to location, status)
+- `transfer_order_items` — transfer lines
+
+**Reorder points** are stored as a new column `reorder_point` on the existing `inventory_items` table (or a new `product_inventory_config` table if the platform inventory table is read-only).
 
 ### Stock Status
 
@@ -199,3 +224,81 @@ The low stock threshold defaults to `10` and can be overridden per item via `Inv
 | Scan → match by SKU/productId → edit mode | `InventoryScreen.handleInventoryScan`                        | `screens/InventoryScreen.tsx`                   |
 | Scan → not found alert                    | `InventoryScreen.handleInventoryScan`                        | `screens/InventoryScreen.tsx`                   |
 | Disconnect scanner on unmount/deactivate  | `InventoryScreen` useEffect cleanup                          | `screens/InventoryScreen.tsx`                   |
+
+---
+
+## 7. Procurement & Advanced Inventory (Gap — Target Spec)
+
+### 7.1 Vendors
+
+**7.1.1** When an admin navigates to Inventory → Vendors, the system shall display a list of all vendor records from the `vendors` SQLite table, ordered by name.
+
+**7.1.2** When an admin creates a vendor, the system shall persist `name`, `contactName`, `email`, `phone`, `address`, and `notes` to the `vendors` table and assign a UUID.
+
+**7.1.3** When an admin edits a vendor, the system shall update the record in place and record an audit log entry `vendor:updated`.
+
+**7.1.4** When an admin deletes a vendor, the system shall soft-delete the record (`deleted_at` timestamp) — existing purchase orders referencing the vendor shall remain intact.
+
+### 7.2 Purchase Orders
+
+**7.2.1** When an admin creates a purchase order, the system shall persist a `purchase_orders` header row with `vendorId`, `status: 'draft'`, `expectedDate`, and `notes`, plus one `purchase_order_items` row per line with `productId`, `variantId`, `orderedQty`, and `unitCost`.
+
+**7.2.2** When an admin submits a purchase order (status `draft` → `ordered`), the system shall set `orderedAt` and record an audit log entry `purchase_order:submitted`.
+
+**7.2.3** When an admin opens a purchase order for receiving, the system shall display each line with `orderedQty`, `receivedQty` (sum of prior receipts), and an editable `receiveNow` field defaulting to `orderedQty − receivedQty`.
+
+**7.2.4** When an admin confirms receiving, the system shall:
+
+1. Increment `purchase_order_items.receivedQty` by `receiveNow` for each line.
+2. Call `InventoryServiceFactory.getService(platform).updateInventory(updates)` with `adjustment: true` for each received line to push the stock increase to the platform.
+3. Set `purchase_orders.status` to `'partially_received'` if any line is still short, or `'received'` if all lines are fully received.
+4. Record an audit log entry `purchase_order:received`.
+
+**7.2.5** When a purchase order reaches `status: 'received'`, the system shall send a notification `'Purchase Order Received'` via `notificationService`.
+
+**7.2.6** When an admin cancels a purchase order with `status: 'draft'` or `'ordered'`, the system shall set `status: 'cancelled'` and record an audit log entry `purchase_order:cancelled` — received quantities are not reversed.
+
+### 7.3 Reorder Points
+
+**7.3.1** When an admin sets a reorder point for a product/variant, the system shall persist `reorderPoint` and `reorderQty` to `product_inventory_config` keyed by `productId` + `variantId`.
+
+**7.3.2** When `InventoryScreen` loads inventory and a product's `quantity ≤ reorderPoint`, the system shall flag the item with a `reorder` badge in addition to the existing low-stock badge.
+
+**7.3.3** When a reorder point is breached after a sale (inventory decremented at checkout), the system shall send a notification `'Reorder Required: {productName}'` via `notificationService`.
+
+**7.3.4** When an admin taps "Create PO" on a reorder-flagged item, the system shall pre-populate a new purchase order draft with the item's `reorderQty` and the item's default vendor (if set).
+
+### 7.4 Inventory Counts (Stock Takes)
+
+**7.4.1** When an admin starts an inventory count, the system shall create an `inventory_counts` session row with `status: 'in_progress'` and `startedAt`, and pre-populate `inventory_count_items` with all current products and their platform-reported quantities as `expectedQty`.
+
+**7.4.2** When a cashier or manager scans or enters a product during a count, the system shall update `inventory_count_items.countedQty` for that product/variant.
+
+**7.4.3** When an admin finalises a count, the system shall:
+
+1. Calculate `variance = countedQty − expectedQty` for each line.
+2. Call `updateInventory` with `adjustment: false` and `quantity: countedQty` for each line where `variance !== 0`.
+3. Set `inventory_counts.status` to `'completed'` and `completedAt`.
+4. Record an audit log entry `inventory_count:completed` with the total variance summary.
+
+**7.4.4** When an admin discards an in-progress count, the system shall set `status: 'discarded'` — no inventory adjustments are made.
+
+### 7.5 Transfer Orders
+
+**7.5.1** When an admin creates a transfer order, the system shall persist a `transfer_orders` header with `fromLocation`, `toLocation`, `status: 'draft'`, and one `transfer_order_items` row per line with `productId`, `variantId`, and `transferQty`.
+
+**7.5.2** When an admin dispatches a transfer order (status `draft` → `in_transit`), the system shall decrement inventory at `fromLocation` via `updateInventory` with `adjustment: true` and `quantity: -transferQty`.
+
+**7.5.3** When an admin confirms receipt of a transfer order (status `in_transit` → `received`), the system shall increment inventory at `toLocation` via `updateInventory` with `adjustment: true` and `quantity: +transferQty`, and record an audit log entry `transfer_order:received`.
+
+### 7.6 Barcode Label Printing
+
+**7.6.1** When an admin selects one or more products in the inventory list and taps "Print Labels", the system shall call `PrinterServiceFactory.getService()` and send a label print job for each selected product/variant containing `name`, `sku`, `barcode`, and `price`.
+
+**7.6.2** When the printer is unavailable, the system shall display an error and offer to export the label data as a CSV for offline printing.
+
+### 7.7 Vendor Returns
+
+**7.7.1** When an admin creates a vendor return against a received purchase order, the system shall create a `vendor_returns` record with `purchaseOrderId`, `vendorId`, `status: 'pending'`, and per-line `returnQty` and `reason`.
+
+**7.7.2** When a vendor return is confirmed, the system shall decrement inventory via `updateInventory` with `adjustment: true` and `quantity: -returnQty` for each returned line, and record an audit log entry `vendor_return:confirmed`.

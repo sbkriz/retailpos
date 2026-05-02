@@ -1,6 +1,6 @@
 import { ECommercePlatform, isOnlinePlatform } from '../../utils/platforms';
 import { BasketItem } from '../basket/basket';
-import { LocalOrder, LocalOrderStatus, CheckoutResult } from '../order/order';
+import { LocalOrder, LocalOrderStatus, CheckoutResult, PaymentLine } from '../order/order';
 import { BasketServiceInterface } from '../basket/BasketServiceInterface';
 import { CheckoutServiceInterface } from './CheckoutServiceInterface';
 import { OrderRepository } from '../../repositories/OrderRepository';
@@ -12,6 +12,8 @@ import { generateUUID } from '../../utils/uuid';
 import { auditLogService } from '../audit/AuditLogService';
 import { OrderServiceFactory } from '../order/OrderServiceFactory';
 import { getPlatformCapabilities, getBasketMode } from '../../utils/platformCapabilities';
+import { loyaltyService } from '../loyalty/LoyaltyService';
+import { localCustomerService } from '../customer/LocalCustomerService';
 
 /**
  * Handles checkout flow and order queries.
@@ -191,9 +193,13 @@ export class CheckoutService implements CheckoutServiceInterface {
     return order;
   }
 
-  async completePayment(orderId: string, paymentMethod: string, transactionId?: string): Promise<CheckoutResult> {
+  async completePayment(orderId: string, paymentMethod: string, transactionId?: string, payments?: PaymentLine[]): Promise<CheckoutResult> {
     try {
-      await this.orderRepo.updatePayment(orderId, paymentMethod, transactionId ?? null);
+      if (payments && payments.length > 0) {
+        await this.orderRepo.updatePaymentLines(orderId, paymentMethod, transactionId ?? null, JSON.stringify(payments));
+      } else {
+        await this.orderRepo.updatePayment(orderId, paymentMethod, transactionId ?? null);
+      }
 
       // If this order has a platform draft, mark it as paid on the platform.
       // Only attempt completeOrder() for native_draft platforms — remote_cart and
@@ -218,6 +224,15 @@ export class CheckoutService implements CheckoutServiceInterface {
 
       // Only clear basket after the order is successfully recorded
       await this.basketService.clearBasket();
+
+      // Post-payment hooks — non-blocking, must not affect checkout result
+      // orderRow was already fetched above; reuse it
+      if (orderRow?.customer_email) {
+        const email = orderRow.customer_email;
+        const total = orderRow.total;
+        loyaltyService.earnPoints(email, orderId, total).catch(() => {});
+        localCustomerService.recordOrder(email, total).catch(() => {});
+      }
 
       const isCash = paymentMethod.toLowerCase() === 'cash';
       const openDrawer = isCash && posConfig.values.drawerOpenOnCash;
@@ -298,6 +313,7 @@ export class CheckoutService implements CheckoutServiceInterface {
       note: row.note ?? undefined,
       paymentMethod: row.payment_method ?? undefined,
       paymentTransactionId: row.payment_transaction_id ?? undefined,
+      payments: row.payments_json ? (JSON.parse(row.payments_json) as PaymentLine[]) : undefined,
       status: row.status as LocalOrderStatus,
       syncStatus: row.sync_status as 'pending' | 'synced' | 'failed',
       syncError: row.sync_error ?? undefined,

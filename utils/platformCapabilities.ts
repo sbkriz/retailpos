@@ -48,6 +48,22 @@ export interface PlatformCapabilities {
   discounts: CapabilityLevel;
   giftCards: CapabilityLevel;
   refunds: CapabilityLevel;
+  /**
+   * Outbound loyalty points sync to the platform.
+   * The local loyalty ledger (SQLite) is always available regardless of this value.
+   * 'supported' = first-class platform loyalty API (future)
+   * 'custom'    = custom adapter required (e.g. Shopify loyalty app)
+   * 'not_recommended' = local-only; no platform sync
+   */
+  loyalty: CapabilityLevel;
+  /**
+   * Outbound store credit sync to the platform.
+   * The local store credit ledger (SQLite) is always available regardless of this value.
+   * 'supported' = first-class platform store credit API (future)
+   * 'custom'    = custom adapter required (e.g. Shopify gift card as store credit)
+   * 'not_recommended' = local-only; no platform sync
+   */
+  storeCredit: CapabilityLevel;
 }
 
 /**
@@ -65,6 +81,8 @@ export const PLATFORM_CAPABILITY_MATRIX: Readonly<Record<ECommercePlatform, Plat
     discounts: 'supported',
     giftCards: 'supported',
     refunds: 'supported',
+    loyalty: 'custom', // Shopify has loyalty apps (e.g. Smile.io) — custom adapter
+    storeCredit: 'custom', // Shopify gift cards can act as store credit — custom adapter
   },
   [ECommercePlatform.WOOCOMMERCE]: {
     catalog: 'supported',
@@ -76,6 +94,8 @@ export const PLATFORM_CAPABILITY_MATRIX: Readonly<Record<ECommercePlatform, Plat
     discounts: 'supported',
     giftCards: 'custom',
     refunds: 'custom',
+    loyalty: 'not_recommended', // no native loyalty API
+    storeCredit: 'not_recommended', // no native store credit API
   },
   [ECommercePlatform.MAGENTO]: {
     catalog: 'supported',
@@ -87,6 +107,8 @@ export const PLATFORM_CAPABILITY_MATRIX: Readonly<Record<ECommercePlatform, Plat
     discounts: 'supported',
     giftCards: 'custom',
     refunds: 'supported',
+    loyalty: 'not_recommended', // no native loyalty API
+    storeCredit: 'not_recommended', // no native store credit API
   },
   [ECommercePlatform.BIGCOMMERCE]: {
     catalog: 'supported',
@@ -98,6 +120,8 @@ export const PLATFORM_CAPABILITY_MATRIX: Readonly<Record<ECommercePlatform, Plat
     discounts: 'supported',
     giftCards: 'custom',
     refunds: 'supported',
+    loyalty: 'not_recommended', // no native loyalty API
+    storeCredit: 'not_recommended', // no native store credit API
   },
   [ECommercePlatform.SYLIUS]: {
     catalog: 'custom',
@@ -109,6 +133,8 @@ export const PLATFORM_CAPABILITY_MATRIX: Readonly<Record<ECommercePlatform, Plat
     discounts: 'custom',
     giftCards: 'not_recommended',
     refunds: 'custom',
+    loyalty: 'not_recommended', // no native loyalty API
+    storeCredit: 'not_recommended', // no native store credit API
   },
   [ECommercePlatform.WIX]: {
     catalog: 'supported',
@@ -120,6 +146,8 @@ export const PLATFORM_CAPABILITY_MATRIX: Readonly<Record<ECommercePlatform, Plat
     discounts: 'supported',
     giftCards: 'supported',
     refunds: 'supported',
+    loyalty: 'not_recommended', // Wix loyalty is a separate app, no POS API
+    storeCredit: 'not_recommended', // no native store credit API
   },
   [ECommercePlatform.PRESTASHOP]: {
     catalog: 'supported',
@@ -131,6 +159,8 @@ export const PLATFORM_CAPABILITY_MATRIX: Readonly<Record<ECommercePlatform, Plat
     discounts: 'supported',
     giftCards: 'not_recommended',
     refunds: 'custom',
+    loyalty: 'not_recommended', // no native loyalty API
+    storeCredit: 'not_recommended', // no native store credit API
   },
   [ECommercePlatform.SQUARESPACE]: {
     catalog: 'supported',
@@ -142,6 +172,8 @@ export const PLATFORM_CAPABILITY_MATRIX: Readonly<Record<ECommercePlatform, Plat
     discounts: 'not_recommended',
     giftCards: 'not_recommended',
     refunds: 'not_recommended',
+    loyalty: 'not_recommended', // no loyalty API
+    storeCredit: 'not_recommended', // no store credit API
   },
   [ECommercePlatform.COMMERCEFULL]: {
     catalog: 'supported',
@@ -153,6 +185,8 @@ export const PLATFORM_CAPABILITY_MATRIX: Readonly<Record<ECommercePlatform, Plat
     discounts: 'supported',
     giftCards: 'supported',
     refunds: 'supported',
+    loyalty: 'custom', // CommerceFull has loyalty extension — custom adapter
+    storeCredit: 'custom', // CommerceFull has store credit extension — custom adapter
   },
   [ECommercePlatform.OFFLINE]: {
     catalog: 'supported',
@@ -164,6 +198,8 @@ export const PLATFORM_CAPABILITY_MATRIX: Readonly<Record<ECommercePlatform, Plat
     discounts: 'supported',
     giftCards: 'not_recommended',
     refunds: 'supported',
+    loyalty: 'supported', // local-only loyalty is always available offline
+    storeCredit: 'supported', // local-only store credit is always available offline
   },
 };
 
@@ -237,6 +273,8 @@ function featureLabel(feature: Exclude<keyof PlatformCapabilities, 'basketMode'>
     discounts: 'Discounts',
     giftCards: 'Gift cards',
     refunds: 'Refunds',
+    loyalty: 'Loyalty points sync',
+    storeCredit: 'Store credit sync',
   };
   return labels[feature];
 }

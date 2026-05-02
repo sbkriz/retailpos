@@ -26,7 +26,19 @@ export type AuditAction =
   | 'drawer:opened'
   | 'sync:started'
   | 'sync:completed'
-  | 'sync:failed';
+  | 'sync:failed'
+  | 'exchange:completed'
+  | 'permission:approved'
+  | 'permission_set:created'
+  | 'permission_set:updated'
+  | 'permission_set:deleted'
+  | 'permission_set:assigned'
+  | 'permission_set:unassigned'
+  | 'customer:updated'
+  | 'loyalty:adjusted'
+  | 'store_credit:issued'
+  | 'store_credit:redeemed'
+  | 'store_credit:expired';
 
 export interface AuditEntry {
   id: string;

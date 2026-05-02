@@ -15,8 +15,8 @@ export class OfflineOrderRepository implements OrderRepository {
         id, platform, platform_order_id, subtotal, tax, total,
         discount_amount, discount_code, customer_email, customer_name, note,
         cashier_id, cashier_name,
-        status, sync_status, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        status, sync_status, payments_json, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         input.id,
         input.platform,
@@ -33,6 +33,7 @@ export class OfflineOrderRepository implements OrderRepository {
         input.cashierName,
         input.status ?? 'pending',
         'pending',
+        input.paymentsJson ?? null,
         now,
         now,
       ]
@@ -95,6 +96,14 @@ export class OfflineOrderRepository implements OrderRepository {
     await db.runAsync(
       `UPDATE orders SET status = ?, payment_method = ?, payment_transaction_id = ?, paid_at = ?, updated_at = ? WHERE id = ?`,
       ['paid', paymentMethod, transactionId, now, now, orderId]
+    );
+  }
+
+  async updatePaymentLines(orderId: string, paymentMethod: string, transactionId: string | null, paymentsJson: string): Promise<void> {
+    const now = Date.now();
+    await db.runAsync(
+      `UPDATE orders SET status = ?, payment_method = ?, payment_transaction_id = ?, payments_json = ?, paid_at = ?, updated_at = ? WHERE id = ?`,
+      ['paid', paymentMethod, transactionId, paymentsJson, now, now, orderId]
     );
   }
 

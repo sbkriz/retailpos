@@ -22,6 +22,10 @@ const OrderHistoryScreen = lazy(() => import('../screens/OrderHistoryScreen'));
 const SyncQueueScreen = lazy(() => import('../screens/SyncQueueScreen'));
 const ReportingScreen = lazy(() => import('../screens/ReportingScreen'));
 const ThemeSettingsTab = lazy(() => import('../screens/settings/ThemeSettingsTab'));
+const ExchangeScreen = lazy(() => import('../screens/ExchangeScreen'));
+const PermissionSetsScreen = lazy(() => import('../screens/settings/PermissionSetsScreen'));
+const CustomersScreen = lazy(() => import('../screens/CustomersScreen'));
+const CustomerProfileScreen = lazy(() => import('../screens/CustomerProfileScreen'));
 
 const LazyFallback = () => {
   const { colors } = useTheme();
@@ -57,8 +61,14 @@ const MoreMenuScreen: React.FC<MoreMenuScreenProps> = ({ userRole, onLogout }) =
   const handleNavigate = (route: keyof MoreStackParamList) => {
     if (route === 'PaymentTerminal') {
       navigation.navigate('PaymentTerminal', {});
+    } else if (route === 'Exchange') {
+      navigation.navigate('Exchange', undefined);
+    } else if (route === 'Customers') {
+      navigation.navigate('Customers');
     } else {
-      navigation.navigate(route as Exclude<keyof MoreStackParamList, 'PaymentTerminal' | 'MoreMenu'>);
+      navigation.navigate(
+        route as Exclude<keyof MoreStackParamList, 'PaymentTerminal' | 'MoreMenu' | 'Exchange' | 'Customers' | 'CustomerProfile'>
+      );
     }
   };
 
@@ -232,6 +242,34 @@ export const MoreNavigator: React.FC<MoreNavigatorProps> = ({ userRole, onLogout
         {() => (
           <Suspense fallback={<LazyFallback />}>
             <ThemeSettingsTab />
+          </Suspense>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="Exchange" options={{ title: 'Exchange' }}>
+        {() => (
+          <Suspense fallback={<LazyFallback />}>
+            <ExchangeScreen />
+          </Suspense>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="PermissionSets" options={{ title: 'Permission Sets' }}>
+        {() => (
+          <Suspense fallback={<LazyFallback />}>
+            <PermissionSetsScreen />
+          </Suspense>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="Customers" options={{ title: 'Customers' }}>
+        {() => (
+          <Suspense fallback={<LazyFallback />}>
+            <CustomersScreen />
+          </Suspense>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="CustomerProfile" options={{ title: 'Customer Profile' }}>
+        {() => (
+          <Suspense fallback={<LazyFallback />}>
+            <CustomerProfileScreen />
           </Suspense>
         )}
       </Stack.Screen>

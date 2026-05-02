@@ -65,4 +65,9 @@ export class OfflineReturnRepository implements ReturnRepository {
   async delete(id: string): Promise<void> {
     await db.runAsync('DELETE FROM returns WHERE id = ?', [id]);
   }
+
+  async linkToExchange(returnId: string, exchangeOrderId: string): Promise<void> {
+    const now = Date.now();
+    await db.runAsync('UPDATE returns SET exchange_order_id = ?, updated_at = ? WHERE id = ?', [exchangeOrderId, now, returnId]);
+  }
 }

@@ -1,11 +1,12 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, Modal, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, Modal, StyleSheet, TouchableOpacity, ScrollView, TextInput } from 'react-native';
 import { lightColors, spacing, borderRadius, typography, elevation, semanticColors } from '../utils/theme';
 import { formatMoney } from '../utils/money';
 import { Button } from './Button';
 import PinKeypad from './PinKeypad';
 import { useCurrency } from '../hooks/useCurrency';
 import { useTranslate } from '../hooks/useTranslate';
+import type { PaymentLine as OrderPaymentLine } from '../services/order/order';
 
 export type PaymentMethod = 'cash' | 'card' | 'terminal';
 
@@ -26,9 +27,15 @@ interface CheckoutModalProps {
   onCancel: () => void;
   isProcessing?: boolean;
   terminalConnected?: boolean;
+  /** Collected payment lines so far (split tender) */
+  paymentLines?: OrderPaymentLine[];
+  onAddPaymentLine?: (line: Omit<OrderPaymentLine, 'id' | 'processedAt'>) => void;
+  onRemovePaymentLine?: (lineId: string) => void;
+  onCompleteSplit?: () => void;
+  splitMode?: boolean;
 }
 
-type ModalStep = 'method' | 'cash_tender';
+type ModalStep = 'method' | 'cash_tender' | 'split_tender';
 
 const PAYMENT_METHOD_KEYS: { id: PaymentMethod; labelKey: string; icon: string; descriptionKey: string }[] = [
   { id: 'cash', labelKey: 'checkout.cash', icon: '💵', descriptionKey: 'checkout.cashDescription' },
@@ -50,17 +57,26 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = props => {
     onCancel,
     isProcessing = false,
     terminalConnected = false,
+    paymentLines = [],
+    onAddPaymentLine,
+    onRemovePaymentLine,
+    onCompleteSplit,
+    splitMode = false,
   } = props;
 
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>('cash');
-  const [step, setStep] = useState<ModalStep>('method');
+  const [step, setStep] = useState<ModalStep>(splitMode ? 'split_tender' : 'method');
   // Cash tendering — stored as a string so the keypad can build it digit by digit
   const [tenderedStr, setTenderedStr] = useState('');
+  // Split tender — amount input for the current line being added
+  const [splitAmountStr, setSplitAmountStr] = useState('');
+  const [splitMethod, setSplitMethod] = useState<PaymentMethod>('cash');
 
   // Reset to method selection whenever the modal opens
   const handleCancel = useCallback(() => {
     setStep('method');
     setTenderedStr('');
+    setSplitAmountStr('');
     onCancel();
   }, [onCancel]);
 
@@ -113,6 +129,159 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = props => {
     if (!isTenderValid) return;
     onSelectPayment({ method: 'cash', tenderedAmount });
   }, [isTenderValid, tenderedAmount, onSelectPayment]);
+
+  // ── Split tender step ────────────────────────────────────────────────────
+  if (step === 'split_tender') {
+    const collected = paymentLines.filter(p => p.amount > 0).reduce((s, p) => s + p.amount, 0);
+    const remaining = Math.max(0, orderTotal - collected);
+    const splitAmount = parseFloat(splitAmountStr) || 0;
+    const isSplitAmountValid = splitAmount > 0 && splitAmount <= remaining + 0.001;
+    const isSettled = remaining <= 0.01;
+
+    const methodLabel = (m: PaymentMethod | 'card_terminal') => {
+      switch (m) {
+        case 'cash':
+          return '💵 Cash';
+        case 'card':
+          return '💳 Card';
+        case 'terminal':
+        case 'card_terminal':
+          return '📱 Terminal';
+        default:
+          return m;
+      }
+    };
+
+    const handleAddSplitLine = () => {
+      if (!isSplitAmountValid || !onAddPaymentLine) return;
+      const mappedMethod = splitMethod === 'terminal' ? 'card_terminal' : splitMethod;
+      onAddPaymentLine({ method: mappedMethod, amount: splitAmount });
+      setSplitAmountStr('');
+    };
+
+    return (
+      <Modal visible={visible} animationType="slide" transparent statusBarTranslucent>
+        <View style={styles.overlay}>
+          <View style={styles.modal}>
+            <View style={styles.header}>
+              <TouchableOpacity
+                onPress={() => setStep('method')}
+                style={styles.backButton}
+                disabled={isProcessing}
+                accessibilityLabel={t('common.back')}
+                accessibilityRole="button"
+              >
+                <Text style={styles.backText}>←</Text>
+              </TouchableOpacity>
+              <Text style={styles.headerTitle}>Split Payment</Text>
+              <TouchableOpacity
+                onPress={handleCancel}
+                style={styles.closeButton}
+                disabled={isProcessing}
+                accessibilityLabel={t('checkout.cancelCheckout')}
+                accessibilityRole="button"
+              >
+                <Text style={styles.closeText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+              {/* Order total */}
+              <View style={styles.amountDueRow}>
+                <Text style={styles.amountDueLabel}>Order Total</Text>
+                <Text style={styles.amountDueValue}>{formatMoney(orderTotal, currency.code)}</Text>
+              </View>
+
+              {/* Collected lines */}
+              {paymentLines.length > 0 && (
+                <View style={styles.splitLinesContainer}>
+                  {paymentLines.map(line => (
+                    <View key={line.id} style={styles.splitLine}>
+                      <Text style={styles.splitLineMethod}>{methodLabel(line.method as PaymentMethod)}</Text>
+                      <Text style={styles.splitLineAmount}>{formatMoney(line.amount, currency.code)}</Text>
+                      {onRemovePaymentLine && (
+                        <TouchableOpacity
+                          onPress={() => onRemovePaymentLine(line.id)}
+                          style={styles.splitLineRemove}
+                          accessibilityLabel="Remove payment line"
+                          accessibilityRole="button"
+                        >
+                          <Text style={styles.splitLineRemoveText}>✕</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* Running totals */}
+              <View style={styles.splitTotalsRow}>
+                <View style={styles.splitTotalItem}>
+                  <Text style={styles.splitTotalLabel}>Collected</Text>
+                  <Text style={[styles.splitTotalValue, { color: lightColors.success }]}>{formatMoney(collected, currency.code)}</Text>
+                </View>
+                <View style={styles.splitTotalItem}>
+                  <Text style={styles.splitTotalLabel}>Remaining</Text>
+                  <Text style={[styles.splitTotalValue, { color: remaining > 0.01 ? lightColors.error : lightColors.success }]}>
+                    {formatMoney(remaining, currency.code)}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Add payment line */}
+              {!isSettled && (
+                <View style={styles.splitAddSection}>
+                  <Text style={styles.sectionTitle}>Add Payment</Text>
+                  <View style={styles.splitMethodRow}>
+                    {(['cash', 'card', 'card_terminal'] as PaymentMethod[]).map(m => (
+                      <TouchableOpacity
+                        key={m}
+                        style={[styles.splitMethodButton, splitMethod === m && styles.splitMethodButtonSelected]}
+                        onPress={() => setSplitMethod(m)}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected: splitMethod === m }}
+                      >
+                        <Text style={[styles.splitMethodButtonText, splitMethod === m && styles.splitMethodButtonTextSelected]}>
+                          {methodLabel(m)}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <TextInput
+                    style={styles.splitAmountInput}
+                    value={splitAmountStr}
+                    onChangeText={setSplitAmountStr}
+                    placeholder={`Amount (max ${formatMoney(remaining, currency.code)})`}
+                    keyboardType="decimal-pad"
+                    accessibilityLabel="Split payment amount"
+                  />
+                  <Button
+                    title="Add Payment"
+                    variant="primary"
+                    fullWidth
+                    onPress={handleAddSplitLine}
+                    disabled={!isSplitAmountValid || isProcessing}
+                  />
+                </View>
+              )}
+            </ScrollView>
+
+            <View style={styles.actions}>
+              <Button
+                title={isProcessing ? t('common.processing') : 'Complete Sale'}
+                variant="success"
+                size="lg"
+                fullWidth
+                onPress={onCompleteSplit}
+                loading={isProcessing}
+                disabled={isProcessing || !isSettled || !onCompleteSplit}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+    );
+  }
 
   // ── Cash tendering step ──────────────────────────────────────────────────
   if (step === 'cash_tender') {
@@ -300,6 +469,14 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = props => {
               fullWidth
               onPress={handleMethodConfirm}
               loading={isProcessing}
+              disabled={isProcessing}
+            />
+            <Button
+              title="Split Payment"
+              variant="outline"
+              size="lg"
+              fullWidth
+              onPress={() => setStep('split_tender')}
               disabled={isProcessing}
             />
           </View>
@@ -552,6 +729,105 @@ const styles = StyleSheet.create({
   },
   keypadWrapper: {
     alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  // ── Split tender ────────────────────────────────────────────────────────
+  splitLinesContainer: {
+    marginBottom: spacing.sm,
+  },
+  splitLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    backgroundColor: lightColors.inputBackground,
+    borderRadius: borderRadius.md,
+    marginBottom: spacing.xs,
+  },
+  splitLineMethod: {
+    flex: 1,
+    fontSize: typography.fontSize.md,
+    color: lightColors.textPrimary,
+    fontWeight: '500',
+  },
+  splitLineAmount: {
+    fontSize: typography.fontSize.md,
+    fontWeight: '700',
+    color: lightColors.textPrimary,
+    marginRight: spacing.sm,
+  },
+  splitLineRemove: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: lightColors.error + '20',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  splitLineRemoveText: {
+    fontSize: 14,
+    color: lightColors.error,
+    fontWeight: '700',
+  },
+  splitTotalsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  splitTotalItem: {
+    flex: 1,
+    backgroundColor: lightColors.inputBackground,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    alignItems: 'center',
+  },
+  splitTotalLabel: {
+    fontSize: typography.fontSize.sm,
+    color: lightColors.textSecondary,
+    marginBottom: spacing.xs,
+  },
+  splitTotalValue: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: '700',
+  },
+  splitAddSection: {
+    marginBottom: spacing.md,
+  },
+  splitMethodRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  splitMethodButton: {
+    flex: 1,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: lightColors.border,
+    alignItems: 'center',
+  },
+  splitMethodButtonSelected: {
+    borderColor: lightColors.primary,
+    backgroundColor: semanticColors.infoBackground,
+  },
+  splitMethodButtonText: {
+    fontSize: typography.fontSize.sm,
+    color: lightColors.textSecondary,
+    fontWeight: '500',
+  },
+  splitMethodButtonTextSelected: {
+    color: lightColors.primary,
+    fontWeight: '700',
+  },
+  splitAmountInput: {
+    borderWidth: 1,
+    borderColor: lightColors.border,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    fontSize: typography.fontSize.md,
+    color: lightColors.textPrimary,
+    backgroundColor: lightColors.surface,
     marginBottom: spacing.sm,
   },
 });

@@ -29,6 +29,16 @@ jest.mock('../order/OrderServiceFactory', () => ({
   },
 }));
 
+// Mock LoyaltyService to avoid expo-sqlite dependency
+jest.mock('../loyalty/LoyaltyService', () => ({
+  loyaltyService: { earnPoints: jest.fn().mockResolvedValue(undefined) },
+}));
+
+// Mock LocalCustomerService to avoid expo-sqlite dependency
+jest.mock('../customer/LocalCustomerService', () => ({
+  localCustomerService: { upsert: jest.fn().mockResolvedValue('mock-id'), recordOrder: jest.fn().mockResolvedValue(undefined) },
+}));
+
 import { CheckoutService } from './CheckoutService';
 import { BasketServiceInterface } from '../basket/BasketServiceInterface';
 import { OrderRepository } from '../../repositories/OrderRepository';
@@ -82,6 +92,7 @@ function createMockOrderRepo(): jest.Mocked<OrderRepository> {
     findDistinctCashiers: jest.fn().mockResolvedValue([]),
     updateStatus: jest.fn(),
     updatePayment: jest.fn(),
+    updatePaymentLines: jest.fn(),
     updateSyncSuccess: jest.fn(),
     updateSyncError: jest.fn(),
     delete: jest.fn(),
@@ -199,6 +210,7 @@ describe('CheckoutService', () => {
           updated_at: Date.now(),
           paid_at: Date.now(),
           synced_at: null,
+          payments_json: null,
         },
       ]);
 

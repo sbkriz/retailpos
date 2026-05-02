@@ -37,6 +37,7 @@ function makeRow(overrides: Partial<OrderRow> = {}): OrderRow {
     updated_at: now,
     paid_at: now,
     synced_at: now,
+    payments_json: null,
     ...overrides,
   };
 }

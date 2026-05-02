@@ -98,7 +98,12 @@ export interface BasketContextType {
   currentOrder: LocalOrder | null;
   startCheckout: (platform?: ECommercePlatform) => Promise<LocalOrder | null>;
   markPaymentProcessing: (orderId: string) => Promise<void>;
-  completePayment: (orderId: string, paymentMethod: string, transactionId?: string) => Promise<CheckoutResult>;
+  completePayment: (
+    orderId: string,
+    paymentMethod: string,
+    transactionId?: string,
+    payments?: import('../services/order/order').PaymentLine[]
+  ) => Promise<CheckoutResult>;
   cancelOrder: (orderId: string) => Promise<void>;
   cancelDraftOrder: () => Promise<void>;
 
@@ -460,13 +465,18 @@ export const BasketProvider = ({ children }: Readonly<{ children: ReactNode }>) 
   }, []);
 
   const completePayment = useCallback(
-    async (orderId: string, paymentMethod: string, transactionId?: string): Promise<CheckoutResult> => {
+    async (
+      orderId: string,
+      paymentMethod: string,
+      transactionId?: string,
+      payments?: import('../services/order/order').PaymentLine[]
+    ): Promise<CheckoutResult> => {
       if (!containerRef.current) {
         return { success: false, orderId, error: 'Service not initialized' };
       }
 
       try {
-        const result = await containerRef.current.checkoutService.completePayment(orderId, paymentMethod, transactionId);
+        const result = await containerRef.current.checkoutService.completePayment(orderId, paymentMethod, transactionId, payments);
 
         if (result.success && mountedRef.current) {
           await refreshBasket();

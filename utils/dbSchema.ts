@@ -7,7 +7,7 @@ const logger = LoggerFactory.getInstance().createLogger('dbSchema');
  * Current database schema version.
  * Bump this number and add a migration block whenever the schema changes.
  */
-export const LATEST_DB_VERSION = 3;
+export const LATEST_DB_VERSION = 6;
 
 /**
  * Initialise (or migrate) the database schema.
@@ -263,6 +263,7 @@ async function migrateDatabase(db: SQLiteDatabase, fromVersion: number, toVersio
                               CHECK(status IN ('pending','approved','rejected','completed')),
           processed_by      TEXT,
           processed_at      INTEGER,
+          exchange_order_id TEXT,
           created_at        INTEGER NOT NULL,
           updated_at        INTEGER NOT NULL,
           FOREIGN KEY (order_id) REFERENCES orders(id)
@@ -336,6 +337,142 @@ async function migrateDatabase(db: SQLiteDatabase, fromVersion: number, toVersio
       }
 
       logger.info('v3 tables and columns created.');
+    }
+
+    // ── v4 – payments_json on orders, exchange_order_id on returns ──────
+    if (fromVersion < 4) {
+      logger.info('Applying v4: adding payments_json to orders, exchange_order_id to returns…');
+      await db.runAsync(`ALTER TABLE orders ADD COLUMN payments_json TEXT`);
+
+      const exchangeColExists = await db.getFirstAsync<{ cid: number }>(
+        `SELECT cid FROM pragma_table_info('returns') WHERE name = 'exchange_order_id'`
+      );
+      if (!exchangeColExists) {
+        await db.runAsync(`ALTER TABLE returns ADD COLUMN exchange_order_id TEXT`);
+      }
+      await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_returns_exchange ON returns(exchange_order_id)`);
+      logger.info('v4 migration complete.');
+    }
+
+    // ── v5 – Permission sets, overrides, user assignments, approval log ──
+    if (fromVersion < 5) {
+      logger.info('Applying v5: creating permission tables…');
+
+      await db.runAsync(`
+        CREATE TABLE IF NOT EXISTS permission_sets (
+          id          TEXT PRIMARY KEY NOT NULL,
+          name        TEXT NOT NULL,
+          description TEXT,
+          created_by  TEXT,
+          created_at  INTEGER NOT NULL,
+          updated_at  INTEGER NOT NULL
+        );
+      `);
+
+      await db.runAsync(`
+        CREATE TABLE IF NOT EXISTS permission_overrides (
+          id                TEXT PRIMARY KEY NOT NULL,
+          permission_set_id TEXT NOT NULL,
+          action_key        TEXT NOT NULL,
+          granted           INTEGER NOT NULL DEFAULT 1,
+          created_at        INTEGER NOT NULL,
+          FOREIGN KEY (permission_set_id) REFERENCES permission_sets(id) ON DELETE CASCADE,
+          UNIQUE(permission_set_id, action_key)
+        );
+      `);
+      await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_perm_overrides_set ON permission_overrides(permission_set_id);`);
+
+      await db.runAsync(`
+        CREATE TABLE IF NOT EXISTS user_permission_sets (
+          user_id           TEXT NOT NULL,
+          permission_set_id TEXT NOT NULL,
+          assigned_at       INTEGER NOT NULL,
+          PRIMARY KEY (user_id, permission_set_id),
+          FOREIGN KEY (permission_set_id) REFERENCES permission_sets(id) ON DELETE CASCADE
+        );
+      `);
+      await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_user_perm_sets_user ON user_permission_sets(user_id);`);
+
+      await db.runAsync(`
+        CREATE TABLE IF NOT EXISTS approval_log (
+          id                   TEXT PRIMARY KEY NOT NULL,
+          action_key           TEXT NOT NULL,
+          requesting_user_id   TEXT NOT NULL,
+          approving_user_id    TEXT NOT NULL,
+          approved             INTEGER NOT NULL DEFAULT 1,
+          created_at           INTEGER NOT NULL
+        );
+      `);
+      await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_approval_log_user ON approval_log(requesting_user_id);`);
+
+      logger.info('v5 permission tables created.');
+    }
+
+    // ── v6 – Local customers, loyalty ledger, store credit ledger ────────
+    if (fromVersion < 6) {
+      logger.info('Applying v6: creating local_customers, loyalty_accounts, loyalty_transactions, store_credit_ledger…');
+
+      await db.runAsync(`
+        CREATE TABLE IF NOT EXISTS local_customers (
+          id           TEXT PRIMARY KEY NOT NULL,
+          email        TEXT NOT NULL UNIQUE,
+          name         TEXT,
+          phone        TEXT,
+          notes        TEXT,
+          segment      TEXT,
+          total_orders INTEGER NOT NULL DEFAULT 0,
+          total_spend  REAL    NOT NULL DEFAULT 0,
+          created_at   INTEGER NOT NULL,
+          updated_at   INTEGER NOT NULL
+        );
+      `);
+      await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_local_customers_email   ON local_customers(email);`);
+      await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_local_customers_segment ON local_customers(segment);`);
+
+      await db.runAsync(`
+        CREATE TABLE IF NOT EXISTS loyalty_accounts (
+          id               TEXT PRIMARY KEY NOT NULL,
+          customer_email   TEXT NOT NULL UNIQUE,
+          balance          INTEGER NOT NULL DEFAULT 0,
+          lifetime_earned  INTEGER NOT NULL DEFAULT 0,
+          tier             TEXT,
+          created_at       INTEGER NOT NULL,
+          updated_at       INTEGER NOT NULL
+        );
+      `);
+      await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_loyalty_accounts_email ON loyalty_accounts(customer_email);`);
+
+      await db.runAsync(`
+        CREATE TABLE IF NOT EXISTS loyalty_transactions (
+          id             TEXT PRIMARY KEY NOT NULL,
+          customer_email TEXT NOT NULL,
+          type           TEXT NOT NULL CHECK(type IN ('earn','redeem','adjustment','reversal','expire')),
+          points         INTEGER NOT NULL,
+          order_id       TEXT,
+          reason         TEXT,
+          created_by     TEXT,
+          created_at     INTEGER NOT NULL
+        );
+      `);
+      await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_loyalty_tx_email ON loyalty_transactions(customer_email);`);
+      await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_loyalty_tx_order ON loyalty_transactions(order_id);`);
+
+      await db.runAsync(`
+        CREATE TABLE IF NOT EXISTS store_credit_ledger (
+          id             TEXT PRIMARY KEY NOT NULL,
+          customer_email TEXT NOT NULL,
+          type           TEXT NOT NULL CHECK(type IN ('issue','redeem','expire','reversal')),
+          amount_cents   INTEGER NOT NULL,
+          order_id       TEXT,
+          reason         TEXT,
+          created_by     TEXT,
+          created_at     INTEGER NOT NULL
+        );
+      `);
+      await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_sc_ledger_email ON store_credit_ledger(customer_email);`);
+      await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_sc_ledger_order ON store_credit_ledger(order_id);`);
+
+      logger.info('v6 CRM/loyalty/store-credit tables created.');
     }
 
     // Stamp the version

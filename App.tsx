@@ -25,6 +25,7 @@ import RootNavigator from './navigation/RootNavigator';
 import ErrorBoundary from './components/ErrorBoundary';
 import { NotificationProvider, useNotifications } from './contexts/NotificationProvider';
 import Toast from './components/Toast';
+import { ManagerApprovalModal } from './components/ManagerApprovalModal';
 //import { StripeTerminalBridgeProvider } from './contexts/StripeTerminalBridge';
 
 const AppContent = () => {
@@ -159,6 +160,7 @@ const AppContent = () => {
             </AuthProvider>
           </OnboardingProvider>
           <AppToast />
+          <ManagerApprovalModal />
         </NotificationProvider>
       </ErrorBoundary>
     </SafeAreaView>

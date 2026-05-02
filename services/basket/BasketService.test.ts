@@ -11,6 +11,11 @@ jest.mock('../config/POSConfigService', () => ({
   posConfig: { values: { taxRate: 0.08, maxSyncRetries: 3, drawerOpenOnCash: true }, load: jest.fn() },
 }));
 
+// Mock LocalCustomerService to avoid expo-sqlite dependency
+jest.mock('../customer/LocalCustomerService', () => ({
+  localCustomerService: { upsert: jest.fn().mockResolvedValue('mock-id'), recordOrder: jest.fn().mockResolvedValue(undefined) },
+}));
+
 import { BasketService } from './BasketService';
 import { BasketRepository, BasketRow } from '../../repositories/BasketRepository';
 import { LoggerInterface } from '../logger/LoggerInterface';

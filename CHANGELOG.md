@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
-## [1.2.0](https://github.com/n17foo/retailpos/compare/v1.1.1...v1.2.0) (2026-05-01)
+## [0.2.0](https://github.com/n17foo/retailpos/compare/v0.1.0...v0.2.0) (2026-05-01)
 
 ### Features
 
@@ -20,19 +20,19 @@ All notable changes to this project will be documented in this file. See [standa
 - failed macos build by skiping version checks ([e69588a](https://github.com/n17foo/retailpos/commit/e69588a3edb10b3a3e65dd77a3c52822627cf9e0))
 - failed macos build by skiping version checks ([3870655](https://github.com/n17foo/retailpos/commit/3870655bd79b57b4bb4444ff1b4edbdcd3fab312))
 
-### [1.1.1](https://github.com/n17foo/retailpos/compare/v1.1.0...v1.1.1) (2026-04-20)
+### [0.1.1](https://github.com/n17foo/retailpos/compare/v0.1.0...v0.1.1) (2026-04-20)
 
 ### Bug Fixes
 
 - the instoreapi to the local setup ([2b782f3](https://github.com/n17foo/retailpos/commit/2b782f3942616f758af89255e7ae5dda620ac0de))
 
-## 1.1.0 (2026-04-20)
+## 0.1.0 (2026-04-20)
 
 ### Features
 
 - adding release version ([65b1b5c](https://github.com/n17foo/retailpos/commit/65b1b5ce57d31ec13868e8676de50cc0df0e88f6))
 
-## [2.0.0] - 2024-01-XX
+## [0.1.0] - 2026-01-XX
 
 ### Added
 
@@ -56,7 +56,7 @@ All notable changes to this project will be documented in this file. See [standa
 
 - Legacy platform-specific implementations
 
-## [1.x.x] - Previous Versions
+## [0.0.x] - Previous Versions
 
 Previous versions were internal releases and not publicly documented.
 

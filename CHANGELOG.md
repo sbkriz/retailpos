@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.3.1](https://github.com/n17foo/retailpos/compare/v0.3.0...v0.3.1) (2026-05-03)
+
+### Features
+
+- extend sales flow ([ba84140](https://github.com/n17foo/retailpos/commit/ba841406ef70e08ca10f2fe0d9b7590d57537b15))
+
 ## [0.3.0](https://github.com/n17foo/retailpos/compare/v0.2.0...v0.3.0) (2026-05-03)
 
 ### Features

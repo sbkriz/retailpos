@@ -49,6 +49,9 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ onGoBack }) => {
   const capabilities = useMemo(() => getPlatformCapabilities(platform), [platform]);
   const composedTabs = useMemo(() => composeSettingsTabs({ platform, capabilities }), [platform, capabilities]);
 
+  // Filter out hidden tabs (spec requirement: settings.md §2.2.2.a, §5.12-5.14)
+  const visibleTabs = useMemo(() => composedTabs.filter(tab => tab.status !== 'hidden'), [composedTabs]);
+
   // Settings are restricted to admin and manager roles
   if (user?.role === 'cashier') {
     return (
@@ -68,7 +71,7 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ onGoBack }) => {
     }
   };
 
-  const activeTabDef = composedTabs.find(tab => tab.key === activeTab) ?? composedTabs[0];
+  const activeTabDef = visibleTabs.find(tab => tab.key === activeTab) ?? visibleTabs[0];
   const activeTabLabel = activeTabDef ? t(activeTabDef.translationKey) : '';
   const activeTabIcon = activeTabDef?.icon ?? '⚙️';
 
@@ -126,7 +129,7 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ onGoBack }) => {
         <View style={styles.desktopLayout}>
           {/* Left nav */}
           <View style={[styles.sideNav, { backgroundColor: colors.surface, borderRightColor: colors.border }]}>
-            {composedTabs.map(tab => (
+            {visibleTabs.map(tab => (
               <TouchableOpacity
                 key={tab.key}
                 style={[
@@ -204,7 +207,7 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ onGoBack }) => {
           <Modal visible={dropdownVisible} transparent animationType="fade" onRequestClose={() => setDropdownVisible(false)}>
             <TouchableOpacity style={styles.dropdownOverlay} activeOpacity={1} onPress={() => setDropdownVisible(false)}>
               <View style={[styles.dropdownMenu, { backgroundColor: colors.surface }]}>
-                {composedTabs.map(tab => (
+                {visibleTabs.map(tab => (
                   <TouchableOpacity
                     key={tab.key}
                     style={[
@@ -247,7 +250,7 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ onGoBack }) => {
           style={[styles.tabBarScroll, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}
           contentContainerStyle={styles.tabBarContent}
         >
-          {composedTabs.map(tab => (
+          {visibleTabs.map(tab => (
             <TouchableOpacity
               key={tab.key}
               style={[

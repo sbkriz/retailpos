@@ -38,7 +38,24 @@ export type AuditAction =
   | 'loyalty:adjusted'
   | 'store_credit:issued'
   | 'store_credit:redeemed'
-  | 'store_credit:expired';
+  | 'store_credit:expired'
+  | 'vendor:created'
+  | 'vendor:updated'
+  | 'vendor:deleted'
+  | 'purchase_order:created'
+  | 'purchase_order:submitted'
+  | 'purchase_order:received'
+  | 'purchase_order:cancelled'
+  | 'inventory_count:completed'
+  | 'transfer_order:received'
+  | 'transfer_order:dispatched'
+  | 'transfer_order:created'
+  | 'transfer_order:cancelled'
+  | 'vendor_return:created'
+  | 'vendor_return:confirmed'
+  | 'vendor_return:cancelled'
+  | 'barcode_labels:printed'
+  | 'barcode_labels:exported';
 
 export interface AuditEntry {
   id: string;

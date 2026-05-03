@@ -58,8 +58,37 @@ type PlatformSubStep = 'platform_selection' | 'platform_configuration' | 'offlin
  */
 type PeripheralsSubStep = 'payment' | 'printer' | 'scanner';
 
-/** Deferred feature keys surfaced in More menu after onboarding */
-const DEFERRED_FEATURES = ['discounts', 'giftcards', 'refunds', 'staff', 'pos_config', 'auth_methods'];
+/**
+ * Generate deferred feature keys based on platform capabilities.
+ * Only defer features that are actually supported by the selected platform.
+ * Always defer core setup features regardless of platform.
+ */
+const getDeferredFeatures = (_platform: string): string[] => {
+  const capabilities = platformCapabilityService.getCapabilities();
+  const deferred: string[] = [];
+
+  // Defer platform-specific features only if they're supported or available via custom adapter
+  if (capabilities.discounts === 'supported' || capabilities.discounts === 'custom') {
+    deferred.push('discounts');
+  }
+  if (capabilities.giftCards === 'supported' || capabilities.giftCards === 'custom') {
+    deferred.push('giftcards');
+  }
+  if (capabilities.refunds === 'supported' || capabilities.refunds === 'custom') {
+    deferred.push('refunds');
+  }
+  if (capabilities.loyalty === 'supported' || capabilities.loyalty === 'custom') {
+    deferred.push('loyalty');
+  }
+  if (capabilities.storeCredit === 'supported' || capabilities.storeCredit === 'custom') {
+    deferred.push('store_credit');
+  }
+
+  // Always defer these core setup features regardless of platform
+  deferred.push('staff', 'pos_config', 'auth_methods');
+
+  return deferred;
+};
 
 const OnboardingScreen: React.FC = () => {
   const { t } = useTranslate();
@@ -165,7 +194,8 @@ const OnboardingScreen: React.FC = () => {
 
   const completeOnboarding = async () => {
     logger.info('Onboarding complete', { platform: selectedPlatform });
-    await setupProgressService.markOnboardingComplete(DEFERRED_FEATURES);
+    const deferredFeatures = getDeferredFeatures(selectedPlatform || 'offline');
+    await setupProgressService.markOnboardingComplete(deferredFeatures);
     setIsOnboarded(true);
   };
 

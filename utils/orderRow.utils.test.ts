@@ -30,6 +30,7 @@ function makeRow(overrides: Partial<OrderRow> = {}): OrderRow {
     payment_transaction_id: null,
     cashier_id: 'c1',
     cashier_name: 'Alice',
+    register_id: null,
     status: 'paid',
     sync_status: 'synced',
     sync_error: null,
@@ -58,6 +59,11 @@ const sampleItems: OrderItemRow[] = [
     is_ecommerce_product: 0,
     original_id: null,
     properties: null,
+    option_summary: null,
+    tax_code: null,
+    tax_profile_id: null,
+    inventory_policy: null,
+    catalog_version: null,
   },
 ];
 

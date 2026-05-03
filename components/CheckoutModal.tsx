@@ -8,7 +8,7 @@ import { useCurrency } from '../hooks/useCurrency';
 import { useTranslate } from '../hooks/useTranslate';
 import type { PaymentLine as OrderPaymentLine } from '../services/order/order';
 
-export type PaymentMethod = 'cash' | 'card' | 'terminal';
+export type PaymentMethod = 'cash' | 'card' | 'terminal' | 'store_credit' | 'loyalty';
 
 export interface PaymentSelection {
   method: PaymentMethod;
@@ -33,6 +33,15 @@ interface CheckoutModalProps {
   onRemovePaymentLine?: (lineId: string) => void;
   onCompleteSplit?: () => void;
   splitMode?: boolean;
+  /** Amount for cash tender in split mode (null = not in cash tender) */
+  splitCashTenderAmount?: number | null;
+  onConfirmSplitCash?: (tenderedAmount: number) => void;
+  /** Customer email for loyalty/store credit */
+  customerEmail?: string;
+  /** Available loyalty points */
+  loyaltyPoints?: number;
+  /** Available store credit in dollars */
+  storeCreditDollars?: number;
 }
 
 type ModalStep = 'method' | 'cash_tender' | 'split_tender';
@@ -62,6 +71,11 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = props => {
     onRemovePaymentLine,
     onCompleteSplit,
     splitMode = false,
+    splitCashTenderAmount = null,
+    onConfirmSplitCash,
+    customerEmail,
+    loyaltyPoints = 0,
+    storeCreditDollars = 0,
   } = props;
 
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>('cash');
@@ -71,6 +85,14 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = props => {
   // Split tender — amount input for the current line being added
   const [splitAmountStr, setSplitAmountStr] = useState('');
   const [splitMethod, setSplitMethod] = useState<PaymentMethod>('cash');
+
+  // When splitCashTenderAmount is set, transition to cash_tender step
+  React.useEffect(() => {
+    if (splitCashTenderAmount !== null && splitCashTenderAmount > 0) {
+      setTenderedStr('');
+      setStep('cash_tender');
+    }
+  }, [splitCashTenderAmount]);
 
   // Reset to method selection whenever the modal opens
   const handleCancel = useCallback(() => {
@@ -109,26 +131,22 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = props => {
     setTenderedStr(prev => prev.slice(0, -1));
   }, []);
 
-  // Quick-tender shortcuts: exact, round up to nearest dollar, +$5, +$10, +$20
-  const quickAmounts = useCallback(() => {
-    const ceil = Math.ceil(orderTotal);
-    return [
-      { label: t('checkout.exact'), value: orderTotal },
-      ...(ceil !== orderTotal ? [{ label: formatMoney(ceil, currency.code), value: ceil }] : []),
-      { label: formatMoney(Math.ceil(orderTotal / 5) * 5, currency.code), value: Math.ceil(orderTotal / 5) * 5 },
-      { label: formatMoney(Math.ceil(orderTotal / 10) * 10, currency.code), value: Math.ceil(orderTotal / 10) * 10 },
-      { label: formatMoney(Math.ceil(orderTotal / 20) * 20, currency.code), value: Math.ceil(orderTotal / 20) * 20 },
-    ].filter((v, i, arr) => arr.findIndex(x => x.value === v.value) === i); // dedupe
-  }, [orderTotal, currency.code, t]);
-
+  // Calculate tender validation for handleCashConfirm callback
+  const amountDue = splitCashTenderAmount ?? orderTotal;
   const tenderedAmount = parseFloat(tenderedStr) || 0;
-  const changeDue = tenderedAmount - orderTotal;
-  const isTenderValid = tenderedAmount >= orderTotal;
+  const isTenderValid = tenderedAmount >= amountDue;
 
   const handleCashConfirm = useCallback(() => {
     if (!isTenderValid) return;
-    onSelectPayment({ method: 'cash', tenderedAmount });
-  }, [isTenderValid, tenderedAmount, onSelectPayment]);
+    // If in split mode with a specific amount, confirm that amount
+    if (splitCashTenderAmount !== null && onConfirmSplitCash) {
+      onConfirmSplitCash(tenderedAmount);
+      setStep('split_tender');
+    } else {
+      // Regular single-tender cash payment
+      onSelectPayment({ method: 'cash', tenderedAmount });
+    }
+  }, [isTenderValid, tenderedAmount, onSelectPayment, splitCashTenderAmount, onConfirmSplitCash]);
 
   // ── Split tender step ────────────────────────────────────────────────────
   if (step === 'split_tender') {
@@ -147,6 +165,10 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = props => {
         case 'terminal':
         case 'card_terminal':
           return '📱 Terminal';
+        case 'store_credit':
+          return '🎁 Store Credit';
+        case 'loyalty':
+          return '⭐ Loyalty Points';
         default:
           return m;
       }
@@ -155,6 +177,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = props => {
     const handleAddSplitLine = () => {
       if (!isSplitAmountValid || !onAddPaymentLine) return;
       const mappedMethod = splitMethod === 'terminal' ? 'card_terminal' : splitMethod;
+
+      // For cash, the hook will trigger cash tendering
+      // For card/terminal, the hook will process payment
       onAddPaymentLine({ method: mappedMethod, amount: splitAmount });
       setSplitAmountStr('');
     };
@@ -233,7 +258,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = props => {
                 <View style={styles.splitAddSection}>
                   <Text style={styles.sectionTitle}>Add Payment</Text>
                   <View style={styles.splitMethodRow}>
-                    {(['cash', 'card', 'card_terminal'] as PaymentMethod[]).map(m => (
+                    {(['cash', 'card', 'terminal'] as PaymentMethod[]).map(m => (
                       <TouchableOpacity
                         key={m}
                         style={[styles.splitMethodButton, splitMethod === m && styles.splitMethodButtonSelected]}
@@ -247,6 +272,37 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = props => {
                       </TouchableOpacity>
                     ))}
                   </View>
+                  {/* Store Credit / Loyalty buttons (only if customer attached and balance available) */}
+                  {customerEmail && (storeCreditDollars > 0 || loyaltyPoints > 0) && (
+                    <View style={styles.splitMethodRow}>
+                      {storeCreditDollars > 0 && (
+                        <TouchableOpacity
+                          style={[styles.splitMethodButton, splitMethod === 'store_credit' && styles.splitMethodButtonSelected]}
+                          onPress={() => setSplitMethod('store_credit')}
+                          accessibilityRole="radio"
+                          accessibilityState={{ selected: splitMethod === 'store_credit' }}
+                        >
+                          <Text
+                            style={[styles.splitMethodButtonText, splitMethod === 'store_credit' && styles.splitMethodButtonTextSelected]}
+                          >
+                            🎁 Credit ({formatMoney(storeCreditDollars, currency.code)})
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                      {loyaltyPoints > 0 && (
+                        <TouchableOpacity
+                          style={[styles.splitMethodButton, splitMethod === 'loyalty' && styles.splitMethodButtonSelected]}
+                          onPress={() => setSplitMethod('loyalty')}
+                          accessibilityRole="radio"
+                          accessibilityState={{ selected: splitMethod === 'loyalty' }}
+                        >
+                          <Text style={[styles.splitMethodButtonText, splitMethod === 'loyalty' && styles.splitMethodButtonTextSelected]}>
+                            ⭐ Points ({loyaltyPoints})
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  )}
                   <TextInput
                     style={styles.splitAmountInput}
                     value={splitAmountStr}
@@ -285,6 +341,12 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = props => {
 
   // ── Cash tendering step ──────────────────────────────────────────────────
   if (step === 'cash_tender') {
+    // In split mode, use the split cash tender amount; otherwise use full order total
+    const amountDue = splitCashTenderAmount ?? orderTotal;
+    const tenderedAmount = parseFloat(tenderedStr) || 0;
+    const changeDue = tenderedAmount - amountDue;
+    const isTenderValid = tenderedAmount >= amountDue;
+
     return (
       <Modal visible={visible} animationType="slide" transparent statusBarTranslucent>
         <View style={styles.overlay}>
@@ -292,7 +354,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = props => {
             {/* Header */}
             <View style={styles.header}>
               <TouchableOpacity
-                onPress={() => setStep('method')}
+                onPress={() => setStep(splitCashTenderAmount !== null ? 'split_tender' : 'method')}
                 style={styles.backButton}
                 disabled={isProcessing}
                 accessibilityLabel={t('common.back')}
@@ -300,7 +362,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = props => {
               >
                 <Text style={styles.backText}>←</Text>
               </TouchableOpacity>
-              <Text style={styles.headerTitle}>{t('checkout.cashPayment')}</Text>
+              <Text style={styles.headerTitle}>{splitCashTenderAmount !== null ? 'Cash Payment (Split)' : t('checkout.cashPayment')}</Text>
               <TouchableOpacity
                 onPress={handleCancel}
                 style={styles.closeButton}
@@ -316,7 +378,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = props => {
               {/* Amount due */}
               <View style={styles.amountDueRow}>
                 <Text style={styles.amountDueLabel}>{t('checkout.amountDue')}</Text>
-                <Text style={styles.amountDueValue}>{formatMoney(orderTotal, currency.code)}</Text>
+                <Text style={styles.amountDueValue}>{formatMoney(amountDue, currency.code)}</Text>
               </View>
 
               {/* Tendered display */}
@@ -331,13 +393,22 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = props => {
               <View style={[styles.changeRow, isTenderValid ? styles.changePositive : styles.changeInsufficient]}>
                 <Text style={styles.changeLabel}>{isTenderValid ? t('checkout.changeDue') : t('checkout.amountShort')}</Text>
                 <Text style={styles.changeValue}>
-                  {isTenderValid ? formatMoney(changeDue, currency.code) : formatMoney(orderTotal - tenderedAmount, currency.code)}
+                  {isTenderValid ? formatMoney(changeDue, currency.code) : formatMoney(amountDue - tenderedAmount, currency.code)}
                 </Text>
               </View>
 
               {/* Quick-tender shortcuts */}
               <View style={styles.quickAmounts}>
-                {quickAmounts().map(qa => (
+                {(() => {
+                  const ceil = Math.ceil(amountDue);
+                  return [
+                    { label: t('checkout.exact'), value: amountDue },
+                    ...(ceil !== amountDue ? [{ label: formatMoney(ceil, currency.code), value: ceil }] : []),
+                    { label: formatMoney(Math.ceil(amountDue / 5) * 5, currency.code), value: Math.ceil(amountDue / 5) * 5 },
+                    { label: formatMoney(Math.ceil(amountDue / 10) * 10, currency.code), value: Math.ceil(amountDue / 10) * 10 },
+                    { label: formatMoney(Math.ceil(amountDue / 20) * 20, currency.code), value: Math.ceil(amountDue / 20) * 20 },
+                  ].filter((v, i, arr) => arr.findIndex(x => x.value === v.value) === i);
+                })().map(qa => (
                   <TouchableOpacity
                     key={qa.value}
                     style={styles.quickAmountButton}
@@ -363,7 +434,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = props => {
                   isProcessing
                     ? t('common.processing')
                     : isTenderValid
-                      ? t('checkout.confirmCash', { change: formatMoney(changeDue, currency.code) })
+                      ? splitCashTenderAmount !== null
+                        ? `Add Cash Payment (Change: ${formatMoney(changeDue, currency.code)})`
+                        : t('checkout.confirmCash', { change: formatMoney(changeDue, currency.code) })
                       : t('checkout.enterAmount')
                 }
                 variant="success"
@@ -419,6 +492,24 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = props => {
                 <Text style={styles.totalLabel}>{t('checkout.total')}</Text>
                 <Text style={styles.totalValue}>{formatMoney(orderTotal, currency.code)}</Text>
               </View>
+
+              {/* Loyalty & Store Credit Info */}
+              {customerEmail && (loyaltyPoints > 0 || storeCreditDollars > 0) && (
+                <View style={styles.loyaltyInfo}>
+                  {loyaltyPoints > 0 && (
+                    <View style={styles.loyaltyRow}>
+                      <Text style={styles.loyaltyIcon}>⭐</Text>
+                      <Text style={styles.loyaltyText}>{loyaltyPoints} loyalty points available</Text>
+                    </View>
+                  )}
+                  {storeCreditDollars > 0 && (
+                    <View style={styles.loyaltyRow}>
+                      <Text style={styles.loyaltyIcon}>💳</Text>
+                      <Text style={styles.loyaltyText}>{formatMoney(storeCreditDollars, currency.code)} store credit available</Text>
+                    </View>
+                  )}
+                </View>
+              )}
             </View>
 
             {/* Payment Method Selection */}
@@ -586,6 +677,25 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.lg,
     fontWeight: '700',
     color: lightColors.primary,
+  },
+  loyaltyInfo: {
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: lightColors.border,
+  },
+  loyaltyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing.xs,
+  },
+  loyaltyIcon: {
+    fontSize: typography.fontSize.md,
+    marginRight: spacing.xs,
+  },
+  loyaltyText: {
+    fontSize: typography.fontSize.sm,
+    color: lightColors.textSecondary,
   },
   sectionTitle: {
     fontSize: typography.fontSize.md,

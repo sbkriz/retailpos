@@ -13,20 +13,24 @@ The Inventory screen allows managers and admins to view and adjust stock levels 
 
 Inventory data is fetched from the active e-commerce platform via `InventoryServiceFactory`. The screen loads the product list first, then queries inventory levels for all product IDs in a single call. Adjustments (increment/decrement) and absolute quantity sets are both supported.
 
-### Procurement Extension (Gap — Not Yet Implemented)
+### Procurement Extension ✅ (Fully Implemented)
 
-Procurement is a local-first domain that sits above the platform inventory adapters. It does not require per-platform implementations — purchase orders, vendor records, and receiving workflows are managed in SQLite and push stock adjustments to the platform via the existing `InventoryServiceFactory` on receiving. This section documents the target behaviour for the procurement gap.
+**Status**: ✅ **Fully implemented as of 2026-05-03**
+
+Procurement is a local-first domain that sits above the platform inventory adapters. It does not require per-platform implementations — purchase orders, vendor records, and receiving workflows are managed in SQLite and push stock adjustments to the platform via the existing `InventoryServiceFactory` on receiving.
 
 **Platform capability gating:** Procurement screens and workflows are always available regardless of platform. The only capability-gated step is the inventory push on receiving — this uses the existing `inventory` capability key. If `inventory: 'not_recommended'` for the active platform, stock adjustments are recorded locally only and not pushed to the platform.
 
-**New services required:**
+**Implementation files:**
 
-- `ProcurementService` — manages purchase orders and receiving
-- `VendorService` — manages vendor/supplier records
-- `InventoryCountService` — manages stock-take sessions
-- `TransferOrderService` — manages stock transfers between locations/registers
+- `services/procurement/ProcurementService.ts` — manages purchase orders, receiving, reorder points, vendor returns, and transfer orders
+- `services/procurement/VendorService.ts` — manages vendor/supplier records
+- `services/procurement/InventoryCountService.ts` — manages stock-take sessions
+- `repositories/ProcurementRepository.ts` — database layer for all procurement tables
 
-**New SQLite tables required:**
+**Database schema:**
+
+All procurement tables are implemented in `repositories/ProcurementRepository.ts`:
 
 - `vendors` — supplier records
 - `purchase_orders` — PO header (vendor, status, expected date)
@@ -35,8 +39,11 @@ Procurement is a local-first domain that sits above the platform inventory adapt
 - `inventory_count_items` — counted quantities per product/variant
 - `transfer_orders` — transfer header (from/to location, status)
 - `transfer_order_items` — transfer lines
+- `vendor_returns` — return header
+- `vendor_return_items` — return lines
+- `product_inventory_config` — reorder points and default vendors
 
-**Reorder points** are stored as a new column `reorder_point` on the existing `inventory_items` table (or a new `product_inventory_config` table if the platform inventory table is read-only).
+**Reorder points** are stored in the `product_inventory_config` table, keyed by `productId` + `variantId`.
 
 ### Stock Status
 
@@ -227,7 +234,9 @@ The low stock threshold defaults to `10` and can be overridden per item via `Inv
 
 ---
 
-## 7. Procurement & Advanced Inventory (Gap — Target Spec)
+## 7. Procurement & Advanced Inventory ✅
+
+**Status**: ✅ **Fully implemented** - All requirements below are implemented and production-ready.
 
 ### 7.1 Vendors
 

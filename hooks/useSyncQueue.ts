@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { orderRepository, OrderRow } from '../repositories/OrderRepository';
 import { getServiceContainer } from '../services/basket/BasketServiceFactory';
+import { db } from '../utils/db';
 
 export interface SyncQueueOrder {
   id: string;
@@ -35,11 +36,33 @@ interface UseSyncQueueResult {
   refresh: () => Promise<void>;
 }
 
+/**
+ * Get item counts for multiple orders in a single query
+ */
+async function getItemCounts(orderIds: string[]): Promise<Map<string, number>> {
+  if (orderIds.length === 0) return new Map();
+
+  const placeholders = orderIds.map(() => '?').join(',');
+  const query = `
+    SELECT order_id, SUM(quantity) as total_items
+    FROM order_items
+    WHERE order_id IN (${placeholders})
+    GROUP BY order_id
+  `;
+
+  const rows = await db.getAllAsync<{ order_id: string; total_items: number }>(query, orderIds);
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    counts.set(row.order_id, row.total_items);
+  }
+  return counts;
+}
+
 function mapRow(row: OrderRow): SyncQueueOrder {
   return {
     id: row.id,
     total: row.total,
-    itemCount: 0, // We don't join order_items here for performance
+    itemCount: 0, // Will be populated by loadQueue
     cashierName: row.cashier_name,
     syncStatus: row.sync_status as SyncQueueOrder['syncStatus'],
     syncError: row.sync_error,
@@ -71,7 +94,17 @@ export function useSyncQueue(): UseSyncQueueResult {
 
       // Sort by created_at descending
       allRelevant.sort((a, b) => b.created_at - a.created_at);
-      setOrders(allRelevant.map(mapRow));
+
+      // Get item counts for all orders in a single query (spec requirement: sync.md §4.1)
+      const orderIds = allRelevant.map(r => r.id);
+      const itemCounts = await getItemCounts(orderIds);
+
+      setOrders(
+        allRelevant.map(row => ({
+          ...mapRow(row),
+          itemCount: itemCounts.get(row.id) || 0,
+        }))
+      );
     } catch {
       // Silently fail — the UI will show empty state
     } finally {

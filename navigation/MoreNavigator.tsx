@@ -26,6 +26,14 @@ const ExchangeScreen = lazy(() => import('../screens/ExchangeScreen'));
 const PermissionSetsScreen = lazy(() => import('../screens/settings/PermissionSetsScreen'));
 const CustomersScreen = lazy(() => import('../screens/CustomersScreen'));
 const CustomerProfileScreen = lazy(() => import('../screens/CustomerProfileScreen'));
+const VendorsScreen = lazy(() => import('../screens/procurement/VendorsScreen'));
+const PurchaseOrdersScreen = lazy(() => import('../screens/procurement/PurchaseOrdersScreen'));
+const InventoryCountScreen = lazy(() => import('../screens/procurement/InventoryCountScreen'));
+const ProcurementScreen = lazy(() => import('../screens/procurement/ProcurementScreen'));
+const TransferOrdersScreen = lazy(() => import('../screens/procurement/TransferOrdersScreen'));
+const VendorReturnsScreen = lazy(() => import('../screens/procurement/VendorReturnsScreen'));
+const ReorderPointConfigScreen = lazy(() => import('../screens/inventory/ReorderPointConfigScreen'));
+const BarcodeLabelScreen = lazy(() => import('../screens/inventory/BarcodeLabelScreen'));
 
 const LazyFallback = () => {
   const { colors } = useTheme();
@@ -65,9 +73,14 @@ const MoreMenuScreen: React.FC<MoreMenuScreenProps> = ({ userRole, onLogout }) =
       navigation.navigate('Exchange', undefined);
     } else if (route === 'Customers') {
       navigation.navigate('Customers');
+    } else if (route === 'Procurement') {
+      navigation.navigate('Procurement');
     } else {
       navigation.navigate(
-        route as Exclude<keyof MoreStackParamList, 'PaymentTerminal' | 'MoreMenu' | 'Exchange' | 'Customers' | 'CustomerProfile'>
+        route as Exclude<
+          keyof MoreStackParamList,
+          'PaymentTerminal' | 'MoreMenu' | 'Exchange' | 'Customers' | 'CustomerProfile' | 'Procurement'
+        >
       );
     }
   };
@@ -270,6 +283,62 @@ export const MoreNavigator: React.FC<MoreNavigatorProps> = ({ userRole, onLogout
         {() => (
           <Suspense fallback={<LazyFallback />}>
             <CustomerProfileScreen />
+          </Suspense>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="Vendors" options={{ title: 'Vendors' }}>
+        {() => (
+          <Suspense fallback={<LazyFallback />}>
+            <VendorsScreen />
+          </Suspense>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="PurchaseOrders" options={{ title: 'Purchase Orders' }}>
+        {() => (
+          <Suspense fallback={<LazyFallback />}>
+            <PurchaseOrdersScreen />
+          </Suspense>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="InventoryCount" options={{ title: 'Inventory Count' }}>
+        {() => (
+          <Suspense fallback={<LazyFallback />}>
+            <InventoryCountScreen />
+          </Suspense>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="Procurement" options={{ title: 'Procurement' }}>
+        {() => (
+          <Suspense fallback={<LazyFallback />}>
+            <ProcurementScreen />
+          </Suspense>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="TransferOrders" options={{ title: 'Transfer Orders' }}>
+        {() => (
+          <Suspense fallback={<LazyFallback />}>
+            <TransferOrdersScreen />
+          </Suspense>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="VendorReturns" options={{ title: 'Vendor Returns' }}>
+        {() => (
+          <Suspense fallback={<LazyFallback />}>
+            <VendorReturnsScreen />
+          </Suspense>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="ReorderPointConfig" options={{ title: 'Reorder Points' }}>
+        {() => (
+          <Suspense fallback={<LazyFallback />}>
+            <ReorderPointConfigScreen />
+          </Suspense>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="BarcodeLabelPrint" options={{ title: 'Print Labels' }}>
+        {() => (
+          <Suspense fallback={<LazyFallback />}>
+            <BarcodeLabelScreen />
           </Suspense>
         )}
       </Stack.Screen>

@@ -28,6 +28,10 @@ import { keyValueRepository } from '../repositories/KeyValueRepository';
 import { PaymentSelection } from '../components/CheckoutModal';
 import { PaymentLine } from '../services/order/order';
 import { generateUUID } from '../utils/uuid';
+import { loyaltyService } from '../services/loyalty/LoyaltyService';
+import { storeCreditService } from '../services/storecredit/StoreCreditService';
+import { toCents } from '../utils/money';
+import { useLogger } from './useLogger';
 
 interface UseCheckoutOptions {
   platform?: ECommercePlatform;
@@ -35,6 +39,7 @@ interface UseCheckoutOptions {
 }
 
 export function useCheckout({ platform, onSuccess }: UseCheckoutOptions = {}) {
+  const logger = useLogger('useCheckout');
   const {
     cartItems,
     total,
@@ -42,6 +47,7 @@ export function useCheckout({ platform, onSuccess }: UseCheckoutOptions = {}) {
     tax,
     itemCount,
     currentOrder,
+    basket,
     startCheckout,
     markPaymentProcessing,
     completePayment,
@@ -58,12 +64,16 @@ export function useCheckout({ platform, onSuccess }: UseCheckoutOptions = {}) {
   // ── Split tender state ───────────────────────────────────────────────
   const [splitMode, setSplitMode] = useState(false);
   const [paymentLines, setPaymentLines] = useState<PaymentLine[]>([]);
+  const [splitCashTenderAmount, setSplitCashTenderAmount] = useState<number | null>(null);
 
   // ── Start checkout — creates platform draft ──────────────────────────
   const handleStartCheckout = useCallback(async () => {
     if (cartItems.length === 0) return;
     setIsProcessing(true);
     setError(null);
+    setSplitMode(false);
+    setPaymentLines([]);
+    setSplitCashTenderAmount(null);
     try {
       const order = await startCheckout(platform);
       if (order) {
@@ -97,14 +107,169 @@ export function useCheckout({ platform, onSuccess }: UseCheckoutOptions = {}) {
   }, [currentOrder, cancelDraftOrder, cancelOrder]);
 
   // ── Split tender helpers ─────────────────────────────────────────────
-  const addPaymentLine = useCallback((line: Omit<PaymentLine, 'id' | 'processedAt'>) => {
-    const full: PaymentLine = { ...line, id: generateUUID(), processedAt: Date.now() };
-    setPaymentLines(prev => [...prev, full]);
-  }, []);
+  const addPaymentLine = useCallback(
+    async (line: Omit<PaymentLine, 'id' | 'processedAt'>) => {
+      if (!currentOrder) return;
 
-  const removePaymentLine = useCallback((lineId: string) => {
-    setPaymentLines(prev => prev.filter(p => p.id !== lineId));
-  }, []);
+      // For card/terminal in split mode, process payment first
+      if (line.method === 'card' || line.method === 'card_terminal') {
+        setIsProcessing(true);
+        try {
+          const response = await processPayment({
+            amount: line.amount,
+            reference: `ORDER-${Date.now()}-SPLIT`,
+            orderId: currentOrder.id,
+            itemCount,
+          });
+
+          if (!response.success) {
+            setError(response.errorMessage || 'Card payment failed');
+            return;
+          }
+
+          // Add the successful card payment line
+          const full: PaymentLine = {
+            ...line,
+            id: generateUUID(),
+            processedAt: Date.now(),
+            transactionId: response.transactionId,
+            cardBrand: response.cardBrand,
+            last4: response.last4,
+          };
+          setPaymentLines(prev => [...prev, full]);
+        } catch (err) {
+          setError((err as Error).message);
+        } finally {
+          setIsProcessing(false);
+        }
+      } else if (line.method === 'cash') {
+        // For cash in split mode, store the amount and let CheckoutModal handle tendering
+        setSplitCashTenderAmount(line.amount);
+      } else if (line.method === 'loyalty') {
+        // Redeem loyalty points
+        if (!basket?.customerEmail) {
+          setError('Customer email required for loyalty redemption');
+          return;
+        }
+        setIsProcessing(true);
+        try {
+          const result = await loyaltyService.redeemPoints(basket.customerEmail, currentOrder.id, Math.floor(line.amount * 100)); // Convert dollars to points
+          const full: PaymentLine = {
+            method: 'loyalty',
+            amount: result.discountDollars,
+            id: generateUUID(),
+            processedAt: Date.now(),
+            note: `Loyalty redemption: ${result.transactionId}`,
+          };
+          setPaymentLines(prev => [...prev, full]);
+        } catch (err) {
+          setError((err as Error).message);
+        } finally {
+          setIsProcessing(false);
+        }
+      } else if (line.method === 'store_credit') {
+        // Redeem store credit
+        if (!basket?.customerEmail) {
+          setError('Customer email required for store credit redemption');
+          return;
+        }
+        setIsProcessing(true);
+        try {
+          const result = await storeCreditService.redeem(basket.customerEmail, currentOrder.id, toCents(line.amount));
+          const full: PaymentLine = {
+            method: 'store_credit',
+            amount: result.discountDollars,
+            id: generateUUID(),
+            processedAt: Date.now(),
+            note: `Store credit redemption: ${result.entryId}`,
+          };
+          setPaymentLines(prev => [...prev, full]);
+        } catch (err) {
+          setError((err as Error).message);
+        } finally {
+          setIsProcessing(false);
+        }
+      } else {
+        // Other methods — add directly
+        const full: PaymentLine = { ...line, id: generateUUID(), processedAt: Date.now() };
+        setPaymentLines(prev => [...prev, full]);
+      }
+    },
+    [currentOrder, processPayment, itemCount, basket?.customerEmail]
+  );
+
+  const confirmSplitCashPayment = useCallback(
+    (tenderedAmount: number) => {
+      if (splitCashTenderAmount === null) return;
+      const full: PaymentLine = {
+        method: 'cash',
+        amount: splitCashTenderAmount,
+        id: generateUUID(),
+        processedAt: Date.now(),
+        note: `Tendered: ${tenderedAmount.toFixed(2)}`,
+      };
+      setPaymentLines(prev => [...prev, full]);
+      setSplitCashTenderAmount(null);
+    },
+    [splitCashTenderAmount]
+  );
+
+  const removePaymentLine = useCallback(
+    async (lineId: string) => {
+      const line = paymentLines.find(p => p.id === lineId);
+      if (!line) return;
+
+      // Spec 2.1.9: Reverse terminal charges when removing a card payment line
+      if ((line.method === 'card' || line.method === 'card_terminal') && line.transactionId) {
+        // Attempt to void the transaction if the payment service supports it
+        try {
+          const paymentServiceInstance = (await import('../services/payment/PaymentService')).default;
+          if (paymentServiceInstance.voidTransaction) {
+            const result = await paymentServiceInstance.voidTransaction(line.transactionId);
+            if (!result.success) {
+              logger.warn(`Failed to void transaction ${line.transactionId}: ${result.errorMessage}`);
+              setError(`Card payment removed but void failed. Manual reversal may be required for transaction ${line.transactionId}`);
+            }
+          } else {
+            logger.warn(
+              `Card payment line removed (txn: ${line.transactionId}). voidTransaction not supported - manual reversal may be required.`
+            );
+            setError(`Card payment removed. Manual reversal may be required for transaction ${line.transactionId}`);
+          }
+        } catch (err) {
+          logger.warn('Failed to void transaction:', err);
+          setError(`Card payment removed but void failed. Manual reversal may be required for transaction ${line.transactionId}`);
+        }
+      }
+
+      // Reverse loyalty redemption
+      if (line.method === 'loyalty' && line.note) {
+        const txIdMatch = line.note.match(/Loyalty redemption: (.+)/);
+        if (txIdMatch && basket?.customerEmail) {
+          try {
+            await loyaltyService.reverseRedemption(txIdMatch[1]);
+          } catch (err) {
+            logger.warn('Failed to reverse loyalty redemption:', err);
+          }
+        }
+      }
+
+      // Reverse store credit redemption
+      if (line.method === 'store_credit' && line.note) {
+        const entryIdMatch = line.note.match(/Store credit redemption: (.+)/);
+        if (entryIdMatch && basket?.customerEmail) {
+          try {
+            await storeCreditService.reverseRedemption(entryIdMatch[1]);
+          } catch (err) {
+            logger.warn('Failed to reverse store credit redemption:', err);
+          }
+        }
+      }
+
+      setPaymentLines(prev => prev.filter(p => p.id !== lineId));
+    },
+    [paymentLines, basket?.customerEmail, logger]
+  );
 
   const remainingDue = useMemo(() => {
     const collected = paymentLines.filter(p => p.amount > 0).reduce((s, p) => s + p.amount, 0);
@@ -120,6 +285,51 @@ export function useCheckout({ platform, onSuccess }: UseCheckoutOptions = {}) {
       const primaryLine = paymentLines.find(p => p.amount > 0);
       const result = await completePayment(currentOrder.id, primaryLine?.method ?? 'other', primaryLine?.transactionId, paymentLines);
       if (result.success) {
+        if (result.openDrawer) {
+          cashDrawerServiceFactory
+            .getService()
+            .open()
+            .catch(() => {});
+        }
+
+        customerDisplayServiceFactory
+          .getService()
+          .showThankYou()
+          .catch(() => {});
+
+        // Auto-print receipt for split tender
+        try {
+          const printerSettings = await keyValueRepository.getObject<{ printReceipts?: boolean }>('printerSettings');
+          const printerFactory = PrinterServiceFactory.getInstance();
+          if (printerSettings?.printReceipts !== false && printerFactory.isConnectedToPrinter()) {
+            const order = currentOrder;
+            if (order) {
+              printerFactory
+                .printReceipt({
+                  orderId: order.id.slice(-8),
+                  items: order.items.map(i => ({ name: i.name, quantity: i.quantity, price: i.price })),
+                  subtotal,
+                  tax,
+                  total,
+                  paymentMethod: 'split',
+                  paymentLines: paymentLines.map(p => ({
+                    method: p.method,
+                    amount: p.amount,
+                    cardBrand: p.cardBrand,
+                    last4: p.last4,
+                  })),
+                  date: new Date(),
+                  cashierName: order.cashierName ?? 'Cashier',
+                  customerName: order.customerName,
+                })
+                .catch(() => {});
+            }
+          }
+        } catch (err) {
+          // Receipt printing is best-effort
+          logger.error(err);
+        }
+
         setSplitMode(false);
         setPaymentLines([]);
         setCheckoutVisible(false);
@@ -132,7 +342,7 @@ export function useCheckout({ platform, onSuccess }: UseCheckoutOptions = {}) {
     } finally {
       setIsProcessing(false);
     }
-  }, [currentOrder, remainingDue, paymentLines, markPaymentProcessing, completePayment, onSuccess]);
+  }, [currentOrder, remainingDue, paymentLines, markPaymentProcessing, completePayment, onSuccess, subtotal, tax, total, logger]);
 
   // ── Process payment ──────────────────────────────────────────────────
   const handlePayment = useCallback(
@@ -256,5 +466,7 @@ export function useCheckout({ platform, onSuccess }: UseCheckoutOptions = {}) {
     removePaymentLine,
     remainingDue,
     handleCompleteSplit,
+    splitCashTenderAmount,
+    confirmSplitCashPayment,
   };
 }

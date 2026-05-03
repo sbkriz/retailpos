@@ -262,6 +262,24 @@ export class PrinterServiceFactory {
   }
 
   /**
+   * Print raw ESC/POS commands to the active printer
+   * @param commands Raw ESC/POS command string
+   */
+  public async printRaw(commands: string): Promise<boolean> {
+    if (!this.activePrinterService) {
+      throw new Error('Not connected to a printer');
+    }
+
+    try {
+      this.logger.info('Printing raw ESC/POS commands');
+      return await this.activePrinterService.printRaw(commands);
+    } catch (error) {
+      this.logger.error({ message: 'Failed to print raw commands' }, error instanceof Error ? error : new Error(String(error)));
+      return false;
+    }
+  }
+
+  /**
    * Get status of the active printer
    */
   public async getPrinterStatus(): Promise<PrinterStatus> {

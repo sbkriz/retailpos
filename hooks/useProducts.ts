@@ -9,6 +9,8 @@ import {
   UnifiedProductSummary,
 } from '../services/product/types';
 import { mapToUnifiedProducts } from '../services/product/mappers';
+import { syncEventBus } from '../services/instoreapi/sync/SyncEventBus';
+import { instoreApiConfig } from '../services/instoreapi/InstoreApiConfig';
 
 /**
  * Hook state interface
@@ -194,6 +196,28 @@ export const useUnifiedProducts = (platform?: ECommercePlatform, initialOptions?
   useEffect(() => {
     fetchProducts(initialOptions);
   }, [fetchProducts, initialOptions]);
+
+  // Subscribe to sync events for real-time updates (spec: multi-register.md §2.7.1-2.7.5)
+  useEffect(() => {
+    if (!instoreApiConfig.isClient) {
+      return; // Only client registers need to listen for server events
+    }
+
+    // Refresh product list when products are updated on other registers
+    const unsubscribeProductUpdated = syncEventBus.on('product:updated', () => {
+      refresh();
+    });
+
+    // Refresh when inventory is updated (affects stock levels)
+    const unsubscribeInventoryUpdated = syncEventBus.on('inventory:updated', () => {
+      refresh();
+    });
+
+    return () => {
+      unsubscribeProductUpdated();
+      unsubscribeInventoryUpdated();
+    };
+  }, [refresh]);
 
   return {
     products,

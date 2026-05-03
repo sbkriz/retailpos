@@ -23,6 +23,7 @@ export interface OrderRow {
   status: string;
   sync_status: string;
   sync_error: string | null;
+  register_id: string | null;
   created_at: number;
   updated_at: number;
   paid_at: number | null;
@@ -43,6 +44,7 @@ export interface CreateOrderInput {
   note: string | null;
   cashierId: string | null;
   cashierName: string | null;
+  registerId?: string | null;
   platformOrderId?: string | null;
   status?: string;
   paymentsJson?: string | null;

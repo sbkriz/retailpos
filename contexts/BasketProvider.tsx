@@ -21,6 +21,8 @@ import { LoggerFactory } from '../services/logger/LoggerFactory';
 import { customerDisplayServiceFactory } from '../services/display/CustomerDisplayServiceFactory';
 import { buildDisplayState } from '../services/display/CustomerDisplayServiceInterface';
 import { useCurrency } from '../hooks/useCurrency';
+import { syncEventBus } from '../services/instoreapi/sync/SyncEventBus';
+import { instoreApiConfig } from '../services/instoreapi/InstoreApiConfig';
 
 const logger = LoggerFactory.getInstance().createLogger('BasketProvider');
 
@@ -51,6 +53,8 @@ export interface CartProduct {
   originalId?: string;
   sku?: string;
   taxable?: boolean;
+  /** Tax rate snapshot (0-1, e.g. 0.2 for 20%) - used for local basket tax calculation */
+  taxRate?: number;
   /** Offline: references a TaxProfile by ID */
   taxProfileId?: string;
   /** Online: platform tax class/code string */
@@ -242,6 +246,23 @@ export const BasketProvider = ({ children }: Readonly<{ children: ReactNode }>) 
     }
   }, []);
 
+  // Subscribe to sync events for real-time updates (spec: multi-register.md §2.7.1-2.7.5)
+  useEffect(() => {
+    if (!instoreApiConfig.isClient) {
+      return; // Only client registers need to listen for server events
+    }
+
+    // Refresh basket when inventory is updated on other registers
+    // This ensures stock levels are current and prevents overselling
+    const unsubscribeInventoryUpdated = syncEventBus.on('inventory:updated', () => {
+      refreshBasket();
+    });
+
+    return () => {
+      unsubscribeInventoryUpdated();
+    };
+  }, [refreshBasket]);
+
   const refreshUnsyncedCount = useCallback(async () => {
     if (!containerRef.current) return;
 
@@ -268,6 +289,35 @@ export const BasketProvider = ({ children }: Readonly<{ children: ReactNode }>) 
     if (!containerRef.current) return;
 
     try {
+      // Spec requirement 2.11: Resolve tax rate at add-to-cart time
+      let resolvedTaxRate = product.taxRate;
+
+      // Only resolve if taxRate is not already provided
+      if (resolvedTaxRate === undefined) {
+        const { taxProfileService } = await import('../services/tax/TaxProfileService');
+
+        if (product.taxProfileId) {
+          // Spec requirement 2.11.1: Offline product - resolve by taxProfileId
+          const profile = await taxProfileService.getProfileById(product.taxProfileId);
+          if (profile) {
+            resolvedTaxRate = profile.rate;
+          } else {
+            // Fallback to default profile
+            const defaultProfile = await taxProfileService.getDefaultProfile();
+            resolvedTaxRate = defaultProfile?.rate ?? 0.2; // Emergency fallback to 20%
+          }
+        } else if (product.taxCode) {
+          // Spec requirement 2.11.2: Online product - resolve by taxCode
+          const profile = await taxProfileService.resolveRateForTaxCode(product.taxCode);
+          resolvedTaxRate = profile?.rate ?? 0.2; // Emergency fallback to 20%
+        } else {
+          // No taxProfileId or taxCode - use default profile
+          const defaultProfile = await taxProfileService.getDefaultProfile();
+          resolvedTaxRate = defaultProfile?.rate ?? 0.2; // Emergency fallback to 20%
+        }
+      }
+
+      // Spec requirement 2.11.3: Pass resolved taxRate to BasketService
       const newBasket = await containerRef.current.basketService.addItem({
         productId: product.id,
         variantId: product.variantId,
@@ -278,6 +328,8 @@ export const BasketProvider = ({ children }: Readonly<{ children: ReactNode }>) 
         image: getImageUrl(product.image),
         isEcommerceProduct: product.isEcommerceProduct,
         originalId: product.originalId || product.platformId,
+        taxRate: resolvedTaxRate, // Spec requirement 2.11.3: Store resolved rate on BasketItem
+        taxable: product.taxable ?? true, // Spec requirement 2.2.3: Default to true if not specified
       });
       if (mountedRef.current) {
         setBasket(newBasket);

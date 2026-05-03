@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { orderRepository } from '../repositories/OrderRepository';
 import { orderItemRepository } from '../repositories/OrderItemRepository';
 import { rowToOrder, OrderWithItems } from '../utils/orderRow.utils';
+import { syncEventBus } from '../services/instoreapi/sync/SyncEventBus';
+import { instoreApiConfig } from '../services/instoreapi/InstoreApiConfig';
 
 export type { OrderWithItems };
 
@@ -32,6 +34,32 @@ export const useOrders = () => {
 
   useEffect(() => {
     fetchOrders();
+  }, [fetchOrders]);
+
+  // Subscribe to sync events for real-time updates (spec: multi-register.md §2.7.1-2.7.5)
+  useEffect(() => {
+    if (!instoreApiConfig.isClient) {
+      return; // Only client registers need to listen for server events
+    }
+
+    // Refresh order list when orders are created, updated, or paid on other registers
+    const unsubscribeCreated = syncEventBus.on('order:created', () => {
+      fetchOrders();
+    });
+
+    const unsubscribeUpdated = syncEventBus.on('order:updated', () => {
+      fetchOrders();
+    });
+
+    const unsubscribePaid = syncEventBus.on('order:paid', () => {
+      fetchOrders();
+    });
+
+    return () => {
+      unsubscribeCreated();
+      unsubscribeUpdated();
+      unsubscribePaid();
+    };
   }, [fetchOrders]);
 
   const deleteOrder = async (id: string) => {

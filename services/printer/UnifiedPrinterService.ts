@@ -252,7 +252,29 @@ export class UnifiedPrinterService extends AbstractPrinterService {
 
       // Payment method
       await this.printerInstance.alignLeft();
-      await this.printerInstance.printText(`Payment Method: ${data.paymentMethod}\n\n`);
+
+      // Split tender: show payment breakdown
+      if (data.paymentMethod === 'split' && data.paymentLines && data.paymentLines.length > 0) {
+        await this.printerInstance.printText(`Payment Method: Split Tender\n`);
+        await this.printerInstance.printText(`${divider}\n`);
+        for (const line of data.paymentLines) {
+          let methodLabel = line.method;
+          if (line.method === 'card' || line.method === 'card_terminal') {
+            methodLabel = line.cardBrand ? `${line.cardBrand} ····${line.last4}` : 'Card';
+          } else if (line.method === 'cash') {
+            methodLabel = 'Cash';
+          } else if (line.method === 'store_credit') {
+            methodLabel = 'Store Credit';
+          } else if (line.method === 'loyalty') {
+            methodLabel = 'Loyalty Points';
+          }
+          await this.printerInstance.printText(`${receiptConfigService.formatLine(methodLabel, `${cs}${line.amount.toFixed(2)}`)}\n`);
+        }
+        await this.printerInstance.printText(`${divider}\n\n`);
+      } else {
+        // Single payment method
+        await this.printerInstance.printText(`Payment Method: ${data.paymentMethod}\n\n`);
+      }
 
       // Footer — driven by ReceiptConfigService
       await this.printerInstance.alignCenter();

@@ -48,6 +48,14 @@ export type MoreStackParamList = {
   Exchange: { orderId: string } | undefined;
   CustomerProfile: { email: string };
   Customers: undefined;
+  Vendors: undefined;
+  PurchaseOrders: undefined;
+  InventoryCount: undefined;
+  Procurement: undefined;
+  TransferOrders: undefined;
+  VendorReturns: undefined;
+  ReorderPointConfig: undefined;
+  BarcodeLabelPrint: undefined;
 };
 
 /**

@@ -83,17 +83,14 @@ retailpos/
 │   ├── InventoryScreen.tsx
 │   ├── DailyOrdersScreen.tsx
 │   ├── BarcodeScannerScreen.tsx
-│   ├── onboarding/              # Wizard steps
-│   │   ├── WelcomeStep.tsx
+│   ├── onboarding/              # Wizard steps (3-phase flow)
 │   │   ├── PlatformSelectionStep.tsx
 │   │   ├── PlatformConfigurationStep.tsx
 │   │   ├── OfflineSetupStep.tsx      # Local store + category/product setup
-│   │   ├── StaffSetupStep.tsx        # Staff user creation (offline)
 │   │   ├── AdminUserStep.tsx
 │   │   ├── PaymentProviderStep.tsx
 │   │   ├── PrinterSetupStep.tsx
-│   │   ├── ScannerSetupStep.tsx
-│   │   └── SummaryStep.tsx
+│   │   └── ScannerSetupStep.tsx
 │   └── order/                   # Order screen sub-components
 │       ├── Category.tsx
 │       ├── CategoryList.tsx
@@ -435,7 +432,7 @@ The original monolithic `BasketService` has been split into three focused servic
 
 **Config fields:** `taxRate`, `maxSyncRetries`, `storeName`, `storeAddress`, `storePhone`, `currencySymbol`, `drawerOpenOnCash`
 
-The `POSSetupStep` in onboarding collects these values. After onboarding, the **POS Config** tab in Settings allows editing.
+POS configuration setup is deferred to More → Settings after onboarding. After onboarding, the **POS Config** tab in Settings allows editing.
 
 ---
 

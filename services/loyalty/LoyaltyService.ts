@@ -80,12 +80,48 @@ export class LoyaltyService {
   async getBalance(email: string): Promise<LoyaltyBalance> {
     const account = await loyaltyRepository.getOrCreateAccount(email);
     const config = await this.getConfig();
+
+    // Calculate tier based on lifetime earned
+    const tier = this.calculateTier(account.lifetime_earned);
+
     return {
       points: account.balance,
       valueInCents: account.balance * config.redeemRate,
-      tier: account.tier,
+      tier,
       lifetimeEarned: account.lifetime_earned,
     };
+  }
+
+  /**
+   * Calculate loyalty tier based on lifetime points earned.
+   * Tiers: Bronze (default), Silver (500+), Gold (2000+)
+   */
+  private calculateTier(lifetimeEarned: number): string {
+    // Tier thresholds (can be made configurable later)
+    const TIER_SILVER = 500;
+    const TIER_GOLD = 2000;
+
+    if (lifetimeEarned >= TIER_GOLD) return 'Gold';
+    if (lifetimeEarned >= TIER_SILVER) return 'Silver';
+    return 'Bronze';
+  }
+
+  /**
+   * Update the tier in the loyalty_accounts table.
+   * Called after earn/adjust operations.
+   */
+  private async updateTier(email: string): Promise<void> {
+    try {
+      const account = await loyaltyRepository.getOrCreateAccount(email);
+      const newTier = this.calculateTier(account.lifetime_earned);
+
+      if (account.tier !== newTier) {
+        await loyaltyRepository.updateTier(email, newTier);
+        this.logger.info(`Updated tier for ${email}: ${account.tier} → ${newTier}`);
+      }
+    } catch (err) {
+      this.logger.error({ message: `Failed to update tier for ${email}` }, err instanceof Error ? err : new Error(String(err)));
+    }
   }
 
   // ── Earn ──────────────────────────────────────────────────────────────
@@ -106,6 +142,9 @@ export class LoyaltyService {
       await loyaltyRepository.getOrCreateAccount(email);
       await loyaltyRepository.appendTransaction(email, 'earn', pointsEarned, orderId, 'Order purchase');
       await loyaltyRepository.updateBalance(email, pointsEarned);
+
+      // Update tier after earning points
+      await this.updateTier(email);
 
       notificationService.notify('Loyalty Points Earned', `+${pointsEarned} points earned on this order`, 'info');
 
@@ -162,6 +201,9 @@ export class LoyaltyService {
     await loyaltyRepository.getOrCreateAccount(email);
     await loyaltyRepository.appendTransaction(email, 'adjustment', delta, null, reason, managerId);
     await loyaltyRepository.updateBalance(email, delta);
+
+    // Update tier after adjustment
+    await this.updateTier(email);
 
     await auditLogService.log('loyalty:adjusted', {
       userId: managerId,

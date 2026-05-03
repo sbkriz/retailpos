@@ -11,6 +11,9 @@ export interface InventoryItem {
   sku?: string;
   quantity: number;
   lowStockThreshold?: number;
+  reorderPoint?: number;
+  reorderQty?: number;
+  defaultVendorId?: string;
 }
 
 interface InventoryItemCardProps {
@@ -23,6 +26,7 @@ interface InventoryItemCardProps {
   onCancelEdit: () => void;
   onSaveQuantity: (productId: string, variantId?: string) => void;
   onAdjustQuantity: (productId: string, adjustment: number, variantId?: string) => void;
+  onCreatePO?: (productId: string, variantId?: string, reorderQty?: number, vendorId?: string) => void;
 }
 
 const LOW_STOCK_THRESHOLD = 10;
@@ -43,8 +47,10 @@ const InventoryItemCard: React.FC<InventoryItemCardProps> = ({
   onCancelEdit,
   onSaveQuantity,
   onAdjustQuantity,
+  onCreatePO,
 }) => {
   const stockColor = getStockColor(item.quantity, item.lowStockThreshold);
+  const needsReorder = item.reorderPoint && item.quantity <= item.reorderPoint;
 
   return (
     <View style={styles.itemCard}>
@@ -54,6 +60,11 @@ const InventoryItemCard: React.FC<InventoryItemCardProps> = ({
             {item.name}
           </Text>
           {item.sku && <Text style={styles.itemSku}>SKU: {item.sku}</Text>}
+          {needsReorder && (
+            <View style={styles.reorderBadge}>
+              <Text style={styles.reorderText}>⚠️ Reorder needed</Text>
+            </View>
+          )}
         </View>
         <View style={[styles.stockBadge, { backgroundColor: stockColor + '20' }]}>
           <Text style={[styles.stockText, { color: stockColor }]}>
@@ -96,14 +107,25 @@ const InventoryItemCard: React.FC<InventoryItemCardProps> = ({
               <Text style={styles.adjustButtonText}>+</Text>
             </TouchableOpacity>
           </View>
-          <Button
-            title="Edit"
-            size="sm"
-            variant="outline"
-            onPress={() => {
-              onStartEdit(`${item.productId}-${item.variantId || ''}`, item.quantity);
-            }}
-          />
+          <View style={styles.rightActions}>
+            {needsReorder && onCreatePO && (
+              <Button
+                title="Create PO"
+                size="sm"
+                variant="primary"
+                onPress={() => onCreatePO(item.productId, item.variantId, item.reorderQty, item.defaultVendorId)}
+                style={styles.createPOButton}
+              />
+            )}
+            <Button
+              title="Edit"
+              size="sm"
+              variant="outline"
+              onPress={() => {
+                onStartEdit(`${item.productId}-${item.variantId || ''}`, item.quantity);
+              }}
+            />
+          </View>
         </View>
       )}
     </View>
@@ -156,6 +178,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  rightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
   adjustButton: {
     width: 36,
     height: 36,
@@ -184,6 +211,22 @@ const styles = StyleSheet.create({
   editInput: {
     flex: 1,
     marginBottom: 0,
+  },
+  reorderBadge: {
+    backgroundColor: lightColors.warning + '20',
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
+    borderRadius: borderRadius.sm,
+    marginTop: spacing.xs,
+    alignSelf: 'flex-start',
+  },
+  reorderText: {
+    fontSize: typography.fontSize.xs,
+    color: lightColors.warning,
+    fontWeight: '600',
+  },
+  createPOButton: {
+    minWidth: 80,
   },
 });
 

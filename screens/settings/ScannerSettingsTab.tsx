@@ -5,6 +5,8 @@ import { lightColors, spacing, borderRadius, typography, elevation } from '../..
 import { Button } from '../../components/Button';
 import { useTranslate } from '../../hooks/useTranslate';
 import { useLogger } from '../../hooks/useLogger';
+import { auditLogService } from '../../services/audit/AuditLogService';
+import { useAuthContext } from '../../contexts/AuthProvider';
 
 const SCANNER_TYPE_KEYS = [
   { value: 'camera', labelKey: 'settings.scanner.camera' },
@@ -15,6 +17,7 @@ const SCANNER_TYPE_KEYS = [
 
 const ScannerSettingsTab: React.FC = () => {
   const { t } = useTranslate();
+  const { user } = useAuthContext();
   const { scannerSettings, saveSettings, testConnection, isLoading, error, saveStatus, loadSettings } = useScannerSettings();
   const logger = useLogger('ScannerSettingsTab');
 
@@ -49,11 +52,23 @@ const ScannerSettingsTab: React.FC = () => {
     try {
       await saveSettings(formValues);
       setHasUnsavedChanges(false);
+
+      // Log settings change (spec: audit.md §2.1.8)
+      await auditLogService.log('settings:changed', {
+        userId: user?.id,
+        userName: user?.username,
+        details: 'Scanner settings updated',
+        metadata: {
+          settingName: 'scanner',
+          type: formValues.type,
+          enabled: formValues.enabled,
+        },
+      });
     } catch (err) {
       logger.error('Failed to save scanner settings:', err);
       Alert.alert(t('common.error'), t('settings.scanner.saveError'));
     }
-  }, [formValues, saveSettings, t, logger]);
+  }, [formValues, saveSettings, user, t, logger]);
 
   // Handle test connection
   const handleTestConnection = useCallback(async () => {
@@ -100,6 +115,47 @@ const ScannerSettingsTab: React.FC = () => {
               editable={!isLoading}
             />
           </View>
+
+          {/* BLE UUID fields - shown only for bluetooth scanner type (spec: settings-tabs.md §9.2) */}
+          {formValues.type === 'bluetooth' && (
+            <>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>{t('settings.scanner.bleServiceUuid')}</Text>
+                <TextInput
+                  style={styles.input}
+                  value={formValues.bleServiceUuid || ''}
+                  onChangeText={value => handleInputChange('bleServiceUuid', value)}
+                  placeholder={t('settings.scanner.bleServiceUuidPlaceholder', {
+                    defaultValue: 'e.g., 0000180a-0000-1000-8000-00805f9b34fb',
+                  })}
+                  editable={!isLoading}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <Text style={styles.fieldHint}>
+                  {t('settings.scanner.bleServiceUuidHint', { defaultValue: 'BLE service UUID for scanner connection' })}
+                </Text>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>{t('settings.scanner.bleCharacteristicUuid')}</Text>
+                <TextInput
+                  style={styles.input}
+                  value={formValues.bleCharacteristicUuid || ''}
+                  onChangeText={value => handleInputChange('bleCharacteristicUuid', value)}
+                  placeholder={t('settings.scanner.bleCharacteristicUuidPlaceholder', {
+                    defaultValue: 'e.g., 00002a29-0000-1000-8000-00805f9b34fb',
+                  })}
+                  editable={!isLoading}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <Text style={styles.fieldHint}>
+                  {t('settings.scanner.bleCharacteristicUuidHint', { defaultValue: 'BLE characteristic UUID for data transfer' })}
+                </Text>
+              </View>
+            </>
+          )}
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>{t('settings.scanner.scannerType')}</Text>
@@ -328,6 +384,12 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.medium as '500',
   },
   typeHint: {
+    fontSize: typography.fontSize.xs,
+    color: lightColors.textSecondary,
+    marginTop: spacing.xs,
+    fontStyle: 'italic' as const,
+  },
+  fieldHint: {
     fontSize: typography.fontSize.xs,
     color: lightColors.textSecondary,
     marginTop: spacing.xs,

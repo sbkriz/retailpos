@@ -61,6 +61,12 @@ export interface BasePrinterService {
   getStatus(): Promise<PrinterStatus>;
 
   /**
+   * Print raw ESC/POS commands
+   * @param commands Raw ESC/POS command string or byte array
+   */
+  printRaw(commands: string | Uint8Array): Promise<boolean>;
+
+  /**
    * Format receipt data into ESC/POS command buffer
    * @param data Receipt data
    */
@@ -84,6 +90,19 @@ export abstract class AbstractPrinterService implements BasePrinterService {
   abstract connect(connectionConfig: unknown): Promise<boolean>;
   abstract printReceipt(data: ReceiptData): Promise<boolean>;
   abstract getStatus(): Promise<PrinterStatus>;
+
+  /**
+   * Print raw ESC/POS commands.
+   * Default implementation converts string to bytes and sends them.
+   * Subclasses can override for optimized handling.
+   */
+  async printRaw(commands: string | Uint8Array): Promise<boolean> {
+    if (!this._isConnected) return false;
+
+    const bytes = typeof commands === 'string' ? new Uint8Array(stringToBytes(commands)) : commands;
+
+    return this.sendBytes(bytes);
+  }
 
   /**
    * Open cash drawer via ESC/POS command.
@@ -224,12 +243,41 @@ export abstract class AbstractPrinterService implements BasePrinterService {
     commands.push(...stringToBytes(doubleDivider));
     commands.push(...ESC_POS_COMMANDS.NEWLINE);
 
-    // Payment method — center aligned
-    commands.push(...ESC_POS_COMMANDS.ALIGN_CENTER);
-    commands.push(...stringToBytes(`Payment Method: ${data.paymentMethod}`));
-    commands.push(...ESC_POS_COMMANDS.NEWLINE, ...ESC_POS_COMMANDS.NEWLINE);
+    // Payment method — left aligned for split tender breakdown
+    commands.push(...ESC_POS_COMMANDS.ALIGN_LEFT);
 
-    // Footer — from ReceiptConfigService
+    // Split tender: show payment breakdown
+    if (data.paymentMethod === 'split' && data.paymentLines && data.paymentLines.length > 0) {
+      commands.push(...stringToBytes('Payment Method: Split Tender'));
+      commands.push(...ESC_POS_COMMANDS.NEWLINE);
+      commands.push(...stringToBytes(divider));
+      commands.push(...ESC_POS_COMMANDS.NEWLINE);
+
+      for (const line of data.paymentLines) {
+        let methodLabel = line.method;
+        if (line.method === 'card' || line.method === 'card_terminal') {
+          methodLabel = line.cardBrand ? `${line.cardBrand} ····${line.last4}` : 'Card';
+        } else if (line.method === 'cash') {
+          methodLabel = 'Cash';
+        } else if (line.method === 'store_credit') {
+          methodLabel = 'Store Credit';
+        } else if (line.method === 'loyalty') {
+          methodLabel = 'Loyalty Points';
+        }
+        commands.push(...stringToBytes(receiptConfigService.formatLine(methodLabel, `${cs}${line.amount.toFixed(2)}`)));
+        commands.push(...ESC_POS_COMMANDS.NEWLINE);
+      }
+      commands.push(...stringToBytes(divider));
+      commands.push(...ESC_POS_COMMANDS.NEWLINE, ...ESC_POS_COMMANDS.NEWLINE);
+    } else {
+      // Single payment method — center aligned
+      commands.push(...ESC_POS_COMMANDS.ALIGN_CENTER);
+      commands.push(...stringToBytes(`Payment Method: ${data.paymentMethod}`));
+      commands.push(...ESC_POS_COMMANDS.NEWLINE, ...ESC_POS_COMMANDS.NEWLINE);
+    }
+
+    // Footer — from ReceiptConfigService (center aligned)
+    commands.push(...ESC_POS_COMMANDS.ALIGN_CENTER);
     if (config.footer.line1) {
       commands.push(...stringToBytes(config.footer.line1));
       commands.push(...ESC_POS_COMMANDS.NEWLINE);

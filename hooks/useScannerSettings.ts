@@ -7,6 +7,8 @@ export interface ScannerSettings {
   enabled: boolean;
   type: string;
   deviceId: string;
+  bleServiceUuid?: string;
+  bleCharacteristicUuid?: string;
 }
 
 const SCANNER_SETTINGS_KEY = 'scannerSettings';
@@ -15,6 +17,8 @@ const DEFAULT_SCANNER_SETTINGS: ScannerSettings = {
   enabled: false,
   type: 'bluetooth',
   deviceId: '',
+  bleServiceUuid: '',
+  bleCharacteristicUuid: '',
 };
 
 export const useScannerSettings = () => {

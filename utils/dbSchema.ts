@@ -7,7 +7,7 @@ const logger = LoggerFactory.getInstance().createLogger('dbSchema');
  * Current database schema version.
  * Bump this number and add a migration block whenever the schema changes.
  */
-export const LATEST_DB_VERSION = 6;
+export const LATEST_DB_VERSION = 9;
 
 /**
  * Initialise (or migrate) the database schema.
@@ -473,6 +473,225 @@ async function migrateDatabase(db: SQLiteDatabase, fromVersion: number, toVersio
       await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_sc_ledger_order ON store_credit_ledger(order_id);`);
 
       logger.info('v6 CRM/loyalty/store-credit tables created.');
+    }
+
+    // ── v7 – Procurement: vendors, POs, inventory counts, transfers ──────
+    if (fromVersion < 7) {
+      logger.info('Applying v7: creating procurement tables…');
+
+      await db.runAsync(`
+        CREATE TABLE IF NOT EXISTS vendors (
+          id           TEXT PRIMARY KEY NOT NULL,
+          name         TEXT NOT NULL,
+          contact_name TEXT,
+          email        TEXT,
+          phone        TEXT,
+          address      TEXT,
+          notes        TEXT,
+          created_at   INTEGER NOT NULL,
+          updated_at   INTEGER NOT NULL,
+          deleted_at   INTEGER
+        );
+      `);
+      await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_vendors_name ON vendors(name);`);
+
+      await db.runAsync(`
+        CREATE TABLE IF NOT EXISTS purchase_orders (
+          id            TEXT PRIMARY KEY NOT NULL,
+          vendor_id     TEXT,
+          status        TEXT NOT NULL DEFAULT 'draft'
+                          CHECK(status IN ('draft','ordered','partially_received','received','cancelled')),
+          expected_date INTEGER,
+          notes         TEXT,
+          ordered_at    INTEGER,
+          created_by    TEXT,
+          created_at    INTEGER NOT NULL,
+          updated_at    INTEGER NOT NULL
+        );
+      `);
+      await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_po_status ON purchase_orders(status);`);
+      await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_po_vendor ON purchase_orders(vendor_id);`);
+
+      await db.runAsync(`
+        CREATE TABLE IF NOT EXISTS purchase_order_items (
+          id                  TEXT PRIMARY KEY NOT NULL,
+          purchase_order_id   TEXT NOT NULL,
+          product_id          TEXT NOT NULL,
+          variant_id          TEXT,
+          product_name        TEXT NOT NULL,
+          ordered_qty         INTEGER NOT NULL,
+          received_qty        INTEGER NOT NULL DEFAULT 0,
+          unit_cost           REAL NOT NULL DEFAULT 0,
+          FOREIGN KEY (purchase_order_id) REFERENCES purchase_orders(id) ON DELETE CASCADE
+        );
+      `);
+      await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_poi_po ON purchase_order_items(purchase_order_id);`);
+
+      await db.runAsync(`
+        CREATE TABLE IF NOT EXISTS inventory_counts (
+          id           TEXT PRIMARY KEY NOT NULL,
+          status       TEXT NOT NULL DEFAULT 'in_progress'
+                         CHECK(status IN ('in_progress','completed','discarded')),
+          started_by   TEXT,
+          started_at   INTEGER NOT NULL,
+          completed_at INTEGER,
+          notes        TEXT
+        );
+      `);
+
+      await db.runAsync(`
+        CREATE TABLE IF NOT EXISTS inventory_count_items (
+          id           TEXT PRIMARY KEY NOT NULL,
+          count_id     TEXT NOT NULL,
+          product_id   TEXT NOT NULL,
+          variant_id   TEXT,
+          product_name TEXT NOT NULL,
+          sku          TEXT,
+          expected_qty INTEGER NOT NULL DEFAULT 0,
+          counted_qty  INTEGER,
+          FOREIGN KEY (count_id) REFERENCES inventory_counts(id) ON DELETE CASCADE
+        );
+      `);
+      await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_count_items_count ON inventory_count_items(count_id);`);
+
+      await db.runAsync(`
+        CREATE TABLE IF NOT EXISTS transfer_orders (
+          id            TEXT PRIMARY KEY NOT NULL,
+          from_location TEXT NOT NULL,
+          to_location   TEXT NOT NULL,
+          status        TEXT NOT NULL DEFAULT 'draft'
+                          CHECK(status IN ('draft','in_transit','received','cancelled')),
+          notes         TEXT,
+          created_by    TEXT,
+          created_at    INTEGER NOT NULL,
+          updated_at    INTEGER NOT NULL
+        );
+      `);
+
+      await db.runAsync(`
+        CREATE TABLE IF NOT EXISTS transfer_order_items (
+          id                TEXT PRIMARY KEY NOT NULL,
+          transfer_order_id TEXT NOT NULL,
+          product_id        TEXT NOT NULL,
+          variant_id        TEXT,
+          product_name      TEXT NOT NULL,
+          transfer_qty      INTEGER NOT NULL,
+          FOREIGN KEY (transfer_order_id) REFERENCES transfer_orders(id) ON DELETE CASCADE
+        );
+      `);
+      await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_toi_transfer ON transfer_order_items(transfer_order_id);`);
+
+      await db.runAsync(`
+        CREATE TABLE IF NOT EXISTS product_inventory_config (
+          product_id        TEXT NOT NULL,
+          variant_id        TEXT NOT NULL DEFAULT '',
+          reorder_point     INTEGER NOT NULL DEFAULT 0,
+          reorder_qty       INTEGER NOT NULL DEFAULT 0,
+          default_vendor_id TEXT,
+          updated_at        INTEGER NOT NULL,
+          PRIMARY KEY (product_id, variant_id)
+        );
+      `);
+
+      await db.runAsync(`
+        CREATE TABLE IF NOT EXISTS vendor_returns (
+          id                TEXT PRIMARY KEY NOT NULL,
+          purchase_order_id TEXT NOT NULL,
+          vendor_id         TEXT NOT NULL,
+          status            TEXT NOT NULL DEFAULT 'pending'
+                              CHECK(status IN ('pending','confirmed','cancelled')),
+          notes             TEXT,
+          created_by        TEXT,
+          created_at        INTEGER NOT NULL,
+          updated_at        INTEGER NOT NULL
+        );
+      `);
+
+      await db.runAsync(`
+        CREATE TABLE IF NOT EXISTS vendor_return_items (
+          id               TEXT PRIMARY KEY NOT NULL,
+          vendor_return_id TEXT NOT NULL,
+          product_id       TEXT NOT NULL,
+          variant_id       TEXT,
+          product_name     TEXT NOT NULL,
+          return_qty       INTEGER NOT NULL,
+          reason           TEXT,
+          FOREIGN KEY (vendor_return_id) REFERENCES vendor_returns(id) ON DELETE CASCADE
+        );
+      `);
+
+      logger.info('v7 procurement tables created.');
+    }
+
+    // ── v8 – Add register_id to orders and baskets ──────────────────────
+    if (fromVersion < 8) {
+      logger.info('Applying v8: adding register_id to orders and baskets…');
+
+      // Add register_id column to orders table
+      const orderRegisterColExists = await db.getFirstAsync<{ cid: number }>(
+        `SELECT cid FROM pragma_table_info('orders') WHERE name = 'register_id'`
+      );
+      if (!orderRegisterColExists) {
+        await db.runAsync(`ALTER TABLE orders ADD COLUMN register_id TEXT`);
+        await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_orders_register ON orders(register_id)`);
+      }
+
+      // Add register_id column to baskets table
+      const basketRegisterColExists = await db.getFirstAsync<{ cid: number }>(
+        `SELECT cid FROM pragma_table_info('baskets') WHERE name = 'register_id'`
+      );
+      if (!basketRegisterColExists) {
+        await db.runAsync(`ALTER TABLE baskets ADD COLUMN register_id TEXT`);
+      }
+
+      logger.info('v8 register_id columns added.');
+    }
+
+    // ── v9 – Add basket item snapshot fields to order_items ─────────────
+    if (fromVersion < 9) {
+      logger.info('Applying v9: adding snapshot fields to order_items…');
+
+      // Add option_summary column
+      const optionSummaryExists = await db.getFirstAsync<{ cid: number }>(
+        `SELECT cid FROM pragma_table_info('order_items') WHERE name = 'option_summary'`
+      );
+      if (!optionSummaryExists) {
+        await db.runAsync(`ALTER TABLE order_items ADD COLUMN option_summary TEXT`);
+      }
+
+      // Add tax_code column
+      const taxCodeExists = await db.getFirstAsync<{ cid: number }>(
+        `SELECT cid FROM pragma_table_info('order_items') WHERE name = 'tax_code'`
+      );
+      if (!taxCodeExists) {
+        await db.runAsync(`ALTER TABLE order_items ADD COLUMN tax_code TEXT`);
+      }
+
+      // Add tax_profile_id column
+      const taxProfileIdExists = await db.getFirstAsync<{ cid: number }>(
+        `SELECT cid FROM pragma_table_info('order_items') WHERE name = 'tax_profile_id'`
+      );
+      if (!taxProfileIdExists) {
+        await db.runAsync(`ALTER TABLE order_items ADD COLUMN tax_profile_id TEXT`);
+      }
+
+      // Add inventory_policy column
+      const inventoryPolicyExists = await db.getFirstAsync<{ cid: number }>(
+        `SELECT cid FROM pragma_table_info('order_items') WHERE name = 'inventory_policy'`
+      );
+      if (!inventoryPolicyExists) {
+        await db.runAsync(`ALTER TABLE order_items ADD COLUMN inventory_policy TEXT`);
+      }
+
+      // Add catalog_version column
+      const catalogVersionExists = await db.getFirstAsync<{ cid: number }>(
+        `SELECT cid FROM pragma_table_info('order_items') WHERE name = 'catalog_version'`
+      );
+      if (!catalogVersionExists) {
+        await db.runAsync(`ALTER TABLE order_items ADD COLUMN catalog_version TEXT`);
+      }
+
+      logger.info('v9 snapshot fields added to order_items.');
     }
 
     // Stamp the version

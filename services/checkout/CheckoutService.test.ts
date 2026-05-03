@@ -203,6 +203,7 @@ describe('CheckoutService', () => {
           payment_transaction_id: null,
           cashier_id: null,
           cashier_name: null,
+          register_id: null,
           status: 'paid',
           sync_status: 'pending',
           sync_error: null,

@@ -28,6 +28,16 @@ export interface ReceiptItem {
 }
 
 /**
+ * Payment line for split tender receipts
+ */
+export interface ReceiptPaymentLine {
+  method: string;
+  amount: number;
+  cardBrand?: string;
+  last4?: string;
+}
+
+/**
  * Receipt data interface
  */
 export interface ReceiptData {
@@ -37,6 +47,8 @@ export interface ReceiptData {
   tax: number;
   total: number;
   paymentMethod: string;
+  /** Payment lines for split tender (optional) */
+  paymentLines?: ReceiptPaymentLine[];
   date: Date;
   cashierName: string;
   customerName?: string;

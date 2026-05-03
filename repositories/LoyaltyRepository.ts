@@ -66,6 +66,17 @@ export class LoyaltyRepository {
     );
   }
 
+  async updateTier(email: string, tier: string): Promise<void> {
+    const now = Date.now();
+    await db.runAsync(
+      `UPDATE loyalty_accounts
+       SET tier = ?,
+           updated_at = ?
+       WHERE customer_email = ?`,
+      [tier, now, email.toLowerCase()]
+    );
+  }
+
   // ── Transactions ──────────────────────────────────────────────────────
 
   async appendTransaction(

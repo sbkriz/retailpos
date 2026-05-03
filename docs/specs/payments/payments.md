@@ -15,6 +15,18 @@ The payment layer is a provider-agnostic abstraction over multiple card terminal
 
 All providers share the same `PaymentRequest` / `PaymentResponse` contract. Mock implementations exist for every provider and are activated when `USE_MOCK_PAYMENT=true`, enabling safe demo and test usage without real hardware.
 
+### Future PED Integration
+
+**Important**: If PED (PIN Entry Device) integration is required in the future, it **must be implemented through the Instore API** rather than as a direct payment provider in this layer. This architectural decision ensures:
+
+- **Separation of concerns**: POS client remains focused on UI/UX, while Instore API handles payment hardware protocols
+- **Centralized management**: Single point of control for PED communication across multiple POS terminals
+- **Vendor agnostic**: Consistent interface regardless of PED vendor (Ingenico, Verifone, PAX, etc.)
+- **PCI compliance**: Sensitive payment data remains server-side, simplifying compliance requirements
+- **Scalability**: New PED vendors can be added to Instore API without modifying POS client code
+
+**Implementation approach**: POS client calls Instore API endpoints (e.g., `/api/ped/initiate`, `/api/ped/status`) via `InstoreApiTransport`, which communicates with physical PED hardware. The payment flow remains consistent with the existing provider pattern from the POS perspective.
+
 ### Actors
 
 | Actor   | Role                                                                                   |

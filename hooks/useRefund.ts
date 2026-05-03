@@ -163,12 +163,132 @@ export function useRefund(platform?: ECommercePlatform) {
     [isInitialized, platform, logger]
   );
 
+  /**
+   * Process a return with optional refund
+   */
+  const processReturn = useCallback(
+    async (input: {
+      orderId: string;
+      items: {
+        orderItemId?: string;
+        productId: string;
+        variantId?: string;
+        productName: string;
+        quantity: number;
+        refundAmount: number;
+        reason?: string;
+        restock?: boolean;
+      }[];
+      processedBy?: string;
+      issueRefund?: boolean;
+      platform?: ECommercePlatform;
+    }): Promise<{ success: boolean; returnIds: string[]; totalRefund: number; refundId?: string; error?: string }> => {
+      try {
+        setIsLoading(true);
+        setError(null);
+
+        if (!isInitialized) {
+          logger.warn('Attempting to process return with uninitialized service');
+          throw new Error('Returns service not initialized');
+        }
+
+        logger.info(`Processing return for order: ${input.orderId}`);
+
+        const result = await returnService.processReturn(input);
+
+        if (!result.success) {
+          const errorMessage = result.error || 'Failed to process return';
+          logger.error({ message: `Return processing failed: ${errorMessage}` });
+          setError(errorMessage);
+        } else {
+          logger.info(`Successfully processed return for order: ${input.orderId}`);
+        }
+
+        return result;
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to process return';
+        logger.error(
+          { message: `Error processing return for order: ${input.orderId}` },
+          err instanceof Error ? err : new Error(errorMessage)
+        );
+        setError(errorMessage);
+        return {
+          success: false,
+          returnIds: [],
+          totalRefund: 0,
+          error: errorMessage,
+        };
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [isInitialized, logger]
+  );
+
+  /**
+   * Get returnable items for an order
+   */
+  const getReturnableItems = useCallback(
+    async (orderId: string) => {
+      try {
+        setError(null);
+
+        if (!isInitialized) {
+          logger.warn('Attempting to get returnable items with uninitialized service');
+          throw new Error('Returns service not initialized');
+        }
+
+        logger.info(`Retrieving returnable items for order: ${orderId}`);
+
+        return await returnService.getReturnableItems(orderId);
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to get returnable items';
+        logger.error(
+          { message: `Error retrieving returnable items for order: ${orderId}` },
+          err instanceof Error ? err : new Error(errorMessage)
+        );
+        setError(errorMessage);
+        return [];
+      }
+    },
+    [isInitialized, logger]
+  );
+
+  /**
+   * Get returns for an order
+   */
+  const getReturnsByOrder = useCallback(
+    async (orderId: string) => {
+      try {
+        setError(null);
+
+        if (!isInitialized) {
+          logger.warn('Attempting to get returns with uninitialized service');
+          throw new Error('Returns service not initialized');
+        }
+
+        logger.info(`Retrieving returns for order: ${orderId}`);
+
+        return await returnService.getReturnsByOrder(orderId);
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to get returns';
+        logger.error({ message: `Error retrieving returns for order: ${orderId}` }, err instanceof Error ? err : new Error(errorMessage));
+        setError(errorMessage);
+        return [];
+      }
+    },
+    [isInitialized, logger]
+  );
+
   return {
     isInitialized,
     isLoading,
     error,
     processEcommerceRefund,
     processPaymentRefund,
+    processReturn,
     getRefundHistory,
+    getReturnableItems,
+    getReturnsByOrder,
   };
 }

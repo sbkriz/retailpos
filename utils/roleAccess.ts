@@ -19,7 +19,8 @@ type MoreMenuItem =
   | 'SyncQueue'
   | 'Reports'
   | 'Exchange'
-  | 'Customers';
+  | 'Customers'
+  | 'Procurement';
 
 const TAB_ACCESS: Record<UserRole, TabName[]> = {
   admin: ['Sale', 'Scan', 'Search', 'Inventory', 'More'],
@@ -28,8 +29,31 @@ const TAB_ACCESS: Record<UserRole, TabName[]> = {
 };
 
 const MORE_MENU_ACCESS: Record<UserRole, MoreMenuItem[]> = {
-  admin: ['OrderHistory', 'Settings', 'Users', 'Refund', 'Exchange', 'Printer', 'PaymentTerminal', 'SyncQueue', 'Reports', 'Customers'],
-  manager: ['OrderHistory', 'Settings', 'Refund', 'Exchange', 'Printer', 'PaymentTerminal', 'SyncQueue', 'Reports', 'Customers'],
+  admin: [
+    'OrderHistory',
+    'Settings',
+    'Users',
+    'Refund',
+    'Exchange',
+    'Printer',
+    'PaymentTerminal',
+    'SyncQueue',
+    'Reports',
+    'Customers',
+    'Procurement',
+  ],
+  manager: [
+    'OrderHistory',
+    'Settings',
+    'Refund',
+    'Exchange',
+    'Printer',
+    'PaymentTerminal',
+    'SyncQueue',
+    'Reports',
+    'Customers',
+    'Procurement',
+  ],
   cashier: ['OrderHistory', 'Printer', 'PaymentTerminal'],
 };
 

@@ -4,6 +4,7 @@ import { receiptConfigService } from './ReceiptConfigService';
 import { addMoney, multiplyMoney, roundMoney, subtractMoney, sumMoney } from '../../utils/money';
 import { getCurrencySymbol } from '../../utils/currency';
 import { LoggerFactory } from '../logger/LoggerFactory';
+import { auditLogService } from '../audit/AuditLogService';
 
 export interface ShiftData {
   id: string;
@@ -88,6 +89,18 @@ export class DailyReportService {
 
     this.currentShift = shift;
     await keyValueRepository.setObject(CURRENT_SHIFT_KEY, shift);
+
+    // Log shift opened (spec: audit.md §2.1.9)
+    await auditLogService.log('shift:opened', {
+      userId: cashierId,
+      userName: cashierName,
+      details: `Shift opened with starting cash ${openingCash.toFixed(2)}`,
+      metadata: {
+        shiftId: shift.id,
+        openingCash,
+      },
+    });
+
     return shift;
   }
 
@@ -104,6 +117,18 @@ export class DailyReportService {
     const history = (await keyValueRepository.getObject<ShiftData[]>(SHIFT_HISTORY_KEY)) || [];
     history.push(this.currentShift);
     await keyValueRepository.setObject(SHIFT_HISTORY_KEY, history);
+
+    // Log shift closed (spec: audit.md §2.1.10)
+    await auditLogService.log('shift:closed', {
+      userId: this.currentShift.cashierId,
+      userName: this.currentShift.cashierName,
+      details: `Shift closed with ending cash ${closingCash.toFixed(2)}`,
+      metadata: {
+        shiftId: this.currentShift.id,
+        openingCash: this.currentShift.openingCash,
+        closingCash,
+      },
+    });
 
     // Clear current shift
     const closedShift = { ...this.currentShift };
@@ -142,12 +167,26 @@ export class DailyReportService {
     for (const order of shiftOrders) {
       itemsSold += order.items.reduce((sum, item) => sum + item.quantity, 0);
 
-      const paymentMethod = order.paymentMethod || 'Unknown';
-      if (!paymentBreakdown[paymentMethod]) {
-        paymentBreakdown[paymentMethod] = { count: 0, total: 0 };
+      // Use payments array if available (split-tender), otherwise use primary payment method
+      if (order.payments && order.payments.length > 0) {
+        // Split-tender order - count each payment line separately
+        for (const payment of order.payments) {
+          const method = payment.method || 'Unknown';
+          if (!paymentBreakdown[method]) {
+            paymentBreakdown[method] = { count: 0, total: 0 };
+          }
+          paymentBreakdown[method].count++;
+          paymentBreakdown[method].total = addMoney(paymentBreakdown[method].total, payment.amount);
+        }
+      } else {
+        // Single-tender order - use primary payment method
+        const paymentMethod = order.paymentMethod || 'Unknown';
+        if (!paymentBreakdown[paymentMethod]) {
+          paymentBreakdown[paymentMethod] = { count: 0, total: 0 };
+        }
+        paymentBreakdown[paymentMethod].count++;
+        paymentBreakdown[paymentMethod].total = addMoney(paymentBreakdown[paymentMethod].total, order.total);
       }
-      paymentBreakdown[paymentMethod].count++;
-      paymentBreakdown[paymentMethod].total = addMoney(paymentBreakdown[paymentMethod].total, order.total);
 
       if (order.total < 0) {
         refunds++;
@@ -345,7 +384,20 @@ export class DailyReportService {
     lines.push(doubleDivider);
 
     // Payment
-    lines.push(receiptConfigService.formatLine('Payment:', order.paymentMethod || 'N/A'));
+    if (order.payments && order.payments.length > 1) {
+      // Split-tender - show all payment lines
+      lines.push(receiptConfigService.formatLine('Payment:', `Split (${order.payments.length})`));
+      lines.push(divider);
+      for (const payment of order.payments) {
+        const methodLabel = payment.method.replace('_', ' ');
+        const txInfo = payment.transactionId ? ` [${payment.transactionId.slice(-6)}]` : '';
+        const cardInfo = payment.cardBrand && payment.last4 ? ` ${payment.cardBrand} ****${payment.last4}` : '';
+        lines.push(receiptConfigService.formatLine(`  ${methodLabel}${cardInfo}`, `${cs}${payment.amount.toFixed(2)}${txInfo}`));
+      }
+    } else {
+      // Single payment
+      lines.push(receiptConfigService.formatLine('Payment:', order.paymentMethod || 'N/A'));
+    }
     lines.push('');
 
     // Footer

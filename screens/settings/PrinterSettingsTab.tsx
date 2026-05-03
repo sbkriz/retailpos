@@ -7,12 +7,15 @@ import { useLogger } from '../../hooks/useLogger';
 import { lightColors, spacing, borderRadius, typography, elevation } from '../../utils/theme';
 import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
+import { auditLogService } from '../../services/audit/AuditLogService';
+import { useAuthContext } from '../../contexts/AuthProvider';
 
 // Helper function to create a deep copy of the settings object
 const deepCopy = <T,>(obj: T): T => JSON.parse(JSON.stringify(obj));
 
 const PrinterSettingsTab: React.FC = () => {
   const { t } = useTranslate();
+  const { user } = useAuthContext();
 
   const logger = useLogger('PrinterSettingsTab');
 
@@ -190,6 +193,18 @@ const PrinterSettingsTab: React.FC = () => {
     try {
       const success = await saveSettings(printerSettings);
       if (success) {
+        // Log settings change (spec: audit.md §2.1.8)
+        await auditLogService.log('settings:changed', {
+          userId: user?.id,
+          userName: user?.username,
+          details: 'Printer settings updated',
+          metadata: {
+            settingName: 'printer',
+            connectionType: printerSettings.connectionType,
+            enabled: printerSettings.enabled,
+          },
+        });
+
         Alert.alert(t('common.success', 'Success'), t('settings.printer.saveSuccess', 'Printer settings saved successfully'), [
           { text: t('common.ok', 'OK') },
         ]);

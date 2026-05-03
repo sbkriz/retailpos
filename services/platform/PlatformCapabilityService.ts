@@ -33,6 +33,9 @@ export class PlatformCapabilityService {
   /** Cached platform resolved from storage. Null until first load. */
   private cachedPlatform: ECommercePlatform | null = null;
 
+  /** Loading flag — true during initial load, false after completion */
+  private isLoading = true;
+
   private constructor() {}
 
   public static getInstance(): PlatformCapabilityService {
@@ -47,6 +50,7 @@ export class PlatformCapabilityService {
    * Call this once at app startup (e.g. in ServiceConfigBridge.configureFromStorage).
    */
   public async loadFromStorage(): Promise<void> {
+    this.isLoading = true;
     try {
       const settings = await keyValueRepository.getObject<{ platform?: string }>(ECOMMERCE_SETTINGS_KEY);
       const platform = (settings?.platform ?? ECommercePlatform.OFFLINE) as ECommercePlatform;
@@ -55,6 +59,8 @@ export class PlatformCapabilityService {
     } catch (err) {
       this.logger.warn({ message: 'Failed to load platform from storage, defaulting to offline', ...err });
       this.cachedPlatform = ECommercePlatform.OFFLINE;
+    } finally {
+      this.isLoading = false;
     }
   }
 
@@ -63,12 +69,25 @@ export class PlatformCapabilityService {
    */
   public setPlatform(platform: ECommercePlatform | string): void {
     this.cachedPlatform = platform as ECommercePlatform;
+    this.isLoading = false; // Mark as loaded when explicitly set
+  }
+
+  /**
+   * Returns true while the initial load is in progress.
+   * While loading, getPlatform() returns OFFLINE as a least-privilege default.
+   */
+  public getIsLoading(): boolean {
+    return this.isLoading;
   }
 
   /**
    * The currently active platform.
+   * Returns OFFLINE while loading (least-privilege default per spec §3.7).
    */
   public getPlatform(): ECommercePlatform {
+    if (this.isLoading) {
+      return ECommercePlatform.OFFLINE;
+    }
     return this.cachedPlatform ?? ECommercePlatform.OFFLINE;
   }
 

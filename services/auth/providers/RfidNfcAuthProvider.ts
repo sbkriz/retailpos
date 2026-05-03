@@ -20,6 +20,7 @@ export class RfidNfcAuthProvider implements AuthMethodProvider {
 
   async isAvailable(): Promise<boolean> {
     // RFID/NFC availability is user-configured (they tell us they have a reader)
+    // Spec requirement 4.4, 5.4.2: Check auth.rfid.enabled flag
     const enabled = await keyValueRepository.getObject<boolean>(RFID_ENABLED_KEY);
     return enabled === true;
   }

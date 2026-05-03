@@ -17,6 +17,11 @@ export interface OrderItemRow {
   is_ecommerce_product: number;
   original_id: string | null;
   properties: string | null; // JSON string
+  option_summary: string | null;
+  tax_code: string | null;
+  tax_profile_id: string | null;
+  inventory_policy: string | null;
+  catalog_version: string | null;
 }
 
 export interface CreateOrderItemInput {
@@ -33,6 +38,11 @@ export interface CreateOrderItemInput {
   isEcommerceProduct?: boolean;
   originalId?: string | null;
   properties?: Record<string, string> | null;
+  optionSummary?: string | null;
+  taxCode?: string | null;
+  taxProfileId?: string | null;
+  inventoryPolicy?: 'deny' | 'continue' | null;
+  catalogVersion?: string | null;
 }
 
 export class OrderItemRepository {
@@ -42,8 +52,9 @@ export class OrderItemRepository {
       await db.runAsync(
         `INSERT INTO order_items (
           id, order_id, product_id, variant_id, sku, name, price, quantity,
-          image, taxable, tax_rate, is_ecommerce_product, original_id, properties
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          image, taxable, tax_rate, is_ecommerce_product, original_id, properties,
+          option_summary, tax_code, tax_profile_id, inventory_policy, catalog_version
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id,
           item.orderId,
@@ -59,6 +70,11 @@ export class OrderItemRepository {
           item.isEcommerceProduct ? 1 : 0,
           item.originalId ?? null,
           item.properties ? JSON.stringify(item.properties) : null,
+          item.optionSummary ?? null,
+          item.taxCode ?? null,
+          item.taxProfileId ?? null,
+          item.inventoryPolicy ?? null,
+          item.catalogVersion ?? null,
         ]
       );
     }

@@ -8,6 +8,7 @@ import { MainTabNavigator } from './MainTabNavigator';
 import type { RootStackParamList } from './types';
 import { User } from '../repositories/UserRepository';
 import { useLogger } from '../hooks/useLogger';
+import { auditLogService } from '../services/audit/AuditLogService';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -43,6 +44,13 @@ export const RootNavigator: React.FC = () => {
 
   // Handle logout
   const handleLogout = () => {
+    // Log logout event (spec: audit.md §2.1.3)
+    auditLogService.log('auth:logout', {
+      userId: user?.id,
+      userName: user?.username,
+      details: 'User logged out',
+    });
+
     setUser(null);
     setIsAuthenticated(false);
   };

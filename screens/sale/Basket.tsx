@@ -9,6 +9,7 @@ import { useCurrency } from '../../hooks/useCurrency';
 import { useTranslate } from '../../hooks/useTranslate';
 import { CheckoutModal } from '../../components/CheckoutModal';
 import { useCheckout } from '../../hooks/useCheckout';
+import { useLoyaltyBasket } from '../../hooks/useLoyaltyBasket';
 
 interface BasketProps {
   onCheckout?: () => void;
@@ -23,6 +24,7 @@ export const Basket: React.FC<BasketProps> = ({ onCheckout, platform }) => {
     setIsRightPanelOpen,
     isLoading,
     cartItems,
+    basket,
     incrementQuantity,
     decrementQuantity,
     removeFromCart,
@@ -44,6 +46,13 @@ export const Basket: React.FC<BasketProps> = ({ onCheckout, platform }) => {
     handleCancelCheckout,
     handlePayment,
     clearError,
+    splitMode,
+    paymentLines,
+    addPaymentLine,
+    removePaymentLine,
+    handleCompleteSplit,
+    splitCashTenderAmount,
+    confirmSplitCashPayment,
   } = useCheckout({
     platform,
     onSuccess: () => {
@@ -51,6 +60,12 @@ export const Basket: React.FC<BasketProps> = ({ onCheckout, platform }) => {
       onCheckout?.();
     },
   });
+
+  const { loyaltyBalance, storeCreditDollars, loadBalances } = useLoyaltyBasket(basket?.customerEmail, currentOrder?.id);
+
+  useEffect(() => {
+    loadBalances();
+  }, [basket?.customerEmail, loadBalances]);
 
   // Basket surfaces payment errors as Alert.alert per spec 2.9.8
   useEffect(() => {
@@ -207,6 +222,16 @@ export const Basket: React.FC<BasketProps> = ({ onCheckout, platform }) => {
         onCancel={handleCancelCheckout}
         isProcessing={isProcessing}
         terminalConnected={terminalConnected}
+        splitMode={splitMode}
+        paymentLines={paymentLines}
+        onAddPaymentLine={addPaymentLine}
+        onRemovePaymentLine={removePaymentLine}
+        onCompleteSplit={handleCompleteSplit}
+        splitCashTenderAmount={splitCashTenderAmount}
+        onConfirmSplitCash={confirmSplitCashPayment}
+        customerEmail={basket?.customerEmail}
+        loyaltyPoints={loyaltyBalance?.points || 0}
+        storeCreditDollars={storeCreditDollars}
       />
     </SwipeablePanel>
   );

@@ -20,6 +20,7 @@ import { backgroundSyncService } from './services/sync/BackgroundSyncService';
 import { posConfig } from './services/config/POSConfigService';
 import { authConfig } from './services/auth/AuthConfigService';
 import { instoreApiConfig } from './services/instoreapi/InstoreApiConfig';
+import { instoreApiServer } from './services/instoreapi/InstoreApiServer';
 import { syncPoller } from './services/instoreapi/sync/SyncPoller';
 import RootNavigator from './navigation/RootNavigator';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -113,13 +114,23 @@ const AppContent = () => {
       );
     });
 
-    // Load local API config and start SyncPoller if in client mode
+    // Load local API config and start services based on mode
     instoreApiConfig
       .load()
-      .then(() => {
+      .then(async () => {
         if (instoreApiConfig.isClient) {
           syncPoller.start();
           loggerRef.current.info({ message: 'SyncPoller started — client mode active' });
+        } else if (instoreApiConfig.isServer) {
+          try {
+            await instoreApiServer.start();
+            loggerRef.current.info({ message: 'InstoreApiServer started — server mode active' });
+          } catch (error) {
+            loggerRef.current.error(
+              { message: 'Failed to start InstoreApiServer' },
+              error instanceof Error ? error : new Error(String(error))
+            );
+          }
         }
       })
       .catch(err => {
@@ -138,6 +149,7 @@ const AppContent = () => {
       backgroundSyncService.stop();
       queueManager.dispose();
       syncPoller.stop();
+      instoreApiServer.stop().catch(() => {}); // Don't throw on cleanup
     };
   }, []);
 

@@ -59,6 +59,9 @@ const PaymentTerminalScreen: React.FC<PaymentTerminalScreenProps> = ({ navigatio
   const [processing, setProcessing] = useState(false);
   const [result, setResult] = useState<PaymentResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+
+  const MAX_RETRY_ATTEMPTS = 3;
 
   // Discover real terminals from the active payment provider
   const handleScan = useCallback(async () => {
@@ -124,27 +127,48 @@ const PaymentTerminalScreen: React.FC<PaymentTerminalScreenProps> = ({ navigatio
     setSelectedTerminalName(null);
     setResult(null);
     setError(null);
+    setRetryCount(0);
   };
 
   const handleProcessPayment = async () => {
     if (!connected || !selectedTerminal) return;
+
+    // Check retry limit
+    if (retryCount >= MAX_RETRY_ATTEMPTS) {
+      setError(`Maximum retry attempts (${MAX_RETRY_ATTEMPTS}) reached. Please disconnect and try again.`);
+      return;
+    }
+
     setProcessing(true);
     setError(null);
     setResult(null);
+    setRetryCount(prev => prev + 1);
+
+    const PAYMENT_TIMEOUT = 60000; // 60 seconds
+
     try {
-      const response = await processPayment({
-        amount,
-        reference: `ORDER-${Date.now()}`,
-        orderId: routeParams.orderId,
-        customerName: routeParams.customerName,
-        items: items.map(item => ({
-          name: item.name,
-          price: item.price,
-          quantity: item.quantity,
-        })),
-      });
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Payment timeout - please try again')), PAYMENT_TIMEOUT)
+      );
+
+      const response = await Promise.race([
+        processPayment({
+          amount,
+          reference: `ORDER-${Date.now()}`,
+          orderId: routeParams.orderId,
+          customerName: routeParams.customerName,
+          items: items.map(item => ({
+            name: item.name,
+            price: item.price,
+            quantity: item.quantity,
+          })),
+        }),
+        timeoutPromise,
+      ]);
+
       setResult(response);
       if (response.success) {
+        setRetryCount(0); // Reset on success
         setTimeout(() => onPaymentComplete(response), 1500);
       }
     } catch (err) {
@@ -173,7 +197,7 @@ const PaymentTerminalScreen: React.FC<PaymentTerminalScreenProps> = ({ navigatio
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
-          style={styles.backButton}
+          style={[styles.backButton, processing && styles.backButtonDisabled]}
           onPress={onCancel}
           disabled={processing}
           accessibilityLabel="Cancel and go back"
@@ -238,11 +262,18 @@ const PaymentTerminalScreen: React.FC<PaymentTerminalScreenProps> = ({ navigatio
                 setResult(null);
                 setError(null);
               }}
+              disabled={retryCount >= MAX_RETRY_ATTEMPTS}
               accessibilityLabel="Try payment again"
               accessibilityRole="button"
             >
-              <MaterialIcons name="refresh" size={16} color={lightColors.primary} />
-              <Text style={styles.retryButtonText}>Try Again</Text>
+              <MaterialIcons
+                name="refresh"
+                size={16}
+                color={retryCount >= MAX_RETRY_ATTEMPTS ? lightColors.textDisabled : lightColors.primary}
+              />
+              <Text style={[styles.retryButtonText, retryCount >= MAX_RETRY_ATTEMPTS && { color: lightColors.textDisabled }]}>
+                Try Again {retryCount > 0 && `(${MAX_RETRY_ATTEMPTS - retryCount} left)`}
+              </Text>
             </TouchableOpacity>
           ) : null}
         </View>
@@ -374,6 +405,9 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  backButtonDisabled: {
+    opacity: 0.4,
   },
   headerTitles: {
     flex: 1,

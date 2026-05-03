@@ -51,7 +51,11 @@ export class OfflineRefundService implements PlatformRefundServiceInterface {
    * Process a refund for a local order
    * In offline mode, this just records the refund locally
    */
-  async processRefund(orderId: string, refundData: RefundData): Promise<RefundResult> {
+  async processRefund(
+    orderId: string,
+    refundData: RefundData,
+    source: 'ecommerce' | 'payment_terminal' = 'ecommerce'
+  ): Promise<RefundResult> {
     try {
       if (!this.initialized) {
         await this.initialize();
@@ -64,6 +68,7 @@ export class OfflineRefundService implements PlatformRefundServiceInterface {
       const refundRecord: RefundRecord = {
         id: refundId,
         orderId,
+        transactionId: source === 'payment_terminal' ? orderId : undefined,
         amount: refundData.amount || 0,
         items: refundData.items?.map(item => ({
           lineItemId: item.lineItemId,
@@ -73,7 +78,7 @@ export class OfflineRefundService implements PlatformRefundServiceInterface {
         reason: refundData.reason,
         note: refundData.note,
         status: 'completed',
-        source: 'ecommerce',
+        source,
         timestamp: new Date(),
       };
 

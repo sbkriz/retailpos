@@ -430,10 +430,14 @@ export class ReturnService {
       }
 
       this.logger.info(`Processing payment refund for transaction ${transactionId}`);
-      const result = await service.processRefund(transactionId, {
-        amount,
-        reason: reason || 'Payment terminal refund',
-      });
+      const result = await service.processRefund(
+        transactionId,
+        {
+          amount,
+          reason: reason || 'Payment terminal refund',
+        },
+        'payment_terminal'
+      );
 
       if (result.success) {
         auditLogService.log('refund:processed', {

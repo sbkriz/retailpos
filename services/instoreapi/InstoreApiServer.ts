@@ -9,6 +9,7 @@ import { syncEventBus } from './sync/SyncEventBus';
 import { CommerceFullWebhookReceiver } from '../clients/commercefull/CommerceFullWebhookReceiver';
 import { offlineProductService } from '../product/platforms/OfflineProductService';
 import { offlineCategoryService } from '../category/platforms/OfflineCategoryService';
+import { instoreApiTransport } from './InstoreApiTransport';
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
@@ -51,18 +52,36 @@ export class InstoreApiServer {
     return this.running;
   }
 
-  start(): void {
+  async start(): Promise<void> {
     if (!instoreApiConfig.isServer) {
       this.logger.warn('Cannot start server — not in server mode');
       return;
     }
+
     this.running = true;
-    this.logger.info(`Local API server started on port ${instoreApiConfig.current.port}`);
+
+    try {
+      // Start the HTTP transport layer
+      await instoreApiTransport.start();
+      this.logger.info(`Local API server started on port ${instoreApiConfig.current.port}`);
+    } catch (error) {
+      this.running = false;
+      this.logger.error('Failed to start HTTP transport:', error);
+      throw error;
+    }
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     this.running = false;
-    this.logger.info('Local API server stopped');
+
+    try {
+      // Stop the HTTP transport layer
+      await instoreApiTransport.stop();
+      this.logger.info('Local API server stopped');
+    } catch (error) {
+      this.logger.error('Failed to stop HTTP transport:', error);
+      throw error;
+    }
   }
 
   /**

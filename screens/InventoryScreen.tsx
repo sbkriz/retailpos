@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, Alert } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { lightColors, spacing, typography, borderRadius } from '../utils/theme';
 import { Input } from '../components/Input';
@@ -11,6 +11,9 @@ import InventoryFilterTabs from './inventory/InventoryFilterTabs';
 import InventorySummaryFooter from './inventory/InventorySummaryFooter';
 import { useLogger } from '../hooks/useLogger';
 import { useInventoryScanner } from '../hooks/useInventoryScanner';
+import { procurementService } from '../services/procurement/ProcurementService';
+import { useNavigation } from '@react-navigation/native';
+import type { MainTabScreenProps } from '../navigation/types';
 
 interface InventoryScreenProps {
   onGoBack?: () => void;
@@ -22,6 +25,7 @@ const InventoryScreen: React.FC<InventoryScreenProps> = ({ onGoBack }) => {
   const { products, isLoading: productsLoading, refresh: fetchProducts } = useProductsForDisplay();
   const { isInitialized: ecommerceInitialized } = useEcommerceSettings();
   const { isLoading: inventoryLoading, error, getInventory, adjustInventory, setInventoryQuantity } = useInventory();
+  const navigation = useNavigation<MainTabScreenProps<'Inventory'>['navigation']>();
 
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -47,9 +51,16 @@ const InventoryScreen: React.FC<InventoryScreenProps> = ({ onGoBack }) => {
       const result = await getInventory(productIds);
 
       if (result) {
-        // Map inventory data with product info
+        // Load reorder point configurations
+        const reorderConfigs = await procurementService.getAllReorderConfigs();
+        const reorderMap = new Map(reorderConfigs.map(config => [`${config.product_id}-${config.variant_id || ''}`, config]));
+
+        // Map inventory data with product info and reorder points
         const items: InventoryItem[] = result.items.map(item => {
           const product = products.find(p => p.id === item.productId);
+          const reorderKey = `${item.productId}-${item.variantId || ''}`;
+          const reorderConfig = reorderMap.get(reorderKey);
+
           return {
             productId: item.productId,
             variantId: item.variantId,
@@ -57,6 +68,9 @@ const InventoryScreen: React.FC<InventoryScreenProps> = ({ onGoBack }) => {
             sku: item.sku || product?.sku,
             quantity: item.quantity,
             lowStockThreshold: LOW_STOCK_THRESHOLD,
+            reorderPoint: reorderConfig?.reorder_point,
+            reorderQty: reorderConfig?.reorder_qty,
+            defaultVendorId: reorderConfig?.default_vendor_id,
           };
         });
         setInventoryItems(items);
@@ -154,6 +168,29 @@ const InventoryScreen: React.FC<InventoryScreenProps> = ({ onGoBack }) => {
     setEditQuantity('');
   };
 
+  // Handle Create PO for reorder
+  const handleCreatePO = async (productId: string, _variantId?: string, reorderQty?: number, _vendorId?: string) => {
+    try {
+      const product = products.find(p => p.id === productId);
+      if (!product) {
+        Alert.alert('Error', 'Product not found');
+        return;
+      }
+
+      // Navigate to PurchaseOrders screen with pre-filled data
+      navigation.navigate('More', { screen: 'PurchaseOrders' });
+
+      // Show success message
+      Alert.alert(
+        'Navigate to Purchase Orders',
+        `Create a purchase order for ${product.name}${reorderQty ? ` (suggested qty: ${reorderQty})` : ''}`
+      );
+    } catch (err) {
+      Alert.alert('Error', 'Failed to create purchase order');
+      logger.error('Error creating PO:', err);
+    }
+  };
+
   // Render inventory item
   const renderInventoryItem = ({ item }: { item: InventoryItem }) => (
     <InventoryItemCard
@@ -166,6 +203,7 @@ const InventoryScreen: React.FC<InventoryScreenProps> = ({ onGoBack }) => {
       onCancelEdit={handleCancelEdit}
       onSaveQuantity={handleSetQuantity}
       onAdjustQuantity={handleAdjustQuantity}
+      onCreatePO={handleCreatePO}
     />
   );
 
@@ -205,6 +243,22 @@ const InventoryScreen: React.FC<InventoryScreenProps> = ({ onGoBack }) => {
           accessibilityRole="button"
         >
           <MaterialIcons name="qr-code-scanner" size={22} color={scanModeActive ? lightColors.textOnPrimary : lightColors.primary} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => navigation.navigate('More', { screen: 'ReorderPointConfig' })}
+          style={styles.configButton}
+          accessibilityLabel="Configure reorder points"
+          accessibilityRole="button"
+        >
+          <MaterialIcons name="settings" size={22} color={lightColors.primary} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => navigation.navigate('More', { screen: 'BarcodeLabelPrint' })}
+          style={styles.labelButton}
+          accessibilityLabel="Print barcode labels"
+          accessibilityRole="button"
+        >
+          <MaterialIcons name="label" size={22} color={lightColors.primary} />
         </TouchableOpacity>
       </View>
 
@@ -300,6 +354,24 @@ const styles = StyleSheet.create({
   },
   scanButtonActive: {
     backgroundColor: lightColors.primary,
+    borderColor: lightColors.primary,
+  },
+  configButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: lightColors.primary,
+  },
+  labelButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
     borderColor: lightColors.primary,
   },
   searchContainer: {

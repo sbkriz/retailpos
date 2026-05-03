@@ -51,21 +51,28 @@ const InstoreApiSettingsTab: React.FC = () => {
       registerId,
     });
 
-    if (mode === 'server') {
-      instoreApiServer.start();
-      syncPoller.stop();
-      BasketServiceFactory.getInstance().reset();
-      Alert.alert(t('common.saved'), t('settings.instoreApi.savedServer', { port }));
-    } else if (mode === 'client') {
-      instoreApiServer.stop();
-      syncPoller.start();
-      BasketServiceFactory.getInstance().reset();
-      Alert.alert(t('common.saved'), t('settings.instoreApi.savedClient'));
-    } else {
-      instoreApiServer.stop();
-      syncPoller.stop();
-      BasketServiceFactory.getInstance().reset();
-      Alert.alert(t('common.saved'), t('settings.instoreApi.savedStandalone'));
+    try {
+      if (mode === 'server') {
+        await instoreApiServer.start();
+        syncPoller.stop();
+        BasketServiceFactory.getInstance().reset();
+        Alert.alert(t('common.saved'), t('settings.instoreApi.savedServer', { port }));
+      } else if (mode === 'client') {
+        await instoreApiServer.stop();
+        syncPoller.start();
+        BasketServiceFactory.getInstance().reset();
+        Alert.alert(t('common.saved'), t('settings.instoreApi.savedClient'));
+      } else {
+        await instoreApiServer.stop();
+        syncPoller.stop();
+        BasketServiceFactory.getInstance().reset();
+        Alert.alert(t('common.saved'), t('settings.instoreApi.savedStandalone'));
+      }
+    } catch (error) {
+      Alert.alert(
+        t('common.error'),
+        `Failed to ${mode === 'server' ? 'start' : 'stop'} server: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     }
   }, [mode, port, sharedSecret, registerName, serverAddress, t]);
 

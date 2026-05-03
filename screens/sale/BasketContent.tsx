@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { lightColors, spacing, typography, borderRadius } from '../../utils/theme';
@@ -11,6 +11,7 @@ import { useCurrency } from '../../hooks/useCurrency';
 import CustomerSearchModal from '../../components/CustomerSearchModal';
 import { PlatformCustomer } from '../../services/customer/CustomerServiceInterface';
 import { useCheckout } from '../../hooks/useCheckout';
+import { useLoyaltyBasket } from '../../hooks/useLoyaltyBasket';
 
 interface BasketContentProps {
   platform?: ECommercePlatform;
@@ -29,6 +30,7 @@ export const BasketContent: React.FC<BasketContentProps> = ({ platform, onChecko
     setCustomer,
     unsyncedOrdersCount,
     syncAllPendingOrders,
+    applyDiscount,
   } = useBasketContext();
 
   const {
@@ -44,10 +46,33 @@ export const BasketContent: React.FC<BasketContentProps> = ({ platform, onChecko
     handleStartCheckout,
     handleCancelCheckout,
     handlePayment,
+    splitMode,
+    paymentLines,
+    addPaymentLine,
+    removePaymentLine,
+    handleCompleteSplit,
+    splitCashTenderAmount,
+    confirmSplitCashPayment,
   } = useCheckout({ platform, onSuccess: () => onCheckout?.() });
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [customerModalVisible, setCustomerModalVisible] = useState(false);
+
+  // Loyalty & store credit — load balances when customer changes
+  const {
+    loyaltyBalance,
+    storeCreditDollars,
+    activeRedemption,
+    isLoading: isRedemptionLoading,
+    loadBalances,
+    redeemLoyalty,
+    redeemStoreCredit,
+    reverseActiveRedemption,
+  } = useLoyaltyBasket(basket?.customerEmail, currentOrder?.id);
+
+  useEffect(() => {
+    loadBalances();
+  }, [basket?.customerEmail, loadBalances]);
 
   const handleDecrement = async (itemId: string, currentQuantity: number) => {
     if (currentQuantity <= 1) {
@@ -175,6 +200,68 @@ export const BasketContent: React.FC<BasketContentProps> = ({ platform, onChecko
         </TouchableOpacity>
       )}
 
+      {/* Loyalty & store credit actions — shown only when customer is attached */}
+      {basket?.customerEmail && (
+        <View style={styles.loyaltyActions}>
+          {loyaltyBalance && loyaltyBalance.points > 0 && !activeRedemption && (
+            <TouchableOpacity
+              style={[styles.loyaltyBtn, isRedemptionLoading && styles.loyaltyBtnDisabled]}
+              onPress={async () => {
+                try {
+                  const discount = await redeemLoyalty(loyaltyBalance.points);
+                  await applyDiscount(`LOYALTY_${discount.toFixed(2)}`);
+                } catch {
+                  // error shown via hook state
+                }
+              }}
+              disabled={isRedemptionLoading}
+              accessibilityRole="button"
+              accessibilityLabel={`Redeem ${loyaltyBalance.points} loyalty points`}
+            >
+              <MaterialIcons name="stars" size={14} color={lightColors.primary} />
+              <Text style={styles.loyaltyBtnText}>
+                Redeem {loyaltyBalance.points} pts ({formatMoney(loyaltyBalance.valueInCents / 100, currency.code)})
+              </Text>
+            </TouchableOpacity>
+          )}
+          {storeCreditDollars > 0 && !activeRedemption && (
+            <TouchableOpacity
+              style={[styles.loyaltyBtn, isRedemptionLoading && styles.loyaltyBtnDisabled]}
+              onPress={async () => {
+                try {
+                  const result = await redeemStoreCredit(storeCreditDollars);
+                  await applyDiscount(`CREDIT_${result.toFixed(2)}`);
+                } catch {
+                  // error shown via hook state
+                }
+              }}
+              disabled={isRedemptionLoading}
+              accessibilityRole="button"
+              accessibilityLabel={`Use ${formatMoney(storeCreditDollars, currency.code)} store credit`}
+            >
+              <MaterialIcons name="card-giftcard" size={14} color={lightColors.success} />
+              <Text style={[styles.loyaltyBtnText, { color: lightColors.success }]}>
+                Use {formatMoney(storeCreditDollars, currency.code)} store credit
+              </Text>
+            </TouchableOpacity>
+          )}
+          {activeRedemption && (
+            <TouchableOpacity
+              style={styles.loyaltyReversalBtn}
+              onPress={reverseActiveRedemption}
+              accessibilityRole="button"
+              accessibilityLabel="Remove redemption"
+            >
+              <MaterialIcons name="undo" size={14} color={lightColors.warning} />
+              <Text style={[styles.loyaltyBtnText, { color: lightColors.warning }]}>
+                {activeRedemption.type === 'loyalty' ? 'Points' : 'Credit'} applied (−
+                {formatMoney(activeRedemption.discountDollars, currency.code)}) · Undo
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
       {/* Summary & checkout */}
       <View style={styles.summary}>
         {unsyncedOrdersCount > 0 && (
@@ -235,6 +322,16 @@ export const BasketContent: React.FC<BasketContentProps> = ({ platform, onChecko
         onCancel={handleCancelCheckout}
         isProcessing={isProcessing}
         terminalConnected={terminalConnected}
+        splitMode={splitMode}
+        paymentLines={paymentLines}
+        onAddPaymentLine={addPaymentLine}
+        onRemovePaymentLine={removePaymentLine}
+        onCompleteSplit={handleCompleteSplit}
+        splitCashTenderAmount={splitCashTenderAmount}
+        onConfirmSplitCash={confirmSplitCashPayment}
+        customerEmail={basket?.customerEmail}
+        loyaltyPoints={loyaltyBalance?.points || 0}
+        storeCreditDollars={storeCreditDollars}
       />
     </View>
   );
@@ -320,6 +417,37 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   addCustomerText: { fontSize: typography.fontSize.sm, color: lightColors.primary, fontWeight: '600' },
+  loyaltyActions: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.xs,
+    gap: spacing.xs,
+  },
+  loyaltyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    backgroundColor: lightColors.primary + '10',
+    borderRadius: borderRadius.sm,
+  },
+  loyaltyBtnDisabled: {
+    opacity: 0.5,
+  },
+  loyaltyBtnText: {
+    fontSize: typography.fontSize.xs,
+    color: lightColors.primary,
+    fontWeight: '600',
+  },
+  loyaltyReversalBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    backgroundColor: lightColors.warning + '15',
+    borderRadius: borderRadius.sm,
+  },
 });
 
 export default BasketContent;

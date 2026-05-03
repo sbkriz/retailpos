@@ -149,13 +149,30 @@ export class BasketService implements BasketServiceInterface {
     const lineTotals = items.map(item => multiplyMoney(item.price, item.quantity));
     const subtotal = sumMoney(lineTotals);
 
-    const total = Math.max(0, roundMoney(subtotal - discountAmount));
-    return { subtotal, total };
+    // Spec requirement 1.4: Calculate tax per-item using stored taxRate
+    // For items where taxable === true, apply the item's taxRate (or DEFAULT_TAX_RATE fallback)
+    const DEFAULT_TAX_RATE = 0.2; // 20% fallback (emergency only)
+
+    const taxAmounts = items.map(item => {
+      if (item.taxable === false) return 0;
+
+      const lineTotal = multiplyMoney(item.price, item.quantity);
+      const taxRate = item.taxRate ?? DEFAULT_TAX_RATE;
+      return multiplyMoney(lineTotal, taxRate);
+    });
+
+    const tax = sumMoney(taxAmounts);
+
+    // Spec requirement 1.5: total = max(0, roundMoney(subtotal + tax - discountAmount))
+    const total = Math.max(0, roundMoney(subtotal + tax - discountAmount));
+
+    return { subtotal, tax, total };
   }
 
   private async recalculateAndSave(basket: Basket): Promise<Basket> {
     const totals = this.calculateTotals(basket.items, basket.discountAmount);
     basket.subtotal = totals.subtotal;
+    basket.tax = totals.tax; // Spec requirement 1.2: Update tax after every operation
     basket.total = totals.total;
     basket.updatedAt = new Date();
     await this.updateBasketInDb(basket);

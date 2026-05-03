@@ -62,6 +62,7 @@ export interface Basket {
   customerEmail?: string;
   customerName?: string;
   note?: string;
+  registerId?: string;
   createdAt: Date;
   updatedAt: Date;
 }

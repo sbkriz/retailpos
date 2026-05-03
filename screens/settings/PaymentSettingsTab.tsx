@@ -5,11 +5,14 @@ import { usePaymentSettings, PaymentSettings } from '../../hooks/usePaymentSetti
 import { lightColors, spacing, borderRadius, typography, elevation } from '../../utils/theme';
 import { useTranslate } from '../../hooks/useTranslate';
 import { useLogger } from '../../hooks/useLogger';
+import { auditLogService } from '../../services/audit/AuditLogService';
+import { useAuthContext } from '../../contexts/AuthProvider';
 
 type ProviderSettingKey<T extends keyof PaymentSettings> = keyof PaymentSettings[T];
 
 const PaymentSettingsTab = () => {
   const { t } = useTranslate();
+  const { user } = useAuthContext();
   const { paymentSettings, handlePaymentSettingsChange, saveSettings, testConnection, error, saveStatus, isLoading, loadSettings } =
     usePaymentSettings();
 
@@ -62,12 +65,55 @@ const PaymentSettingsTab = () => {
 
   // Handle save
   const handleSave = useCallback(async () => {
+    // Validate API keys are non-empty (spec requirement: settings-tabs.md §4.4)
+    if (paymentSettings.provider === PaymentProvider.WORLDPAY) {
+      if (!paymentSettings.worldpay.merchantId || !paymentSettings.worldpay.siteReference) {
+        Alert.alert(
+          t('common.error'),
+          t('settings.payment.worldpayKeysRequired', { defaultValue: 'Merchant ID and Site Reference are required for Worldpay' })
+        );
+        return;
+      }
+    } else if (paymentSettings.provider === PaymentProvider.STRIPE) {
+      if (!paymentSettings.stripe.publishableKey || !paymentSettings.stripe.secretKey) {
+        Alert.alert(
+          t('common.error'),
+          t('settings.payment.stripeKeysRequired', { defaultValue: 'Publishable Key and Secret Key are required for Stripe' })
+        );
+        return;
+      }
+    } else if (paymentSettings.provider === PaymentProvider.STRIPE_NFC) {
+      if (!paymentSettings.stripe_nfc.apiKey) {
+        Alert.alert(t('common.error'), t('settings.payment.stripeNfcKeyRequired', { defaultValue: 'API Key is required for Stripe NFC' }));
+        return;
+      }
+    } else if (paymentSettings.provider === PaymentProvider.SQUARE) {
+      if (!paymentSettings.square.accessToken || !paymentSettings.square.applicationId) {
+        Alert.alert(
+          t('common.error'),
+          t('settings.payment.squareKeysRequired', { defaultValue: 'Access Token and Application ID are required for Square' })
+        );
+        return;
+      }
+    }
+
     try {
       await saveSettings(paymentSettings);
+
+      // Log settings change (spec: audit.md §2.1.8)
+      await auditLogService.log('settings:changed', {
+        userId: user?.id,
+        userName: user?.username,
+        details: 'Payment settings updated',
+        metadata: {
+          settingName: 'payment',
+          provider: paymentSettings.provider,
+        },
+      });
     } catch (err) {
       logger.error('Failed to save payment settings:', err);
     }
-  }, [saveSettings, paymentSettings, logger]);
+  }, [saveSettings, paymentSettings, user, logger, t]);
 
   // Handle cancel
   const handleCancel = useCallback(() => {

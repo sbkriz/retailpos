@@ -43,12 +43,20 @@ export const OrderCard: React.FC<OrderCardProps> = ({ order, isSyncing, onResync
       </View>
 
       <View style={styles.orderDetails}>
-        <Text style={styles.customerInfo}>
-          {order.customerName || 'Guest'} • {formatMoney(order.total, currency.code)}
-        </Text>
-        <Text style={styles.itemCount}>
-          {order.items.length} item{order.items.length !== 1 ? 's' : ''}
-        </Text>
+        <View style={styles.orderDetailsLeft}>
+          <Text style={styles.customerInfo}>
+            {order.customerName || 'Guest'} • {formatMoney(order.total, currency.code)}
+          </Text>
+          <Text style={styles.itemCount}>
+            {order.items.length} item{order.items.length !== 1 ? 's' : ''}
+          </Text>
+        </View>
+        {order.payments && order.payments.length > 1 && (
+          <View style={styles.splitPaymentBadge}>
+            <MaterialIcons name="payment" size={14} color={lightColors.info} />
+            <Text style={styles.splitPaymentText}>Split ({order.payments.length})</Text>
+          </View>
+        )}
       </View>
 
       {order.syncStatus === 'failed' && order.syncError && (
@@ -129,6 +137,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing.sm,
   },
+  orderDetailsLeft: {
+    flex: 1,
+  },
   customerInfo: {
     fontSize: typography.fontSize.sm,
     color: lightColors.textPrimary,
@@ -136,6 +147,21 @@ const styles = StyleSheet.create({
   itemCount: {
     fontSize: typography.fontSize.sm,
     color: lightColors.textSecondary,
+    marginTop: spacing.xs,
+  },
+  splitPaymentBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: lightColors.info + '20',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.sm,
+    gap: spacing.xs,
+  },
+  splitPaymentText: {
+    fontSize: typography.fontSize.xs,
+    fontWeight: '600',
+    color: lightColors.info,
   },
   errorContainer: {
     flexDirection: 'row',

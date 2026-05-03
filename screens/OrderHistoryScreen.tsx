@@ -89,6 +89,13 @@ const OrderHistoryScreen: React.FC<OrderHistoryScreenProps> = () => {
         tax: selectedOrder.tax,
         total: selectedOrder.total,
         paymentMethod: selectedOrder.paymentMethod ?? 'Unknown',
+        paymentLines: selectedOrder.payments?.map(p => ({
+          method: p.method,
+          amount: p.amount,
+          cardBrand: p.cardBrand,
+          last4: p.last4,
+          transactionId: p.transactionId,
+        })),
         date: selectedOrder.createdAt,
         cashierName: selectedOrder.cashierName ?? 'Unknown',
         customerName: selectedOrder.customerName,

@@ -338,7 +338,7 @@ Auth methods are split into two modes based on the selected e-commerce platform:
 - `platform_auth` is always enabled in online mode and cannot be disabled
 - `authConfig.load()` called at app startup in `App.tsx`
 - `authConfig.authMode` determines which methods are shown in UI
-- `AuthMethodSetupStep` receives `selectedPlatform` prop to determine mode during onboarding
+- Authentication method setup is deferred to More → Settings after onboarding
 - `AuthMethodSettingsTab` reads `authConfig.authMode` to filter methods post-onboarding
 - `LoginScreen` dynamically renders UI per active method and shows a method switcher when multiple are enabled
 - Biometric uses dynamic `require('expo-local-authentication')` — safe if package is not installed

@@ -6,7 +6,7 @@ import { CheckoutServiceInterface } from '../checkout/CheckoutServiceInterface';
 import { OrderSyncServiceInterface } from './OrderSyncServiceInterface';
 import { OrderRepository } from '../../repositories/OrderRepository';
 import { LoggerInterface } from '../logger/LoggerInterface';
-import { MAX_SYNC_RETRIES } from '../config/POSConfigService';
+import { MAX_SYNC_RETRIES, posConfig } from '../config/POSConfigService';
 import { isOnlinePlatform } from '../../utils/platforms';
 import { kdsServiceFactory } from '../kds/KdsServiceFactory';
 
@@ -40,8 +40,9 @@ export class OrderSyncService implements OrderSyncServiceInterface {
       return { success: true, orderId, platformOrderId: localOrder.platformOrderId };
     }
 
-    // Offline orders have no platform to sync to — mark as synced immediately
+    // Offline orders have no platform to sync to — mark as synced immediately (spec requirement: sync.md §5.8)
     if (!localOrder.platform || !isOnlinePlatform(localOrder.platform)) {
+      this.logger.info(`Offline order ${orderId} - marking as synced (fast-path)`);
       await this.orderRepo.updateSyncSuccess(orderId, orderId);
       this.dispatchKdsTicket(localOrder);
       return { success: true, orderId };
@@ -124,9 +125,17 @@ export class OrderSyncService implements OrderSyncServiceInterface {
 
   async discardFailedOrder(orderId: string): Promise<boolean> {
     try {
+      // Validate order is in failed state (spec requirement: sync.md §5.7)
+      const order = await this.orderRepo.findById(orderId);
+      if (!order || order.sync_status !== 'failed') {
+        this.logger.warn(`Cannot discard order ${orderId}: not in failed state`);
+        return false;
+      }
+
       await this.orderRepo.updateStatus(orderId, 'cancelled');
       await this.orderRepo.updateSyncError(orderId, 'failed', 'Manually discarded by user');
       this.retryCounts.delete(orderId);
+      this.logger.info(`Discarded failed order: ${orderId}`);
       return true;
     } catch (error) {
       this.logger.error({ message: `Failed to discard order ${orderId}` }, error instanceof Error ? error : new Error(String(error)));
@@ -155,11 +164,20 @@ export class OrderSyncService implements OrderSyncServiceInterface {
 
   private isRetryable(error: unknown): boolean {
     if (error instanceof Error) {
+      // Network errors are retryable
       if (error.name === 'TypeError' && error.message.includes('fetch')) return true;
+
+      // Check HTTP status code
       const statusMatch = error.message.match(/status (\d+)/);
-      if (statusMatch) return parseInt(statusMatch[1], 10) >= 500;
+      if (statusMatch) {
+        const status = parseInt(statusMatch[1], 10);
+        // 5xx errors are retryable, 4xx are not
+        return status >= 500;
+      }
     }
-    return true;
+
+    // Default to non-retryable for unknown errors (spec requirement: sync.md §1.7)
+    return false;
   }
 
   private dispatchKdsTicket(order: { id: string; items: BasketItem[] }): void {
@@ -179,15 +197,26 @@ export class OrderSyncService implements OrderSyncServiceInterface {
   }
 
   private basketItemsToLineItems(items: BasketItem[]): OrderLineItem[] {
-    return items.map(item => ({
-      productId: item.originalId ?? item.productId,
-      variantId: item.variantId,
-      sku: item.sku,
-      name: item.name,
-      quantity: item.quantity,
-      price: item.price,
-      total: item.price * item.quantity,
-      properties: item.properties,
-    }));
+    // Fallback tax rate if item doesn't have one (spec requirement: sync.md §6.3)
+    const DEFAULT_TAX_RATE = posConfig.values.taxRate ?? 0.2;
+
+    return items.map(item => {
+      const lineTotal = item.price * item.quantity;
+      const taxRate = item.taxRate ?? DEFAULT_TAX_RATE;
+
+      return {
+        productId: item.originalId ?? item.productId,
+        variantId: item.variantId,
+        sku: item.sku,
+        name: item.name,
+        quantity: item.quantity,
+        price: item.price,
+        total: lineTotal,
+        taxRate,
+        taxAmount: lineTotal * taxRate,
+        taxCode: item.taxCode,
+        properties: item.properties,
+      };
+    });
   }
 }

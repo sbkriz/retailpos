@@ -112,6 +112,11 @@ const SyncQueueScreen: React.FC = () => {
         </View>
 
         <View style={styles.orderMeta}>
+          {item.itemCount > 0 && (
+            <Text style={styles.metaText}>
+              {item.itemCount} item{item.itemCount !== 1 ? 's' : ''}
+            </Text>
+          )}
           {item.cashierName && <Text style={styles.metaText}>Cashier: {item.cashierName}</Text>}
           <Text style={styles.metaText}>Created: {formatTime(item.createdAt)}</Text>
         </View>

@@ -21,6 +21,7 @@ export class MagstripeAuthProvider implements AuthMethodProvider {
 
   async isAvailable(): Promise<boolean> {
     // Mag-stripe availability is user-configured (they tell us they have a reader)
+    // Spec requirement 4.3, 5.4.1: Check auth.magstripe.enabled flag
     const enabled = await keyValueRepository.getObject<boolean>(MAGSTRIPE_ENABLED_KEY);
     return enabled === true;
   }

@@ -14,6 +14,8 @@ import { OrderServiceFactory } from '../order/OrderServiceFactory';
 import { getPlatformCapabilities, getBasketMode } from '../../utils/platformCapabilities';
 import { loyaltyService } from '../loyalty/LoyaltyService';
 import { localCustomerService } from '../customer/LocalCustomerService';
+import { procurementService } from '../procurement/ProcurementService';
+import { InventoryServiceFactory } from '../inventory/InventoryServiceFactory';
 
 /**
  * Handles checkout flow and order queries.
@@ -110,6 +112,7 @@ export class CheckoutService implements CheckoutServiceInterface {
       note: basket.note,
       cashierId,
       cashierName,
+      registerId: basket.registerId,
       status,
       syncStatus: 'pending',
       createdAt: new Date(now),
@@ -129,6 +132,7 @@ export class CheckoutService implements CheckoutServiceInterface {
       note: basket.note ?? null,
       cashierId: cashierId ?? null,
       cashierName: cashierName ?? null,
+      registerId: basket.registerId ?? null,
       platformOrderId: platformOrderId ?? null,
       status,
     };
@@ -142,11 +146,16 @@ export class CheckoutService implements CheckoutServiceInterface {
       price: item.price,
       quantity: item.quantity,
       image: item.image,
-      taxable: false,
-      taxRate: platformTaxRates[i] ?? null,
+      taxable: item.taxable ?? false,
+      taxRate: platformTaxRates[i] ?? item.taxRate ?? null,
       isEcommerceProduct: item.isEcommerceProduct,
       originalId: item.originalId,
       properties: item.properties,
+      optionSummary: item.optionSummary ?? null,
+      taxCode: item.taxCode ?? null,
+      taxProfileId: item.taxProfileId ?? null,
+      inventoryPolicy: item.inventoryPolicy ?? null,
+      catalogVersion: item.catalogVersion ?? null,
     }));
 
     await this.orderRepo.createWithItems(orderInput, itemInputs);
@@ -195,7 +204,16 @@ export class CheckoutService implements CheckoutServiceInterface {
 
   async completePayment(orderId: string, paymentMethod: string, transactionId?: string, payments?: PaymentLine[]): Promise<CheckoutResult> {
     try {
+      // Validate split tender total matches order total (spec §6.1)
       if (payments && payments.length > 0) {
+        const orderRow = await this.orderRepo.findById(orderId);
+        if (orderRow) {
+          const paymentSum = Math.round(payments.reduce((s, p) => s + p.amount, 0) * 100);
+          const orderTotal = Math.round(orderRow.total * 100);
+          if (Math.abs(paymentSum - orderTotal) > 1) {
+            throw new Error('Payment total mismatch');
+          }
+        }
         await this.orderRepo.updatePaymentLines(orderId, paymentMethod, transactionId ?? null, JSON.stringify(payments));
       } else {
         await this.orderRepo.updatePayment(orderId, paymentMethod, transactionId ?? null);
@@ -233,6 +251,9 @@ export class CheckoutService implements CheckoutServiceInterface {
         loyaltyService.earnPoints(email, orderId, total).catch(() => {});
         localCustomerService.recordOrder(email, total).catch(() => {});
       }
+
+      // Check reorder points for sold items (non-blocking)
+      this.checkReorderPointsAfterSale(orderId).catch(() => {});
 
       const isCash = paymentMethod.toLowerCase() === 'cash';
       const openDrawer = isCash && posConfig.values.drawerOpenOnCash;
@@ -314,6 +335,7 @@ export class CheckoutService implements CheckoutServiceInterface {
       paymentMethod: row.payment_method ?? undefined,
       paymentTransactionId: row.payment_transaction_id ?? undefined,
       payments: row.payments_json ? (JSON.parse(row.payments_json) as PaymentLine[]) : undefined,
+      registerId: row.register_id ?? undefined,
       status: row.status as LocalOrderStatus,
       syncStatus: row.sync_status as 'pending' | 'synced' | 'failed',
       syncError: row.sync_error ?? undefined,
@@ -322,5 +344,37 @@ export class CheckoutService implements CheckoutServiceInterface {
       paidAt: row.paid_at ? new Date(row.paid_at) : undefined,
       syncedAt: row.synced_at ? new Date(row.synced_at) : undefined,
     };
+  }
+
+  // ── Reorder Point Integration ──────────────────────────────────────────
+
+  /**
+   * Check reorder points for items sold in an order.
+   * Called after successful payment completion.
+   */
+  private async checkReorderPointsAfterSale(orderId: string): Promise<void> {
+    try {
+      const orderItems = await this.orderItemRepo.findByOrderId(orderId);
+      const inventoryService = InventoryServiceFactory.getInstance().getService();
+
+      for (const item of orderItems) {
+        // Get current inventory after the sale
+        const inventoryResult = await inventoryService.getInventory([item.product_id]);
+        if (inventoryResult && inventoryResult.items.length > 0) {
+          const inventoryItem = inventoryResult.items.find(
+            inv => inv.productId === item.product_id && (inv.variantId || null) === (item.variant_id || null)
+          );
+
+          if (inventoryItem) {
+            await procurementService.checkReorderPoint(item.product_id, item.variant_id, inventoryItem.quantity, item.name);
+          }
+        }
+      }
+    } catch (err) {
+      this.logger.warn(
+        { message: `Failed to check reorder points for order ${orderId}` },
+        err instanceof Error ? err : new Error(String(err))
+      );
+    }
   }
 }

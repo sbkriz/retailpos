@@ -11,6 +11,7 @@ export interface ECommerceSettings {
   apiUrl: string;
   apiKey: string;
   syncInventory: boolean;
+  capabilityProfileId?: string; // Spec: settings-tabs.md §5.10 - persist capability profile identifier
   shopify: {
     apiKey: string;
     accessToken: string;

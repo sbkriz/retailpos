@@ -14,6 +14,8 @@ import {
   getUnavailableReason,
 } from '../../utils/platformCapabilities';
 import { getPlatformDisplayName } from '../../utils/platforms';
+import { auditLogService } from '../../services/audit/AuditLogService';
+import { useAuthContext } from '../../contexts/AuthProvider';
 
 // Platform display names
 const PLATFORM_NAMES: Record<string, string> = {
@@ -30,7 +32,7 @@ const PLATFORM_NAMES: Record<string, string> = {
 };
 
 /** Feature rows shown in the capability summary panel */
-const CAPABILITY_FEATURES: Array<{ key: Exclude<keyof PlatformCapabilities, 'basketMode' | 'draftOrders'>; label: string }> = [
+const CAPABILITY_FEATURES: Array<{ key: Exclude<keyof PlatformCapabilities, 'basketMode'>; label: string }> = [
   { key: 'catalog', label: 'Catalog & variants' },
   { key: 'customers', label: 'Customer management' },
   { key: 'inventory', label: 'Inventory sync' },
@@ -38,6 +40,7 @@ const CAPABILITY_FEATURES: Array<{ key: Exclude<keyof PlatformCapabilities, 'bas
   { key: 'discounts', label: 'Discounts & coupons' },
   { key: 'giftCards', label: 'Gift cards' },
   { key: 'refunds', label: 'Refunds' },
+  { key: 'draftOrders', label: 'Draft orders' },
 ];
 
 const BASKET_MODE_LABEL: Record<BasketMode, { label: string; description: string; color: string; bg: string }> = {
@@ -175,6 +178,7 @@ const capStyles = StyleSheet.create({
 
 const EcommerceSettingsTab: React.FC = () => {
   const { t } = useTranslate();
+  const { user } = useAuthContext();
   // Use the e-commerce settings hook
   const {
     ecommerceSettings,
@@ -350,11 +354,37 @@ const EcommerceSettingsTab: React.FC = () => {
 
   // Handle save
   const handleSave = useCallback(async () => {
+    // Persist capability profile identifier (spec: settings-tabs.md §5.10)
+    const PlatformCapabilityService = require('../../services/platform/PlatformCapabilityService').PlatformCapabilityService;
+    const platformCapabilityService = PlatformCapabilityService.getInstance();
+    const capabilities = platformCapabilityService.getCapabilities();
+
+    // Generate capability profile ID from platform and basket mode
+    const capabilityProfileId = `${ecommerceSettings.platform}_${capabilities.basketMode}_v1`;
+
+    // Update settings with capability profile ID
+    updateSettings({ capabilityProfileId });
+
     const success = await saveChanges();
     if (success) {
+      // Update platform capability cache immediately (spec §6.3)
+      platformCapabilityService.setPlatform(ecommerceSettings.platform);
+
+      // Log settings change (spec: audit.md §2.1.8)
+      await auditLogService.log('settings:changed', {
+        userId: user?.id,
+        userName: user?.username,
+        details: 'E-commerce settings updated',
+        metadata: {
+          settingName: 'ecommerce',
+          platform: ecommerceSettings.platform,
+          enabled: ecommerceSettings.enabled,
+        },
+      });
+
       Alert.alert(t('common.success'), t('settings.ecommerce.saveSuccess'));
     }
-  }, [saveChanges, t]);
+  }, [saveChanges, ecommerceSettings.platform, ecommerceSettings.enabled, updateSettings, user, t]);
 
   // Handle cancel
   const handleCancel = useCallback(() => {

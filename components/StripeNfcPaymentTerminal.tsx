@@ -4,7 +4,6 @@ import { lightColors, spacing, typography, borderRadius, elevation } from '../ut
 import { formatMoney } from '../utils/money';
 import { usePayment } from '../hooks/usePayment';
 import { PaymentResponse } from '../services/payment/PaymentServiceInterface';
-import { PaymentProvider } from '../services/payment/PaymentServiceFactory';
 import { useCurrency } from '../hooks/useCurrency';
 import { useLogger } from '../hooks/useLogger';
 
@@ -39,7 +38,6 @@ const StripeNfcPaymentTerminal: React.FC<StripeNfcPaymentTerminalProps> = ({
   const tapAnimation = useMemo(() => new Animated.Value(1), []);
 
   // States
-  const [_connecting, _setConnecting] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<string>('ready');
@@ -47,15 +45,14 @@ const StripeNfcPaymentTerminal: React.FC<StripeNfcPaymentTerminalProps> = ({
   const logger = useLogger('StripeNfcPaymentTerminal');
 
   // Get payment services from hook
-  const { processPayment, disconnect, isTerminalConnected, getConnectedDeviceId, getCurrentProvider } = usePayment();
+  const { processPayment, disconnect, isTerminalConnected } = usePayment();
 
-  // Check if we're using Stripe NFC
-  const _isStripeNfc = getCurrentProvider() === PaymentProvider.STRIPE_NFC;
-
-  // Start the tap animation
+  // Start the tap animation - properly cleanup to prevent leaks
   useEffect(() => {
+    let animationLoop: Animated.CompositeAnimation | null = null;
+
     if (paymentStatus === 'waiting_for_tap') {
-      Animated.loop(
+      animationLoop = Animated.loop(
         Animated.sequence([
           Animated.timing(tapAnimation, {
             toValue: 1.2,
@@ -70,45 +67,61 @@ const StripeNfcPaymentTerminal: React.FC<StripeNfcPaymentTerminalProps> = ({
             useNativeDriver: true,
           }),
         ])
-      ).start();
-    } else {
+      );
+      animationLoop.start();
+    }
+
+    return () => {
+      if (animationLoop) {
+        animationLoop.stop();
+      }
       tapAnimation.stopAnimation();
       tapAnimation.setValue(1);
-    }
+    };
   }, [paymentStatus, tapAnimation]);
 
-  // Process payment
+  // Process payment with timeout
+  const PAYMENT_TIMEOUT = 60000; // 60 seconds
+
   const handlePayment = async () => {
     setProcessing(true);
     setPaymentStatus('connecting');
     setError(null);
 
     try {
-      // Check if terminal is connected or initiate connection if needed
-      const terminalId = getConnectedDeviceId();
-      if (!terminalId) {
-        setPaymentStatus('connecting_to_terminal');
+      // Verify terminal connection
+      if (!isTerminalConnected()) {
+        setPaymentStatus('connection_error');
+        setError('Terminal not connected. Please reconnect and try again.');
+        setProcessing(false);
+        return;
       }
 
-      // After connection, update status
       setPaymentStatus('waiting_for_tap');
 
-      // Build payment request with rich metadata
-      const response = await processPayment({
-        amount,
-        reference: `ORDER-${Date.now()}`,
-        currency: 'usd',
-        orderId: orderId || `ORD-${Date.now().toString().slice(-8)}`,
-        customerName: customerName || '',
-        itemCount: items.length,
-        items: items.map(item => ({
-          name: item.name,
-          price: item.price,
-          quantity: item.quantity,
-        })),
-      });
+      // Build payment request with rich metadata and timeout
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Payment timeout - please try again')), PAYMENT_TIMEOUT)
+      );
 
-      // Process response
+      const response = await Promise.race([
+        processPayment({
+          amount,
+          reference: `ORDER-${Date.now()}`,
+          currency: currency.code.toLowerCase(),
+          orderId: orderId || `ORD-${Date.now().toString().slice(-8)}`,
+          customerName: customerName || '',
+          itemCount: items.length,
+          items: items.map(item => ({
+            name: item.name,
+            price: item.price,
+            quantity: item.quantity,
+          })),
+        }),
+        timeoutPromise,
+      ]);
+
+      // Process response - set correct state immediately
       if (response.success) {
         setPaymentStatus('approved');
         setCardType(response.cardBrand || null);
@@ -118,14 +131,16 @@ const StripeNfcPaymentTerminal: React.FC<StripeNfcPaymentTerminalProps> = ({
           onPaymentComplete(response);
         }, 1500);
       } else {
-        setPaymentStatus('declined');
-        setError(response.errorMessage || 'Payment was declined');
-
-        // If error is connection related, provide option to retry
+        // Set the correct error state based on error code
         if (response.errorCode === 'connection_error') {
           setPaymentStatus('connection_error');
+          setError(response.errorMessage || 'Connection error');
         } else if (response.errorCode === 'card_declined') {
           setPaymentStatus('card_declined');
+          setError(response.errorMessage || 'Payment was declined');
+        } else {
+          setPaymentStatus('error');
+          setError(response.errorMessage || 'Payment failed');
         }
       }
     } catch (err) {
@@ -158,7 +173,6 @@ const StripeNfcPaymentTerminal: React.FC<StripeNfcPaymentTerminalProps> = ({
         );
 
       case 'connecting':
-      case 'connecting_to_terminal':
         return (
           <View style={styles.instructionsContainer}>
             <ActivityIndicator size="large" color="#0066cc" />

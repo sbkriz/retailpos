@@ -2,20 +2,23 @@
  * SettingsTabComposer
  *
  * Generates the ordered list of settings tabs with their visibility status
- * based on user role and selected platform capabilities.
+ * based on user role, action-level permissions, and selected platform capabilities.
  *
  * Core tabs are always shown to authorized roles.
  * Advanced/optional tabs are shown only when the platform supports the feature.
  *
  * See: docs/specs/settings/settings.md §2.2.2.a
  *      docs/specs/onboarding-menu-capability-implementation.md §4.5
+ *      docs/specs/auth/permissions.md §2.1.4
  */
 
+import type { UserRole } from '../../repositories/UserRepository';
 import type { PlatformCapabilities } from '../../utils/platformCapabilities';
 import { getUnavailableReason } from '../../utils/platformCapabilities';
 import { evaluateCapabilityGate, MenuItemStatus } from '../../utils/menuCapabilityAccess';
 import { getPlatformDisplayName } from '../../utils/platforms';
 import type { ECommercePlatform } from '../../utils/platforms';
+import { permissionService } from '../permissions/PermissionService';
 
 /** Capability features that can gate a settings tab — excludes basketMode which is not a CapabilityLevel */
 type CapabilityFeatureKey = Exclude<keyof PlatformCapabilities, 'basketMode'>;
@@ -120,6 +123,7 @@ const TAB_ORDER: SettingsTabKey[] = [
 ];
 
 export interface SettingsTabComposerInput {
+  userRole?: UserRole;
   platform: ECommercePlatform | string;
   capabilities: PlatformCapabilities;
   /**
@@ -132,10 +136,19 @@ export interface SettingsTabComposerInput {
 /**
  * Compose the ordered list of settings tabs for the given platform context.
  * Tabs with status 'hidden' are excluded from the output.
+ *
+ * Spec requirement 2.1.4: All settings tabs are gated by 'settings:view' permission.
  */
 export function composeSettingsTabs(input: SettingsTabComposerInput): ComposedSettingsTab[] {
-  const { platform, capabilities, adapterReadiness = {} } = input;
+  const { userRole, platform, capabilities, adapterReadiness = {} } = input;
   const platformName = getPlatformDisplayName(platform);
+
+  // Spec requirement 2.1.4: Check settings:view permission (synchronous role-based check)
+  const hasSettingsViewPermission = permissionService.canByRole(userRole, 'settings:view');
+  if (!hasSettingsViewPermission) {
+    // User cannot access settings at all — return empty list
+    return [];
+  }
 
   const tabs: ComposedSettingsTab[] = [];
 
@@ -143,7 +156,7 @@ export function composeSettingsTabs(input: SettingsTabComposerInput): ComposedSe
     const def = TAB_DEFINITIONS[key];
 
     if (!def.capabilityKey) {
-      // Core tab — always shown
+      // Core tab — always shown (if user has settings:view permission)
       tabs.push({
         key,
         translationKey: def.translationKey,

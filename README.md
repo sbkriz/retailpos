@@ -35,14 +35,16 @@ Website: [retailpos.org](https://retailpos.org)
 
 ## Architecture
 
-RetailPOS follows a clean layered architecture:
+RetailPOS follows a strict four-layer architecture with unidirectional dependencies:
 
-- **Presentation** — React Native + Expo screens and components
-- **Business Logic** — Service layer with constructor injection and platform abstractions
-- **Repository Layer** — Interface-based repositories with SQLite (offline) and HTTP (multi-register) implementations
-- **Infrastructure** — Hardware drivers, external platform APIs, local HTTP server
+- **Screens** — Full-screen views that compose components and call hooks
+- **Components** — Reusable UI fragments with props-in/callbacks-out pattern
+- **Hooks** — Domain-specific hooks that manage async state and call service factories
+- **Services** — All business logic and platform integration (zero React imports)
 
-Key architectural decisions are documented in [`docs/adr/`](docs/adr/) and the full technical reference is in [`ARCHITECTURE.md`](ARCHITECTURE.md).
+**Cross-cutting**: Contexts provide global state (Basket, Auth, Category) shared across screens.
+
+Key architectural decisions are documented in [`docs/adr/`](docs/adr/) and the full technical reference is in [`ARCHITECTURE.md`](ARCHITECTURE.md). Implementation patterns with code examples are in [`docs/steering/architecture-patterns.md`](docs/steering/architecture-patterns.md).
 
 ---
 
@@ -50,15 +52,17 @@ Key architectural decisions are documented in [`docs/adr/`](docs/adr/) and the f
 
 | Layer      | Technology                           |
 | ---------- | ------------------------------------ |
-| Framework  | React Native + Expo SDK 53           |
+| Framework  | React Native + Expo SDK 55           |
 | Language   | TypeScript 5.x                       |
 | Navigation | React Navigation 7.x                 |
 | State      | React Context + Zustand (sync queue) |
 | Database   | SQLite via `expo-sqlite`             |
 | Desktop    | Electron                             |
+| Styling    | StyleSheet + `utils/theme.ts`        |
 | i18n       | react-i18next + expo-localization    |
+| Logging    | Custom LoggerFactory + transports    |
 | Testing    | Jest                                 |
-| Linting    | ESLint + Prettier                    |
+| Linting    | ESLint (flat config) + Prettier      |
 
 ---
 
@@ -185,18 +189,18 @@ retailpos/
 │   ├── basket/                # Cart CRUD + service wiring factory
 │   ├── checkout/              # Checkout flow + order queries
 │   ├── config/                # POSConfigService + ServiceConfigBridge
-│   ├── customer/              # Platform customer lookup (9 platforms)
+│   ├── customer/              # Platform customer lookup (10 platforms)
 │   ├── display/               # Customer-facing display (WebSocket, serial, Electron)
 │   ├── drawer/                # Cash drawer peripheral
 │   ├── inventory/             # Inventory queries + updates
 │   ├── kds/                   # Kitchen Display System (HTTP, WebSocket, Electron)
-│   ├── instoreapi/              # Multi-register local HTTP API
+│   ├── localapi/              # Multi-register local HTTP API
 │   ├── logger/                # Pluggable structured logger
 │   ├── notifications/         # In-app notification event bus
-│   ├── order/                 # Platform order services (9 platforms)
+│   ├── order/                 # Platform order services (10 platforms)
 │   ├── payment/               # Payment terminal providers
 │   ├── printer/               # Receipt printing + daily reports
-│   ├── product/               # Product management (9 platforms)
+│   ├── product/               # Product management (10 platforms)
 │   ├── refunds/               # Returns + refund orchestration
 │   ├── reporting/             # Sales analytics
 │   ├── scanner/               # Barcode/QR scanner abstraction
@@ -215,24 +219,46 @@ retailpos/
 ├── locales/                   # i18n translation files
 ├── utils/                     # Theme, money math, platform helpers
 └── docs/
-    ├── adr/                   # Architecture Decision Records
-    └── specs/                 # EARS requirements specs
+    ├── adr/                   # Architecture Decision Records (15 ADRs)
+    ├── specs/                 # EARS requirements specs
+    └── steering/              # Canonical development rules
+        ├── ubiquitous-language.md      # Domain vocabulary
+        ├── architecture-patterns.md    # Implementation patterns
+        ├── coding-standards.md         # TypeScript & naming rules
+        ├── ux-standards.md             # Theme & component structure
+        └── testing-guidelines.md       # Test structure & mocks
 ```
 
 ---
 
 ## Documentation
 
-| Document                                               | Purpose                                           |
-| ------------------------------------------------------ | ------------------------------------------------- |
-| [`ARCHITECTURE.md`](ARCHITECTURE.md)                   | Technical architecture, patterns, database schema |
-| [`AGENT.md`](AGENT.md)                                 | Coding conventions and development guidelines     |
-| [`docs/adr/`](docs/adr/)                               | Architecture Decision Records (14 ADRs)           |
-| [`docs/specs/`](docs/specs/)                           | EARS requirements specs for all features          |
-| [`docs/specs/EARS-GUIDE.md`](docs/specs/EARS-GUIDE.md) | How to write EARS specs                           |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md)                   | Contribution guidelines                           |
-| [`CHANGELOG.md`](CHANGELOG.md)                         | Version history                                   |
-| [`SECURITY.md`](SECURITY.md)                           | Security policy                                   |
+| Document                                                                           | Purpose                                                  |
+| ---------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md)                                               | Technical architecture, patterns, database schema        |
+| [`AGENT.md`](AGENT.md)                                                             | Quick-start context guide for developers and AI agents   |
+| [`docs/adr/`](docs/adr/)                                                           | Architecture Decision Records (15 ADRs)                  |
+| [`docs/specs/`](docs/specs/)                                                       | EARS requirements specs for all features                 |
+| [`docs/specs/EARS-GUIDE.md`](docs/specs/EARS-GUIDE.md)                             | How to write EARS specs                                  |
+| [`docs/steering/`](docs/steering/)                                                 | **Canonical development rules** (see below)              |
+| [`docs/steering/ubiquitous-language.md`](docs/steering/ubiquitous-language.md)     | Domain vocabulary — single source of truth for all terms |
+| [`docs/steering/architecture-patterns.md`](docs/steering/architecture-patterns.md) | Implementation patterns with code examples               |
+| [`docs/steering/coding-standards.md`](docs/steering/coding-standards.md)           | TypeScript, naming, file structure, common tasks         |
+| [`docs/steering/ux-standards.md`](docs/steering/ux-standards.md)                   | Theme system, component structure, accessibility         |
+| [`docs/steering/testing-guidelines.md`](docs/steering/testing-guidelines.md)       | Test structure, mocks, running tests                     |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md)                                               | Contribution guidelines                                  |
+| [`CHANGELOG.md`](CHANGELOG.md)                                                     | Version history                                          |
+| [`SECURITY.md`](SECURITY.md)                                                       | Security policy                                          |
+
+### Steering Docs (Canonical Rules)
+
+The `docs/steering/` directory contains the **single source of truth** for development standards:
+
+- **ubiquitous-language.md** — Domain vocabulary used across specs, code, tests, and ADRs. Use terms exactly as defined.
+- **architecture-patterns.md** — Service layer, repository pattern, context providers, factories, background jobs (with code examples).
+- **coding-standards.md** — TypeScript rules, naming conventions, file organization, the 14 non-negotiable rules.
+- **ux-standards.md** — Theme system (`utils/theme.ts`), component structure, accessibility, responsive layout.
+- **testing-guidelines.md** — Test file location, required mocks, test structure, running tests.
 
 ### Architecture Decision Records
 
@@ -252,6 +278,7 @@ retailpos/
 | [ADR-012](docs/adr/ADR-012-audit-log-kv-append-only.md)               | Audit log — KV-backed append-only                          |
 | [ADR-013](docs/adr/ADR-013-scanner-hardware-abstraction.md)           | Scanner hardware abstraction — four types, one interface   |
 | [ADR-014](docs/adr/ADR-014-spec-first-development.md)                 | Spec-first development with EARS format                    |
+| [ADR-015](docs/adr/ADR-015-ped-integration-via-instore-api.md)        | PED integration via Instore API — not direct provider      |
 
 ### Hardware Specs
 
@@ -278,9 +305,12 @@ Electron desktop installers (Windows, macOS, Linux) are built automatically on e
 See [CONTRIBUTING.md](CONTRIBUTING.md). In brief:
 
 1. Fork and create a feature branch
-2. Follow the patterns in [AGENT.md](AGENT.md)
-3. Run `yarn lint` and `yarn test` before submitting
-4. Submit a pull request
+2. Read [AGENT.md](AGENT.md) for project orientation
+3. Follow the canonical rules in [`docs/steering/`](docs/steering/)
+4. Use domain vocabulary from [`docs/steering/ubiquitous-language.md`](docs/steering/ubiquitous-language.md)
+5. Match existing patterns from [`docs/steering/architecture-patterns.md`](docs/steering/architecture-patterns.md)
+6. Run `yarn lint` and `yarn test` before submitting
+7. Submit a pull request with conventional commit messages
 
 ---
 

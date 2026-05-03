@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Animated } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { lightColors, spacing, typography, borderRadius } from '../../utils/theme';
 import { formatMoney } from '../../utils/money';
 import { CheckoutModal } from '../../components/CheckoutModal';
 import { StatusBadge } from '../../components/StatusBadge';
+import { BasketBlockers } from '../../components/BasketBlockers';
 import { ECommercePlatform } from '../../utils/platforms';
 import { useCurrency } from '../../hooks/useCurrency';
 import CustomerSearchModal from '../../components/CustomerSearchModal';
@@ -14,6 +15,7 @@ import { useLoyaltyBasket } from '../../hooks/useLoyaltyBasket';
 import { BasketItem, useBasketState } from '../../contexts/BasketStateProvider';
 import { useBasketActions } from '../../contexts/BasketActionsProvider';
 import { useCheckoutContext } from '../../contexts/CheckoutProvider';
+import { useSaleScreen } from '../../hooks/useSaleScreen';
 
 interface BasketContentProps {
   platform?: ECommercePlatform;
@@ -25,6 +27,31 @@ export const BasketContent: React.FC<BasketContentProps> = ({ platform, onChecko
   const { isLoading, basket, basketItems } = useBasketState();
   const { incrementQuantity, decrementQuantity, removeFromBasket, setCustomer, applyDiscount } = useBasketActions();
   const { unsyncedOrdersCount, syncAllPendingOrders } = useCheckoutContext();
+  const { blockers, saleState } = useSaleScreen();
+
+  // Pulse animation for "Fix Issues" button
+  const pulseAnim = React.useRef(new Animated.Value(1)).current;
+
+  React.useEffect(() => {
+    if (saleState === 'needs-attention') {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1.05,
+            duration: 600,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 600,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else {
+      pulseAnim.setValue(1);
+    }
+  }, [saleState, pulseAnim]);
 
   const {
     isProcessing,
@@ -158,6 +185,32 @@ export const BasketContent: React.FC<BasketContentProps> = ({ platform, onChecko
         />
       )}
 
+      {/* Blockers - show validation issues */}
+      {blockers.length > 0 && (
+        <View style={styles.blockersContainer}>
+          <BasketBlockers
+            blockers={blockers.map(blocker => ({
+              ...blocker,
+              action: blocker.action
+                ? {
+                    ...blocker.action,
+                    onPress: () => {
+                      // Wire up blocker actions
+                      if (blocker.message.includes('Customer email required')) {
+                        setCustomerModalVisible(true);
+                      } else if (blocker.message.includes('pending sync')) {
+                        handleSyncOrders();
+                      } else {
+                        blocker.action?.onPress();
+                      }
+                    },
+                  }
+                : undefined,
+            }))}
+          />
+        </View>
+      )}
+
       {/* Customer section */}
       {basket?.customerEmail ? (
         <View style={styles.customerBadge}>
@@ -279,22 +332,45 @@ export const BasketContent: React.FC<BasketContentProps> = ({ platform, onChecko
 
         {error && <Text style={styles.errorText}>{error}</Text>}
 
-        <TouchableOpacity
-          style={[styles.checkoutButton, (basketItems.length === 0 || isProcessing) && styles.buttonDisabled]}
-          onPress={handleStartCheckout}
-          disabled={basketItems.length === 0 || isProcessing}
-          accessibilityLabel={`Complete order, total ${formatMoney(total, currency.code)}`}
-          accessibilityRole="button"
-        >
-          {isProcessing ? (
-            <ActivityIndicator size="small" color={lightColors.textOnPrimary} />
-          ) : (
-            <View style={styles.checkoutButtonInner}>
-              <Text style={styles.checkoutButtonLabel}>COMPLETE ORDER</Text>
-              <Text style={styles.checkoutButtonTotal}>{formatMoney(total, currency.code)}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
+        {/* ENHANCED: Animated checkout button */}
+        <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+          <TouchableOpacity
+            style={[
+              styles.checkoutButton,
+              (basketItems.length === 0 || isProcessing || saleState === 'needs-attention') && styles.buttonDisabled,
+              saleState === 'needs-attention' && styles.buttonWarning,
+            ]}
+            onPress={() => {
+              if (saleState === 'needs-attention') {
+                // Scroll to blockers or show alert
+                return;
+              }
+              handleStartCheckout();
+            }}
+            disabled={basketItems.length === 0 || isProcessing}
+            accessibilityLabel={`Complete order, total ${formatMoney(total, currency.code)}`}
+            accessibilityRole="button"
+          >
+            {isProcessing ? (
+              <ActivityIndicator size="small" color={lightColors.textOnPrimary} />
+            ) : (
+              <View style={styles.checkoutButtonInner}>
+                <Text style={styles.checkoutButtonLabel}>
+                  {saleState === 'needs-attention'
+                    ? `FIX ${blockers.length} ${blockers.length === 1 ? 'ISSUE' : 'ISSUES'}`
+                    : saleState === 'preparing-checkout'
+                      ? 'PREPARING...'
+                      : saleState === 'processing-payment'
+                        ? 'PROCESSING...'
+                        : saleState === 'paid' || saleState === 'synced'
+                          ? 'NEW SALE'
+                          : 'COMPLETE ORDER'}
+                </Text>
+                {saleState === 'building' && <Text style={styles.checkoutButtonTotal}>{formatMoney(total, currency.code)}</Text>}
+              </View>
+            )}
+          </TouchableOpacity>
+        </Animated.View>
       </View>
 
       <CustomerSearchModal
@@ -388,6 +464,9 @@ const styles = StyleSheet.create({
   checkoutButtonLabel: { color: lightColors.textOnPrimary, fontSize: typography.fontSize.sm, fontWeight: '700', letterSpacing: 0.8 },
   checkoutButtonTotal: { color: lightColors.textOnPrimary, fontSize: typography.fontSize.xl, fontWeight: '800' },
   buttonDisabled: { opacity: 0.5 },
+  buttonWarning: {
+    backgroundColor: lightColors.warning,
+  },
   customerBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -440,6 +519,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     backgroundColor: lightColors.warning + '15',
     borderRadius: borderRadius.sm,
+  },
+  blockersContainer: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.xs,
   },
 });
 

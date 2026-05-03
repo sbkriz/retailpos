@@ -1,4 +1,6 @@
 import { SquarespaceCustomerService } from './SquarespaceCustomerService';
+import { withTokenRefresh } from '../../token/TokenIntegration';
+import { ECommercePlatform } from '../../../utils/platforms';
 
 // Mock the dependencies
 jest.mock('../../secrets/SecretsService', () => ({
@@ -36,9 +38,6 @@ jest.mock('../../logger/LoggerFactory', () => ({
     })),
   },
 }));
-
-import { withTokenRefresh } from '../../token/TokenIntegration';
-import { ECommercePlatform } from '../../../utils/platforms';
 
 describe('SquarespaceCustomerService', () => {
   let service: SquarespaceCustomerService;

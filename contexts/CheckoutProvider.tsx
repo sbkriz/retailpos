@@ -1,289 +1,205 @@
-import React, { ReactNode, createContext, useContext, useMemo, useCallback } from 'react';
-import { LocalOrder, LocalOrderStatus, CheckoutResult, SyncResult } from '../services/order/order';
-import { ECommercePlatform } from '../utils/platforms';
-import { useBasketState } from './BasketStateProvider';
-import { useAuthContext } from './AuthProvider';
-import { queueManager } from '../services/queue/QueueManager';
-import { LoggerFactory } from '../services/logger/LoggerFactory';
-
-const logger = LoggerFactory.getInstance().createLogger('CheckoutContext');
-
 /**
- * CheckoutContext - Checkout flow state and operations
- * Only active during checkout, separated to avoid re-renders during normal cart operations
+ * CheckoutProvider
+ *
+ * Provides checkout state and actions to the application.
+ * Wraps CheckoutService and exposes order state, sync status, and checkout actions.
  */
-export interface CheckoutContextType {
-  // Current order state
-  currentOrder: LocalOrder | null;
 
-  // Checkout operations
+import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
+import { getServiceContainer } from '../services/basket/BasketServiceFactory';
+import type { LocalOrder, CheckoutResult, LocalOrderStatus, PaymentLine } from '../services/order/order';
+import type { ECommercePlatform } from '../utils/platforms';
+import { useAuthContext } from './AuthProvider';
+
+interface CheckoutContextValue {
+  currentOrder: LocalOrder | null;
+  unsyncedOrdersCount: number;
+  isProcessing: boolean;
+  isSyncing: boolean;
   startCheckout: (platform?: ECommercePlatform) => Promise<LocalOrder | null>;
   markPaymentProcessing: (orderId: string) => Promise<void>;
   completePayment: (
     orderId: string,
     paymentMethod: string,
     transactionId?: string,
-    payments?: import('../services/order/order').PaymentLine[]
+    paymentLines?: PaymentLine[]
   ) => Promise<CheckoutResult>;
   cancelOrder: (orderId: string) => Promise<void>;
   cancelDraftOrder: () => Promise<void>;
-
-  // Sync operations
-  unsyncedOrdersCount: number;
-  syncOrderToPlatform: (orderId: string) => Promise<CheckoutResult>;
-  syncAllPendingOrders: () => Promise<SyncResult>;
-  getUnsyncedOrders: () => Promise<LocalOrder[]>;
+  syncAllPendingOrders: () => Promise<void>;
+  // Additional methods for OrderHistory
   getLocalOrders: (status?: LocalOrderStatus) => Promise<LocalOrder[]>;
-
-  // Sync queue status
-  getSyncQueueStatus: () => { length: number; isProcessing: boolean; pendingRequests: number; retryingRequests: number };
+  syncOrderToPlatform: (orderId: string) => Promise<CheckoutResult>;
+  getSyncQueueStatus: () => Promise<{ pending: number; failed: number }>;
 }
 
-export const CheckoutContext = createContext<CheckoutContextType | null>(null);
+const CheckoutContext = createContext<CheckoutContextValue | undefined>(undefined);
 
-export const CheckoutProvider = ({ children }: Readonly<{ children: ReactNode }>) => {
-  const state = useBasketState();
-  const { user } = useAuthContext();
-
-  const refreshUnsyncedCount = useCallback(async () => {
-    if (!state._containerRef.current) return;
-
-    try {
-      const unsyncedOrders = await state._containerRef.current.checkoutService.getUnsyncedOrders();
-      if (state._mountedRef.current) {
-        state._setUnsyncedOrdersCount(unsyncedOrders.length);
-      }
-    } catch (err) {
-      logger.error({ message: 'Failed to refresh unsynced count' }, err instanceof Error ? err : new Error(String(err)));
-    }
-  }, [state]);
-
-  const refreshBasket = useCallback(async () => {
-    if (!state._containerRef.current) return;
-
-    try {
-      const basketData = await state._containerRef.current.basketService.getBasket();
-      if (state._mountedRef.current) {
-        state._setBasket(basketData);
-        state._setError(null);
-      }
-    } catch (err) {
-      if (state._mountedRef.current) {
-        state._setError((err as Error).message);
-      }
-    }
-  }, [state]);
-
-  // Checkout operations
-  const startCheckout = useCallback(
-    async (platform?: ECommercePlatform): Promise<LocalOrder | null> => {
-      if (!state._containerRef.current) return null;
-
-      try {
-        // Cancel any existing draft before creating a new one
-        if (state.currentOrder?.status === 'draft') {
-          await state._containerRef.current.checkoutService.cancelDraftOrder(
-            state.currentOrder.id,
-            state.currentOrder.platform,
-            state.currentOrder.platformOrderId
-          );
-          if (state._mountedRef.current) state._setCurrentOrder(null);
-        }
-
-        const order = await state._containerRef.current.checkoutService.startCheckout(platform, user?.id, user?.username);
-        if (state._mountedRef.current) {
-          state._setCurrentOrder(order);
-          state._setError(null);
-        }
-        return order;
-      } catch (err) {
-        if (state._mountedRef.current) {
-          state._setError((err as Error).message);
-        }
-        return null;
-      }
-    },
-    [state, user]
-  );
-
-  const markPaymentProcessing = useCallback(
-    async (orderId: string) => {
-      if (!state._containerRef.current) return;
-
-      try {
-        const order = await state._containerRef.current.checkoutService.markPaymentProcessing(orderId);
-        if (state._mountedRef.current) {
-          state._setCurrentOrder(order);
-          state._setError(null);
-        }
-      } catch (err) {
-        if (state._mountedRef.current) {
-          state._setError((err as Error).message);
-        }
-      }
-    },
-    [state]
-  );
-
-  const completePayment = useCallback(
-    async (
-      orderId: string,
-      paymentMethod: string,
-      transactionId?: string,
-      payments?: import('../services/order/order').PaymentLine[]
-    ): Promise<CheckoutResult> => {
-      if (!state._containerRef.current) {
-        return { success: false, orderId, error: 'Service not initialized' };
-      }
-
-      try {
-        const result = await state._containerRef.current.checkoutService.completePayment(orderId, paymentMethod, transactionId, payments);
-
-        if (result.success && state._mountedRef.current) {
-          await refreshBasket();
-          await refreshUnsyncedCount();
-          state._setCurrentOrder(null);
-        }
-
-        return result;
-      } catch (err) {
-        if (state._mountedRef.current) {
-          state._setError((err as Error).message);
-        }
-        return { success: false, orderId, error: (err as Error).message };
-      }
-    },
-    [state, refreshBasket, refreshUnsyncedCount]
-  );
-
-  const cancelOrder = useCallback(
-    async (orderId: string) => {
-      if (!state._containerRef.current) return;
-
-      try {
-        await state._containerRef.current.checkoutService.cancelOrder(orderId);
-        if (state._mountedRef.current) {
-          state._setCurrentOrder(null);
-          state._setError(null);
-        }
-      } catch (err) {
-        if (state._mountedRef.current) {
-          state._setError((err as Error).message);
-        }
-      }
-    },
-    [state]
-  );
-
-  const cancelDraftOrder = useCallback(async () => {
-    if (!state._containerRef.current || !state.currentOrder) return;
-
-    try {
-      await state._containerRef.current.checkoutService.cancelDraftOrder(
-        state.currentOrder.id,
-        state.currentOrder.platform,
-        state.currentOrder.platformOrderId
-      );
-      if (state._mountedRef.current) {
-        state._setCurrentOrder(null);
-        state._setError(null);
-      }
-    } catch (err) {
-      if (state._mountedRef.current) {
-        state._setError((err as Error).message);
-      }
-    }
-  }, [state]);
-
-  // Sync operations
-  const syncOrderToPlatform = useCallback(
-    async (orderId: string): Promise<CheckoutResult> => {
-      if (!state._containerRef.current) {
-        return { success: false, orderId, error: 'Service not initialized' };
-      }
-
-      try {
-        const result = await state._containerRef.current.orderSyncService.syncOrderToPlatform(orderId);
-        if (result.success) {
-          await refreshUnsyncedCount();
-        }
-        return result;
-      } catch (err) {
-        return { success: false, orderId, error: (err as Error).message };
-      }
-    },
-    [state, refreshUnsyncedCount]
-  );
-
-  const syncAllPendingOrders = useCallback(async (): Promise<SyncResult> => {
-    if (!state._containerRef.current) {
-      return { synced: 0, failed: 0, errors: [] };
-    }
-
-    try {
-      const result = await state._containerRef.current.orderSyncService.syncAllPendingOrders();
-      await refreshUnsyncedCount();
-      return result;
-    } catch (err) {
-      return { synced: 0, failed: 0, errors: [{ orderId: 'unknown', error: (err as Error).message }] };
-    }
-  }, [state, refreshUnsyncedCount]);
-
-  const getUnsyncedOrders = useCallback(async (): Promise<LocalOrder[]> => {
-    if (!state._containerRef.current) return [];
-    return state._containerRef.current.checkoutService.getUnsyncedOrders();
-  }, [state]);
-
-  const getLocalOrders = useCallback(
-    async (status?: LocalOrderStatus): Promise<LocalOrder[]> => {
-      if (!state._containerRef.current) return [];
-      return state._containerRef.current.checkoutService.getLocalOrders(status);
-    },
-    [state]
-  );
-
-  const getSyncQueueStatus = useCallback(() => {
-    return queueManager.getQueueStatus();
-  }, []);
-
-  const value = useMemo(
-    () => ({
-      currentOrder: state.currentOrder,
-      startCheckout,
-      markPaymentProcessing,
-      completePayment,
-      cancelOrder,
-      cancelDraftOrder,
-      unsyncedOrdersCount: state.unsyncedOrdersCount,
-      syncOrderToPlatform,
-      syncAllPendingOrders,
-      getUnsyncedOrders,
-      getLocalOrders,
-      getSyncQueueStatus,
-    }),
-    [
-      state.currentOrder,
-      state.unsyncedOrdersCount,
-      startCheckout,
-      markPaymentProcessing,
-      completePayment,
-      cancelOrder,
-      cancelDraftOrder,
-      syncOrderToPlatform,
-      syncAllPendingOrders,
-      getUnsyncedOrders,
-      getLocalOrders,
-      getSyncQueueStatus,
-    ]
-  );
-
-  return <CheckoutContext.Provider value={value}>{children}</CheckoutContext.Provider>;
-};
-
-export const useCheckoutContext = (): CheckoutContextType => {
+export function useCheckoutContext() {
   const context = useContext(CheckoutContext);
-  if (context === null) {
-    throw new Error('useCheckout must be used within CheckoutProvider');
+  if (!context) {
+    throw new Error('useCheckoutContext must be used within CheckoutProvider');
   }
   return context;
+}
+
+interface CheckoutProviderProps {
+  children: ReactNode;
+}
+
+export const CheckoutProvider: React.FC<CheckoutProviderProps> = ({ children }) => {
+  const { user } = useAuthContext();
+  const [currentOrder, setCurrentOrder] = useState<LocalOrder | null>(null);
+  const [unsyncedOrdersCount, setUnsyncedOrdersCount] = useState(0);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  // Load unsynced orders count on mount
+  useEffect(() => {
+    const loadUnsyncedCount = async () => {
+      try {
+        const { checkoutService } = await getServiceContainer();
+        const unsyncedOrders = await checkoutService.getUnsyncedOrders();
+        setUnsyncedOrdersCount(unsyncedOrders.length);
+      } catch {
+        // Silently fail - unsynced count will remain 0
+      }
+    };
+    loadUnsyncedCount();
+  }, []);
+
+  const startCheckout = useCallback(
+    async (platform?: ECommercePlatform) => {
+      const { checkoutService } = await getServiceContainer();
+      const order = await checkoutService.startCheckout(platform, user?.id, user?.username);
+      setCurrentOrder(order);
+      return order;
+    },
+    [user]
+  );
+
+  const markPaymentProcessing = useCallback(async (orderId: string) => {
+    setIsProcessing(true);
+    try {
+      const { checkoutService } = await getServiceContainer();
+      const order = await checkoutService.markPaymentProcessing(orderId);
+      setCurrentOrder(order);
+    } finally {
+      setIsProcessing(false);
+    }
+  }, []);
+
+  const completePayment = useCallback(
+    async (orderId: string, paymentMethod: string, transactionId?: string, paymentLines?: PaymentLine[]) => {
+      setIsProcessing(true);
+      try {
+        const { checkoutService } = await getServiceContainer();
+        const result = await checkoutService.completePayment(orderId, paymentMethod, transactionId, paymentLines);
+        if (result.success) {
+          setCurrentOrder(null);
+          // Refresh unsynced count
+          const unsyncedOrders = await checkoutService.getUnsyncedOrders();
+          setUnsyncedOrdersCount(unsyncedOrders.length);
+        }
+        return result;
+      } finally {
+        setIsProcessing(false);
+      }
+    },
+    []
+  );
+
+  const cancelOrder = useCallback(async (orderId: string) => {
+    const { checkoutService } = await getServiceContainer();
+    await checkoutService.cancelOrder(orderId);
+    setCurrentOrder(null);
+  }, []);
+
+  const cancelDraftOrder = useCallback(async () => {
+    if (!currentOrder) return;
+    const { checkoutService } = await getServiceContainer();
+    await checkoutService.cancelDraftOrder(currentOrder.id);
+    setCurrentOrder(null);
+  }, [currentOrder]);
+
+  const syncAllPendingOrders = useCallback(async () => {
+    setIsSyncing(true);
+    try {
+      const { checkoutService, orderSyncService } = await getServiceContainer();
+      const unsyncedOrders = await checkoutService.getUnsyncedOrders();
+
+      for (const order of unsyncedOrders) {
+        try {
+          await orderSyncService.syncOrderToPlatform(order.id);
+        } catch {
+          // Continue syncing other orders even if one fails
+        }
+      }
+
+      // Refresh unsynced count
+      const remainingUnsynced = await checkoutService.getUnsyncedOrders();
+      setUnsyncedOrdersCount(remainingUnsynced.length);
+    } finally {
+      setIsSyncing(false);
+    }
+  }, []);
+
+  // Additional methods for OrderHistory
+  const getLocalOrders = useCallback(async (status?: LocalOrderStatus) => {
+    try {
+      const { checkoutService } = await getServiceContainer();
+      return await checkoutService.getLocalOrders(status);
+    } catch {
+      // Return empty array on error
+      return [];
+    }
+  }, []);
+
+  const syncOrderToPlatform = useCallback(async (orderId: string) => {
+    try {
+      const { orderSyncService } = await getServiceContainer();
+      const result = await orderSyncService.syncOrderToPlatform(orderId);
+
+      // Refresh unsynced count
+      const { checkoutService } = await getServiceContainer();
+      const unsyncedOrders = await checkoutService.getUnsyncedOrders();
+      setUnsyncedOrdersCount(unsyncedOrders.length);
+
+      return result;
+    } catch (error) {
+      // Return failure result instead of throwing
+      return { success: false, orderId, error: (error as Error).message };
+    }
+  }, []);
+
+  const getSyncQueueStatus = useCallback(async () => {
+    try {
+      const { checkoutService } = await getServiceContainer();
+      const unsyncedOrders = await checkoutService.getUnsyncedOrders();
+      const failed = unsyncedOrders.filter(o => o.syncStatus === 'failed').length;
+      const pending = unsyncedOrders.filter(o => o.syncStatus === 'pending').length;
+      return { pending, failed };
+    } catch {
+      // Return zeros on error
+      return { pending: 0, failed: 0 };
+    }
+  }, []);
+
+  const value: CheckoutContextValue = {
+    currentOrder,
+    unsyncedOrdersCount,
+    isProcessing,
+    isSyncing,
+    startCheckout,
+    markPaymentProcessing,
+    completePayment,
+    cancelOrder,
+    cancelDraftOrder,
+    syncAllPendingOrders,
+    getLocalOrders,
+    syncOrderToPlatform,
+    getSyncQueueStatus,
+  };
+
+  return <CheckoutContext.Provider value={value}>{children}</CheckoutContext.Provider>;
 };

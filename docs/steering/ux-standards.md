@@ -222,3 +222,411 @@ const { t } = useTranslation();
 ```
 
 Translation files live in `locales/en.json`, `locales/es.json`, `locales/fr.json`, `locales/de.json`.
+
+---
+
+## Sales Screen UX Patterns
+
+### Persistent Status Header
+
+All sales screens must display a persistent status header showing current context:
+
+```typescript
+<SalesStatusHeader
+  registerName="Register 2"
+  cashierName="Alban"
+  saleMode="counter"
+  orderState={saleState}
+  orderStateLabel={saleStateLabel}
+  orderStateColor={saleStateColor}
+  itemCount={itemCount}
+  total={total}
+  unsyncedCount={unsyncedOrdersCount}
+  onSyncPress={syncAllPendingOrders}
+/>
+```
+
+**Required fields**: register, cashier, state, totals
+**Optional**: sync badge (only when `unsyncedCount > 0`)
+
+### User-Facing State System
+
+Map technical states to user-facing labels via `utils/orderStateMapper.ts`:
+
+```typescript
+import { getUserFacingSaleState, getSaleStateLabel, getSaleStateColor } from '../utils/orderStateMapper';
+
+const saleState = getUserFacingSaleState({
+  basket,
+  order: currentOrder,
+  blockers: validateBasket(basket),
+  paymentLines: currentOrder?.paymentLines,
+});
+
+const saleStateLabel = getSaleStateLabel(saleState);
+const saleStateColor = getSaleStateColor(saleState);
+```
+
+**User-facing states**: Empty, Building, Needs Attention, Ready, Preparing, Processing, Paid, Synced, Action Required
+
+**Never expose technical states** (`draft`, `pending`, `processing`) directly to users.
+
+### Primary CTA Hierarchy
+
+Every screen state must have exactly one dominant call-to-action:
+
+```typescript
+const getPrimaryCTA = () => {
+  switch (saleState) {
+    case 'building':
+    case 'ready-for-checkout':
+      return (
+        <Button type="primary" size="large" onPress={handleCheckout}>
+          Complete Order
+        </Button>
+      );
+
+    case 'needs-attention':
+      return (
+        <Button type="warning" size="large" onPress={openBlockersModal}>
+          Fix {blockers.length} {blockers.length === 1 ? 'Issue' : 'Issues'}
+        </Button>
+      );
+
+    case 'paid':
+    case 'synced':
+      return (
+        <Button type="success" size="large" onPress={handleNewSale}>
+          New Sale
+        </Button>
+      );
+
+    default:
+      return null;
+  }
+};
+```
+
+**Visual hierarchy**:
+
+- **Primary**: Large, full-width, high-contrast color
+- **Secondary**: Medium, grouped, less prominent
+- **Tertiary**: Small text links, destructive actions (red)
+
+### Basket Validation & Blockers
+
+Validate basket before checkout and surface blockers inline:
+
+```typescript
+const validateBasket = (basket: Basket): BasketBlocker[] => {
+  const blockers: BasketBlocker[] = [];
+
+  if (basket.discount && !basket.customerEmail) {
+    blockers.push({
+      id: 'customer-required',
+      type: 'warning',
+      message: 'Customer email required for loyalty discount',
+      action: {
+        label: 'Add Customer',
+        onPress: () => openCustomerModal(),
+      },
+    });
+  }
+
+  if (unsyncedOrdersCount > 0) {
+    blockers.push({
+      id: 'unsynced-orders',
+      type: 'info',
+      message: `${unsyncedOrdersCount} orders pending sync`,
+      action: {
+        label: 'Retry Sync',
+        onPress: () => syncAllPendingOrders(),
+      },
+    });
+  }
+
+  return blockers;
+};
+```
+
+Render blockers using `BasketBlockers` component:
+
+```typescript
+{blockers.length > 0 && (
+  <BasketBlockers blockers={blockers} />
+)}
+```
+
+### Recovery Modals
+
+Replace `Alert.alert` with `RecoveryModal` for all error scenarios:
+
+```typescript
+<RecoveryModal
+  visible={showRecoveryModal}
+  type="error"
+  title="Card Payment Declined"
+  message="The card was declined by the bank. No charge was completed."
+  actions={[
+    {
+      label: 'Try Again',
+      type: 'primary',
+      onPress: () => retryPayment()
+    },
+    {
+      label: 'Choose Another Method',
+      type: 'secondary',
+      onPress: () => changePaymentMethod()
+    },
+    {
+      label: 'Cancel Order',
+      type: 'tertiary',
+      destructive: true,
+      onPress: () => cancelOrder()
+    }
+  ]}
+/>
+```
+
+**Recovery action types**:
+
+- `primary`: Main recovery path (e.g., "Try Again")
+- `secondary`: Alternative path (e.g., "Choose Another Method")
+- `tertiary`: Escape/cancel action (e.g., "Cancel Order")
+
+**Never use `Alert.alert` for**:
+
+- Payment errors
+- Sync failures
+- Terminal disconnections
+- Validation errors
+
+**Still use `Alert.alert` for**:
+
+- Destructive confirmations (delete, clear all)
+- Manager approval prompts
+- Critical system errors
+
+### Interruption Detection & Resume
+
+Detect interrupted operations on app open:
+
+```typescript
+const { interruptionState, resumeDraftSale, resumeCheckout, recoverPayment } = useInterruptionRecovery();
+
+{interruptionState.type !== 'none' && (
+  <InterruptionBanner
+    type={interruptionState.type}
+    onResume={() => {
+      switch (interruptionState.type) {
+        case 'draft-sale':
+          resumeDraftSale();
+          break;
+        case 'interrupted-checkout':
+          resumeCheckout(interruptionState.data?.order?.id);
+          break;
+        case 'interrupted-payment':
+          recoverPayment(interruptionState.data?.order?.id);
+          break;
+      }
+    }}
+    onDismiss={() => clearInterruption()}
+  />
+)}
+```
+
+**Interruption types**:
+
+- `draft-sale`: Basket has items on app open
+- `interrupted-checkout`: LocalOrder in `draft` state
+- `interrupted-payment`: LocalOrder in `processing` state
+- `unsynced`: Orders with `sync_status !== 'synced'`
+
+### Sync State Language
+
+Use reassuring operational language for sync states:
+
+**Good**:
+
+- "Order saved locally. Sync pending."
+- "Order is paid and saved. Platform sync pending."
+- "{n} orders pending sync. Continue selling."
+- "Syncing to Shopify..."
+
+**Bad**:
+
+- "Sync failed"
+- "Error syncing order"
+- "Order not synced"
+
+**Implementation**:
+
+```typescript
+const getSyncStatusMessage = (syncStatus: string, syncError?: string) => {
+  switch (syncStatus) {
+    case 'pending':
+      return 'Order saved locally. Sync pending.';
+    case 'syncing':
+      return `Syncing to ${platform}...`;
+    case 'failed':
+      return 'Order is paid and saved. Platform sync pending.';
+    case 'synced':
+      return 'Order synced successfully.';
+    default:
+      return 'Sync status unknown.';
+  }
+};
+```
+
+### Payment Method Availability
+
+Group payment methods by availability in `CheckoutModal`:
+
+```typescript
+const getPaymentMethodAvailability = (method: PaymentMethod, context: PaymentContext) => {
+  switch (method) {
+    case 'card-terminal':
+      if (!context.terminalConnected) {
+        return {
+          availability: 'unavailable',
+          reason: 'Terminal disconnected',
+          action: { label: 'Reconnect', onPress: reconnectTerminal },
+        };
+      }
+      return { availability: 'recommended' };
+
+    case 'loyalty':
+      if (!context.customerEmail) {
+        return {
+          availability: 'requires-customer',
+          reason: 'Add customer email to use',
+        };
+      }
+      return { availability: 'available' };
+  }
+};
+```
+
+**Availability states**:
+
+- `recommended`: Primary payment methods (cash, connected terminal)
+- `available`: Secondary methods (manual card, split tender)
+- `requires-customer`: Needs customer email (loyalty, store credit)
+- `requires-setup`: Needs configuration (terminal not set up)
+- `unavailable`: Cannot be used (terminal disconnected)
+
+**Render sections**:
+
+```
+┌─────────────────────────────────────┐
+│ Recommended                         │
+│ ✓ Card Terminal                     │
+│ ✓ Cash                              │
+├─────────────────────────────────────┤
+│ Other Methods                       │
+│ ○ Manual Card Entry                 │
+│ ○ Split Payment                     │
+├─────────────────────────────────────┤
+│ Requires Customer                   │
+│ ⚠ Loyalty Points                    │
+│   Add customer email to use         │
+├─────────────────────────────────────┤
+│ Unavailable                         │
+│ ✗ Square Terminal                   │
+│   Terminal disconnected             │
+│   [Reconnect]                       │
+└─────────────────────────────────────┘
+```
+
+### Behavioural Analytics
+
+Track all key UX events for continuous improvement:
+
+```typescript
+import { analyticsService } from '../services/analytics/AnalyticsService';
+
+// Track sale started
+analyticsService.track('sale_started', {
+  cashierId,
+  timestamp: Date.now(),
+});
+
+// Track item added
+analyticsService.track('item_added', {
+  productId,
+  method: 'scan' | 'search' | 'browse' | 'recent',
+  timestamp: Date.now(),
+});
+
+// Track checkout started
+analyticsService.track('checkout_started', {
+  itemCount,
+  total,
+  timestamp: Date.now(),
+});
+
+// Track payment completed
+analyticsService.track('payment_completed', {
+  method,
+  duration: Date.now() - checkoutStartTime,
+  timestamp: Date.now(),
+});
+
+// Track payment failed
+analyticsService.track('payment_failed', {
+  method,
+  reason,
+  timestamp: Date.now(),
+});
+
+// Track payment recovered
+analyticsService.track('payment_recovered', {
+  originalMethod,
+  newMethod,
+  duration: Date.now() - failureTime,
+  timestamp: Date.now(),
+});
+```
+
+**Key metrics to track**:
+
+- Time from first item to payment
+- Taps per sale
+- Payment failure rate
+- Payment recovery time
+- Split tender completion rate
+- Sync failure rate
+- Product discovery method usage (scan vs search vs browse)
+- Blocker frequency
+
+---
+
+## Component Library Extensions
+
+### New Components
+
+| Component            | Purpose                        | Location                            |
+| -------------------- | ------------------------------ | ----------------------------------- |
+| `SalesStatusHeader`  | Persistent context display     | `components/SalesStatusHeader.tsx`  |
+| `BasketBlockers`     | Inline validation feedback     | `components/BasketBlockers.tsx`     |
+| `RecoveryModal`      | Guided error recovery          | `components/RecoveryModal.tsx`      |
+| `InterruptionBanner` | Resume interrupted operations  | `components/InterruptionBanner.tsx` |
+| `SyncStatusBanner`   | Reassuring sync status         | `components/SyncStatusBanner.tsx`   |
+| `SplitTenderSummary` | Split payment balance tracking | `components/SplitTenderSummary.tsx` |
+
+### New Hooks
+
+| Hook                      | Purpose                           | Location                           |
+| ------------------------- | --------------------------------- | ---------------------------------- |
+| `useInterruptionRecovery` | Detect and resume interrupted ops | `hooks/useInterruptionRecovery.ts` |
+| `useRecentItems`          | Track recently added items        | `hooks/useRecentItems.ts`          |
+| `useBestSellers`          | Load top-selling products         | `hooks/useBestSellers.ts`          |
+
+### New Utilities
+
+| Utility                    | Purpose                             | Location                    |
+| -------------------------- | ----------------------------------- | --------------------------- |
+| `orderStateMapper`         | Map technical to user-facing states | `utils/orderStateMapper.ts` |
+| `getUserFacingSaleState()` | Compute current sale state          | `utils/orderStateMapper.ts` |
+| `getSaleStateLabel()`      | Get state display label             | `utils/orderStateMapper.ts` |
+| `getSaleStateColor()`      | Get state color                     | `utils/orderStateMapper.ts` |

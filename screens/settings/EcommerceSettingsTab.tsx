@@ -40,7 +40,8 @@ const CAPABILITY_FEATURES: Array<{ key: Exclude<keyof PlatformCapabilities, 'bas
   { key: 'discounts', label: 'Discounts & coupons' },
   { key: 'giftCards', label: 'Gift cards' },
   { key: 'refunds', label: 'Refunds' },
-  { key: 'draftOrders', label: 'Draft orders' },
+  { key: 'loyalty', label: 'Loyalty points sync' },
+  { key: 'storeCredit', label: 'Store credit sync' },
 ];
 
 const BASKET_MODE_LABEL: Record<BasketMode, { label: string; description: string; color: string; bg: string }> = {

@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Animated } from 'react-native';
 import { lightColors, spacing, typography, borderRadius } from '../../utils/theme';
 import { SwipeablePanel } from '../../components/SwipeablePanel';
+import { BasketBlockers } from '../../components/BasketBlockers';
+import { RecoveryModal, RecoveryAction } from '../../components/RecoveryModal';
 import { usePanelState } from '../../contexts/PanelStateProvider';
 import { formatMoney } from '../../utils/money';
 import { ECommercePlatform } from '../../utils/platforms';
@@ -13,6 +15,7 @@ import { useLoyaltyBasket } from '../../hooks/useLoyaltyBasket';
 import { BasketItem, useBasketState } from '../../contexts/BasketStateProvider';
 import { useBasketActions } from '../../contexts/BasketActionsProvider';
 import { useCheckoutContext } from '../../contexts/CheckoutProvider';
+import { useSaleScreen } from '../../hooks/useSaleScreen';
 
 interface BasketProps {
   onCheckout?: () => void;
@@ -26,6 +29,31 @@ export const Basket: React.FC<BasketProps> = ({ onCheckout, platform }) => {
   const { isLoading, basketItems, basket } = useBasketState();
   const { incrementQuantity, decrementQuantity, removeFromBasket } = useBasketActions();
   const { unsyncedOrdersCount, syncAllPendingOrders } = useCheckoutContext();
+  const { blockers, saleState } = useSaleScreen();
+
+  // Pulse animation for "Fix Issues" button
+  const pulseAnim = React.useRef(new Animated.Value(1)).current;
+
+  React.useEffect(() => {
+    if (saleState === 'needs-attention') {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1.05,
+            duration: 600,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 600,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else {
+      pulseAnim.setValue(1);
+    }
+  }, [saleState, pulseAnim]);
 
   const {
     isProcessing,
@@ -58,15 +86,45 @@ export const Basket: React.FC<BasketProps> = ({ onCheckout, platform }) => {
 
   const { loyaltyBalance, storeCreditDollars, loadBalances } = useLoyaltyBasket(basket?.customerEmail, currentOrder?.id);
 
+  // Recovery modal state
+  const [recoveryModal, setRecoveryModal] = useState<{
+    visible: boolean;
+    type: 'error' | 'warning' | 'info' | 'success';
+    title: string;
+    message: string;
+    details?: string;
+    actions: RecoveryAction[];
+  }>({
+    visible: false,
+    type: 'info',
+    title: '',
+    message: '',
+    actions: [],
+  });
+
   useEffect(() => {
     loadBalances();
   }, [basket?.customerEmail, loadBalances]);
 
-  // Basket surfaces payment errors as Alert.alert per spec 2.9.8
+  // Show payment errors via RecoveryModal (Sales UX spec §2.5)
   useEffect(() => {
     if (error) {
-      Alert.alert(t('common.error'), error);
-      clearError();
+      setRecoveryModal({
+        visible: true,
+        type: 'error',
+        title: t('common.error'),
+        message: error,
+        actions: [
+          {
+            label: t('common.ok'),
+            type: 'primary',
+            onPress: () => {
+              setRecoveryModal(prev => ({ ...prev, visible: false }));
+              clearError();
+            },
+          },
+        ],
+      });
     }
   }, [error, clearError, t]);
 
@@ -74,10 +132,28 @@ export const Basket: React.FC<BasketProps> = ({ onCheckout, platform }) => {
 
   const handleDecrement = async (itemId: string, currentQuantity: number) => {
     if (currentQuantity <= 1) {
-      Alert.alert(t('basket.removeItem'), t('basket.removeItemConfirm'), [
-        { text: t('common.cancel'), style: 'cancel' },
-        { text: t('common.remove'), style: 'destructive', onPress: () => removeFromBasket(itemId) },
-      ]);
+      setRecoveryModal({
+        visible: true,
+        type: 'warning',
+        title: t('basket.removeItem'),
+        message: t('basket.removeItemConfirm'),
+        actions: [
+          {
+            label: t('common.remove'),
+            type: 'primary',
+            destructive: true,
+            onPress: () => {
+              removeFromBasket(itemId);
+              setRecoveryModal(prev => ({ ...prev, visible: false }));
+            },
+          },
+          {
+            label: t('common.cancel'),
+            type: 'secondary',
+            onPress: () => setRecoveryModal(prev => ({ ...prev, visible: false })),
+          },
+        ],
+      });
     } else {
       await decrementQuantity(itemId);
     }
@@ -86,16 +162,35 @@ export const Basket: React.FC<BasketProps> = ({ onCheckout, platform }) => {
   const handleSyncOrders = async () => {
     setIsSyncing(true);
     try {
-      const result = await syncAllPendingOrders();
-      if (result.synced > 0) {
-        Alert.alert(t('basket.syncCompleteTitle'), t('basket.syncComplete', { count: result.synced }));
-      } else if (result.failed > 0) {
-        Alert.alert(t('basket.syncFailedTitle'), t('basket.syncFailed', { count: result.failed }));
-      } else {
-        Alert.alert(t('basket.noOrdersTitle'), t('basket.noOrdersToSync'));
-      }
+      await syncAllPendingOrders();
+      // Show success message via RecoveryModal
+      setRecoveryModal({
+        visible: true,
+        type: 'success',
+        title: t('basket.syncCompleteTitle'),
+        message: t('basket.syncComplete'),
+        actions: [
+          {
+            label: t('common.ok'),
+            type: 'primary',
+            onPress: () => setRecoveryModal(prev => ({ ...prev, visible: false })),
+          },
+        ],
+      });
     } catch (err) {
-      Alert.alert(t('common.error'), (err as Error).message);
+      setRecoveryModal({
+        visible: true,
+        type: 'error',
+        title: t('common.error'),
+        message: (err as Error).message,
+        actions: [
+          {
+            label: t('common.ok'),
+            type: 'primary',
+            onPress: () => setRecoveryModal(prev => ({ ...prev, visible: false })),
+          },
+        ],
+      });
     } finally {
       setIsSyncing(false);
     }
@@ -164,6 +259,30 @@ export const Basket: React.FC<BasketProps> = ({ onCheckout, platform }) => {
             />
           )}
 
+          {/* Blockers - show validation issues */}
+          {blockers.length > 0 && (
+            <View style={styles.blockersContainer}>
+              <BasketBlockers
+                blockers={blockers.map(blocker => ({
+                  ...blocker,
+                  action: blocker.action
+                    ? {
+                        ...blocker.action,
+                        onPress: () => {
+                          // Wire up blocker actions
+                          if (blocker.message.includes('pending sync')) {
+                            handleSyncOrders();
+                          } else {
+                            blocker.action?.onPress();
+                          }
+                        },
+                      }
+                    : undefined,
+                }))}
+              />
+            </View>
+          )}
+
           <View style={styles.summary}>
             {unsyncedOrdersCount > 0 && (
               <TouchableOpacity style={styles.syncBanner} onPress={handleSyncOrders} disabled={isSyncing}>
@@ -187,21 +306,56 @@ export const Basket: React.FC<BasketProps> = ({ onCheckout, platform }) => {
               <Text style={styles.totalValue}>{formatMoney(total, currency.code)}</Text>
             </View>
 
-            {/* no inline error — payment errors shown via Alert.alert (spec 2.9.8) */}
+            {/* Payment errors shown via RecoveryModal (Sales UX spec §2.5) */}
 
-            <TouchableOpacity
-              style={[styles.checkoutButton, (basketItems.length === 0 || isProcessing) && styles.buttonDisabled]}
-              onPress={handleStartCheckout}
-              disabled={basketItems.length === 0 || isProcessing}
-              accessibilityLabel="Complete order"
-              accessibilityRole="button"
-            >
-              {isProcessing ? (
-                <ActivityIndicator size="small" color={lightColors.textOnPrimary} />
-              ) : (
-                <Text style={styles.checkoutButtonText}>{t('basket.completeOrder')}</Text>
-              )}
-            </TouchableOpacity>
+            {/* ENHANCED: Animated checkout button */}
+            <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+              <TouchableOpacity
+                style={[
+                  styles.checkoutButton,
+                  (basketItems.length === 0 || isProcessing || saleState === 'needs-attention') && styles.buttonDisabled,
+                  saleState === 'needs-attention' && styles.buttonWarning,
+                ]}
+                onPress={() => {
+                  if (saleState === 'needs-attention') {
+                    setRecoveryModal({
+                      visible: true,
+                      type: 'warning',
+                      title: t('basket.issuesTitle'),
+                      message: t('basket.issuesMessage', { count: blockers.length }),
+                      actions: [
+                        {
+                          label: t('common.ok'),
+                          type: 'primary',
+                          onPress: () => setRecoveryModal(prev => ({ ...prev, visible: false })),
+                        },
+                      ],
+                    });
+                    return;
+                  }
+                  handleStartCheckout();
+                }}
+                disabled={basketItems.length === 0 || isProcessing}
+                accessibilityLabel="Complete order"
+                accessibilityRole="button"
+              >
+                {isProcessing ? (
+                  <ActivityIndicator size="small" color={lightColors.textOnPrimary} />
+                ) : (
+                  <Text style={styles.checkoutButtonText}>
+                    {saleState === 'needs-attention'
+                      ? t('basket.fixIssues', { count: blockers.length })
+                      : saleState === 'preparing-checkout'
+                        ? t('basket.preparing')
+                        : saleState === 'processing-payment'
+                          ? t('basket.processing')
+                          : saleState === 'paid' || saleState === 'synced'
+                            ? t('basket.newSale')
+                            : t('basket.completeOrder')}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </Animated.View>
           </View>
         </View>
       </View>
@@ -227,6 +381,17 @@ export const Basket: React.FC<BasketProps> = ({ onCheckout, platform }) => {
         customerEmail={basket?.customerEmail}
         loyaltyPoints={loyaltyBalance?.points || 0}
         storeCreditDollars={storeCreditDollars}
+      />
+
+      {/* Recovery Modal for errors and confirmations */}
+      <RecoveryModal
+        visible={recoveryModal.visible}
+        type={recoveryModal.type}
+        title={recoveryModal.title}
+        message={recoveryModal.message}
+        details={recoveryModal.details}
+        actions={recoveryModal.actions}
+        onDismiss={() => setRecoveryModal(prev => ({ ...prev, visible: false }))}
       />
     </SwipeablePanel>
   );
@@ -281,6 +446,9 @@ const styles = StyleSheet.create({
   },
   checkoutButtonText: { color: lightColors.textOnPrimary, fontSize: typography.fontSize.md, fontWeight: '700', textAlign: 'center' },
   buttonDisabled: { opacity: 0.5 },
+  buttonWarning: {
+    backgroundColor: lightColors.warning,
+  },
   emptyCart: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: spacing.xl },
   emptyCartText: { fontSize: typography.fontSize.md, color: lightColors.textHint, textAlign: 'center' },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: spacing.xl },
@@ -296,4 +464,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   syncBannerText: { color: lightColors.textOnPrimary, fontSize: typography.fontSize.sm, fontWeight: '600' },
+  blockersContainer: {
+    marginBottom: spacing.md,
+  },
 });

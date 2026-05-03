@@ -1,12 +1,15 @@
-import { SyliusCustomerService } from './SyliusCustomerService';
-
-// Mock the dependencies
-jest.mock('../../secrets/SecretsService', () => ({
-  __esModule: true,
-  default: {
-    getSecret: jest.fn(),
-  },
-}));
+// Mock the dependencies before importing anything
+jest.mock('../../secrets/SecretsService', () => {
+  const mockGetSecret = jest.fn();
+  return {
+    secretsServiceFactory: {
+      getService: jest.fn(() => ({
+        getSecret: mockGetSecret,
+      })),
+    },
+    __mockGetSecret: mockGetSecret,
+  };
+});
 
 jest.mock('../../token/TokenUtils', () => ({
   getPlatformToken: jest.fn(),
@@ -21,7 +24,7 @@ jest.mock('../../token/TokenInitializer', () => ({
 }));
 
 jest.mock('../../token/TokenIntegration', () => ({
-  withTokenRefresh: jest.fn(),
+  withTokenRefresh: jest.fn((platform, fn) => fn()),
 }));
 
 jest.mock('../../logger/LoggerFactory', () => ({
@@ -37,9 +40,12 @@ jest.mock('../../logger/LoggerFactory', () => ({
   },
 }));
 
-import secretsService from '../../secrets/SecretsService';
-import { withTokenRefresh } from '../../token/TokenIntegration';
+// Now import after mocks are set up
+import { SyliusCustomerService } from './SyliusCustomerService';
 import { ECommercePlatform } from '../../../utils/platforms';
+
+const mockSecretsService = require('../../secrets/SecretsService');
+const mockGetSecret = mockSecretsService.__mockGetSecret;
 
 describe('SyliusCustomerService', () => {
   let service: SyliusCustomerService;
@@ -56,12 +62,11 @@ describe('SyliusCustomerService', () => {
     service = new SyliusCustomerService();
     (service as unknown as { apiClient: typeof mockApiClient }).apiClient = mockApiClient;
 
-    (secretsService.getSecret as jest.Mock).mockImplementation((key: string) => {
+    mockGetSecret.mockImplementation((key: string) => {
       if (key === 'SYLIUS_BASE_URL') return Promise.resolve(mockBaseUrl);
       return Promise.resolve(null);
     });
 
-    (withTokenRefresh as jest.Mock).mockImplementation(async (platform, fn) => fn());
     mockApiClient.isInitialized.mockReturnValue(true);
     mockApiClient.initialize.mockResolvedValue(undefined);
   });
@@ -74,7 +79,7 @@ describe('SyliusCustomerService', () => {
     });
 
     it('should fail initialization without base URL', async () => {
-      (secretsService.getSecret as jest.Mock).mockResolvedValue(null);
+      mockGetSecret.mockResolvedValue(null);
       const result = await service.initialize();
       expect(result).toBe(false);
       expect(service.isInitialized()).toBe(false);

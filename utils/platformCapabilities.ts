@@ -41,8 +41,6 @@ export interface PlatformCapabilities {
   customers: CapabilityLevel;
   inventory: CapabilityLevel;
   orderSync: CapabilityLevel;
-  /** @deprecated Use basketMode instead. Kept for backward compatibility. */
-  draftOrders: CapabilityLevel;
   /** How the POS manages basket state relative to the platform */
   basketMode: BasketMode;
   discounts: CapabilityLevel;
@@ -76,7 +74,6 @@ export const PLATFORM_CAPABILITY_MATRIX: Readonly<Record<ECommercePlatform, Plat
     customers: 'supported',
     inventory: 'supported',
     orderSync: 'supported',
-    draftOrders: 'supported',
     basketMode: 'native_draft',
     discounts: 'supported',
     giftCards: 'supported',
@@ -89,7 +86,6 @@ export const PLATFORM_CAPABILITY_MATRIX: Readonly<Record<ECommercePlatform, Plat
     customers: 'supported',
     inventory: 'supported',
     orderSync: 'supported',
-    draftOrders: 'custom',
     basketMode: 'remote_cart', // pending order acts as remote cart
     discounts: 'supported',
     giftCards: 'custom',
@@ -102,7 +98,6 @@ export const PLATFORM_CAPABILITY_MATRIX: Readonly<Record<ECommercePlatform, Plat
     customers: 'supported',
     inventory: 'supported',
     orderSync: 'supported',
-    draftOrders: 'custom', // quote/cart flow, not a true draft order
     basketMode: 'remote_cart', // Magento quote → submit → order
     discounts: 'supported',
     giftCards: 'custom',
@@ -115,7 +110,6 @@ export const PLATFORM_CAPABILITY_MATRIX: Readonly<Record<ECommercePlatform, Plat
     customers: 'supported',
     inventory: 'supported',
     orderSync: 'supported',
-    draftOrders: 'custom',
     basketMode: 'remote_cart', // Management Cart/Checkout API
     discounts: 'supported',
     giftCards: 'custom',
@@ -128,7 +122,6 @@ export const PLATFORM_CAPABILITY_MATRIX: Readonly<Record<ECommercePlatform, Plat
     customers: 'custom',
     inventory: 'custom',
     orderSync: 'custom',
-    draftOrders: 'custom',
     basketMode: 'remote_cart', // in-progress order (cart) → complete
     discounts: 'custom',
     giftCards: 'not_recommended',
@@ -141,7 +134,6 @@ export const PLATFORM_CAPABILITY_MATRIX: Readonly<Record<ECommercePlatform, Plat
     customers: 'supported',
     inventory: 'supported',
     orderSync: 'supported',
-    draftOrders: 'supported',
     basketMode: 'native_draft', // Wix Draft Orders API
     discounts: 'supported',
     giftCards: 'supported',
@@ -154,7 +146,6 @@ export const PLATFORM_CAPABILITY_MATRIX: Readonly<Record<ECommercePlatform, Plat
     customers: 'supported',
     inventory: 'supported',
     orderSync: 'supported',
-    draftOrders: 'custom',
     basketMode: 'remote_cart', // PrestaShop Cart → Order
     discounts: 'supported',
     giftCards: 'not_recommended',
@@ -167,7 +158,6 @@ export const PLATFORM_CAPABILITY_MATRIX: Readonly<Record<ECommercePlatform, Plat
     customers: 'supported',
     inventory: 'supported',
     orderSync: 'supported',
-    draftOrders: 'not_recommended',
     basketMode: 'local_only', // POS-local basket + post-payment order import
     discounts: 'not_recommended',
     giftCards: 'not_recommended',
@@ -180,7 +170,6 @@ export const PLATFORM_CAPABILITY_MATRIX: Readonly<Record<ECommercePlatform, Plat
     customers: 'supported',
     inventory: 'supported',
     orderSync: 'supported',
-    draftOrders: 'supported',
     basketMode: 'native_draft',
     discounts: 'supported',
     giftCards: 'supported',
@@ -193,7 +182,6 @@ export const PLATFORM_CAPABILITY_MATRIX: Readonly<Record<ECommercePlatform, Plat
     customers: 'supported',
     inventory: 'supported',
     orderSync: 'supported',
-    draftOrders: 'not_recommended',
     basketMode: 'local_only',
     discounts: 'supported',
     giftCards: 'not_recommended',
@@ -269,7 +257,6 @@ function featureLabel(feature: Exclude<keyof PlatformCapabilities, 'basketMode'>
     customers: 'Customer management',
     inventory: 'Inventory sync',
     orderSync: 'Order sync',
-    draftOrders: 'Draft orders',
     discounts: 'Discounts',
     giftCards: 'Gift cards',
     refunds: 'Refunds',

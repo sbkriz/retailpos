@@ -9,13 +9,20 @@ import { Category } from './sale/Category';
 import { CategoryList } from './sale/CategoryList';
 import { BasketContent } from './sale/BasketContent';
 import { SearchBar } from '../components/SearchBar';
+import { SalesStatusHeader } from '../components/SalesStatusHeader';
+import { InterruptionBanner } from '../components/InterruptionBanner';
 import { useSaleScreen } from '../hooks/useSaleScreen';
+import { useInterruptionRecovery } from '../hooks/useInterruptionRecovery';
+import { useAuthContext } from '../contexts/AuthProvider';
+import { useCheckoutContext } from '../contexts/CheckoutProvider';
 
 interface SaleScreenProps {
   username?: string;
 }
 
 const SaleScreen: React.FC<SaleScreenProps> = ({ username = 'User' }) => {
+  const { user } = useAuthContext();
+  const { syncAllPendingOrders, isSyncing } = useCheckoutContext();
   const {
     currentPlatform,
     filteredProducts,
@@ -29,11 +36,69 @@ const SaleScreen: React.FC<SaleScreenProps> = ({ username = 'User' }) => {
     clearCategoryFilter,
     basketItemsMap,
     itemCount,
+    total,
     handleAddToCart,
     isTabletOrDesktop,
     numColumns,
     sidebarWidths,
+    // UX State
+    saleState,
+    unsyncedOrdersCount,
   } = useSaleScreen();
+
+  const {
+    interruptionState,
+    resumeDraftSale,
+    resumeCheckout,
+    recoverPayment,
+    clearAndDismiss,
+    cancelAndDismiss,
+    retrySync,
+    dismissBanner,
+  } = useInterruptionRecovery();
+
+  // Build interruption banner actions
+  const getInterruptionActions = () => {
+    switch (interruptionState.type) {
+      case 'draft-sale':
+        return [
+          { label: 'Resume Sale', onPress: resumeDraftSale, variant: 'primary' as const },
+          { label: 'Clear Basket', onPress: clearAndDismiss, variant: 'secondary' as const },
+        ];
+      case 'interrupted-checkout':
+        return [
+          { label: 'Resume Checkout', onPress: resumeCheckout, variant: 'primary' as const },
+          { label: 'Cancel Order', onPress: cancelAndDismiss, variant: 'secondary' as const },
+        ];
+      case 'interrupted-payment':
+        return [
+          { label: 'Recover Payment', onPress: recoverPayment, variant: 'primary' as const },
+          { label: 'Cancel Order', onPress: cancelAndDismiss, variant: 'secondary' as const },
+        ];
+      case 'unsynced':
+        return [
+          { label: 'Retry Sync', onPress: retrySync, variant: 'primary' as const },
+          { label: 'Continue', onPress: dismissBanner, variant: 'secondary' as const },
+        ];
+      default:
+        return [];
+    }
+  };
+
+  const getInterruptionMessage = () => {
+    switch (interruptionState.type) {
+      case 'draft-sale':
+        return `You have a draft sale in progress (${interruptionState.itemCount} items)`;
+      case 'interrupted-checkout':
+        return `Checkout was interrupted. Order #${interruptionState.orderId?.slice(-8)} · ${interruptionState.itemCount} items`;
+      case 'interrupted-payment':
+        return `Payment was interrupted. Order #${interruptionState.orderId?.slice(-8)} · Processing state`;
+      case 'unsynced':
+        return `${unsyncedOrdersCount} ${unsyncedOrdersCount === 1 ? 'order' : 'orders'} pending sync`;
+      default:
+        return '';
+    }
+  };
 
   const renderProductArea = () => (
     <View style={styles.productArea}>
@@ -100,6 +165,24 @@ const SaleScreen: React.FC<SaleScreenProps> = ({ username = 'User' }) => {
     return (
       <View style={styles.container}>
         <Header username={username} cartItemTotal={itemCount} />
+        <SalesStatusHeader
+          registerName="Register 1"
+          cashierName={user?.username || username}
+          saleState={saleState}
+          itemCount={itemCount}
+          total={total}
+          unsyncedCount={unsyncedOrdersCount}
+          isSyncing={isSyncing}
+          onSyncPress={syncAllPendingOrders}
+        />
+        {interruptionState.type !== 'none' && (
+          <InterruptionBanner
+            type={interruptionState.type}
+            message={getInterruptionMessage()}
+            actions={getInterruptionActions()}
+            onDismiss={dismissBanner}
+          />
+        )}
         <View style={styles.desktopLayout}>
           <View style={[styles.sidebar, styles.categorySidebar, { width: sidebarWidths.category }]}>
             <Text style={styles.sidebarTitle}>Categories</Text>
@@ -126,6 +209,24 @@ const SaleScreen: React.FC<SaleScreenProps> = ({ username = 'User' }) => {
   return (
     <View style={styles.container}>
       <Header username={username} cartItemTotal={itemCount} />
+      <SalesStatusHeader
+        registerName="Register 1"
+        cashierName={user?.username || username}
+        saleState={saleState}
+        itemCount={itemCount}
+        total={total}
+        unsyncedCount={unsyncedOrdersCount}
+        isSyncing={isSyncing}
+        onSyncPress={syncAllPendingOrders}
+      />
+      {interruptionState.type !== 'none' && (
+        <InterruptionBanner
+          type={interruptionState.type}
+          message={getInterruptionMessage()}
+          actions={getInterruptionActions()}
+          onDismiss={dismissBanner}
+        />
+      )}
       <View style={styles.content}>{renderProductArea()}</View>
       <Category />
       <Basket platform={currentPlatform} />

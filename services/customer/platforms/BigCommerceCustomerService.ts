@@ -3,7 +3,9 @@ import { CustomerSearchOptions, CustomerSearchResult, PlatformCustomer } from '.
 import { ECommercePlatform } from '../../../utils/platforms';
 import { withTokenRefresh } from '../../token/TokenIntegration';
 import { LoggerFactory } from '../../logger/LoggerFactory';
-import secretsService from '../../secrets/SecretsService';
+import { secretsServiceFactory } from '../../secrets/SecretsService';
+
+const secretsService = secretsServiceFactory.getService();
 import { BigCommerceApiClient } from '../../clients/bigcommerce/BigCommerceApiClient';
 import { getPlatformToken } from '../../token/TokenUtils';
 

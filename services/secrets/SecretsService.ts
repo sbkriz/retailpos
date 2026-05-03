@@ -50,6 +50,3 @@ export { SecretKeys } from './SecretsServiceInterface';
 
 // Create and export the factory instance
 export const secretsServiceFactory = SecretsServiceFactory.getInstance();
-
-// Export the current service instance for backward compatibility
-export default secretsServiceFactory.getService();

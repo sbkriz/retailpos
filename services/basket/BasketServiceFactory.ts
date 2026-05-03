@@ -53,14 +53,6 @@ export class BasketServiceFactory {
     return this.container;
   }
 
-  /**
-   * Convenience — returns only the BasketService (backward-compat).
-   */
-  public async getService(): Promise<BasketServiceInterface> {
-    const { basketService } = await this.getServices();
-    return basketService;
-  }
-
   public getServiceSync(): BasketServiceInterface {
     if (!this.container) {
       this.container = this.buildContainer();
@@ -118,13 +110,6 @@ export class BasketServiceFactory {
  */
 export async function getServiceContainer(): Promise<ServiceContainer> {
   return BasketServiceFactory.getInstance().getServices();
-}
-
-/**
- * Convenience: get just the basket service (backward-compat)
- */
-export async function getBasketService(): Promise<BasketServiceInterface> {
-  return BasketServiceFactory.getInstance().getService();
 }
 
 export function getBasketServiceSync(): BasketServiceInterface {

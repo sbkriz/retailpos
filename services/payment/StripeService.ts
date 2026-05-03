@@ -27,17 +27,6 @@ export class StripeService implements PaymentServiceInterface {
   }
 
   /**
-   * Set the connection status - called from the React component using the hook
-   * This is part of the bridge pattern for backwards compatibility
-   */
-  public setConnectionStatus(connected: boolean, deviceId: string | null, deviceInfo: unknown = null): void {
-    this.isConnected = connected;
-    this.deviceId = deviceId;
-    this.connectedDevice = deviceInfo;
-    this.logger.info(`Terminal connection status updated: ${connected ? 'connected' : 'disconnected'}${deviceId ? ' to ' + deviceId : ''}`);
-  }
-
-  /**
    * Connect to a Stripe terminal reader
    * Uses the StripeTerminalBridgeManager to connect to the terminal
    */
@@ -158,15 +147,6 @@ export class StripeService implements PaymentServiceInterface {
       // Return cached readers on error
       return this.discoveredReaders;
     }
-  }
-
-  /**
-   * Set the discovered readers - for backwards compatibility with bridge pattern
-   * Called by React component using the hook when readers are discovered
-   */
-  public setDiscoveredReaders(readers: Array<{ id: string; name: string }>): void {
-    this.discoveredReaders = readers;
-    this.logger.info(`Updated discovered Stripe terminals: ${readers.length} terminals found`);
   }
 
   /**

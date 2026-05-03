@@ -221,7 +221,11 @@ const OrderHistoryScreen: React.FC<OrderHistoryScreenProps> = () => {
     </View>
   );
 
-  const syncQueueStatus = getSyncQueueStatus();
+  const [syncQueueStatus, setSyncQueueStatus] = React.useState<{ pending: number; failed: number }>({ pending: 0, failed: 0 });
+
+  React.useEffect(() => {
+    getSyncQueueStatus().then(setSyncQueueStatus);
+  }, [getSyncQueueStatus]);
 
   return (
     <View style={styles.container}>
@@ -279,11 +283,12 @@ const OrderHistoryScreen: React.FC<OrderHistoryScreenProps> = () => {
         </View>
       </View>
 
-      {syncQueueStatus.length > 0 && (
+      {(syncQueueStatus.pending > 0 || syncQueueStatus.failed > 0) && (
         <View style={styles.queueStatus}>
           <MaterialIcons name="sync" size={16} color={lightColors.primary} />
           <Text style={styles.queueText}>
-            {syncQueueStatus.length} request{syncQueueStatus.length !== 1 ? 's' : ''} in queue
+            {syncQueueStatus.pending + syncQueueStatus.failed} request{syncQueueStatus.pending + syncQueueStatus.failed !== 1 ? 's' : ''} in
+            queue
           </Text>
         </View>
       )}

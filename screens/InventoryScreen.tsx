@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, RefreshControl, Alert } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { MaterialIcons } from '@expo/vector-icons';
 import { lightColors, spacing, typography, borderRadius } from '../utils/theme';
 import { Input } from '../components/Input';
@@ -294,7 +295,7 @@ const InventoryScreen: React.FC<InventoryScreenProps> = ({ onGoBack }) => {
           <Text style={styles.loadingText}>Loading inventory...</Text>
         </View>
       ) : (
-        <FlatList
+        <FlashList
           data={filteredItems}
           renderItem={renderInventoryItem}
           keyExtractor={item => `${item.productId}-${item.variantId || ''}`}

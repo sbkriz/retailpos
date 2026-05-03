@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { lightColors, spacing, typography, borderRadius } from '../../utils/theme';
-import { useBasketContext, CartItem } from '../../contexts/BasketProvider';
 import { formatMoney } from '../../utils/money';
 import { CheckoutModal } from '../../components/CheckoutModal';
 import { StatusBadge } from '../../components/StatusBadge';
@@ -12,6 +11,9 @@ import CustomerSearchModal from '../../components/CustomerSearchModal';
 import { PlatformCustomer } from '../../services/customer/CustomerServiceInterface';
 import { useCheckout } from '../../hooks/useCheckout';
 import { useLoyaltyBasket } from '../../hooks/useLoyaltyBasket';
+import { BasketItem, useBasketState } from '../../contexts/BasketStateProvider';
+import { useBasketActions } from '../../contexts/BasketActionsProvider';
+import { useCheckoutContext } from '../../contexts/CheckoutProvider';
 
 interface BasketContentProps {
   platform?: ECommercePlatform;
@@ -20,18 +22,9 @@ interface BasketContentProps {
 
 export const BasketContent: React.FC<BasketContentProps> = ({ platform, onCheckout }) => {
   const currency = useCurrency();
-  const {
-    isLoading,
-    basket,
-    cartItems,
-    incrementQuantity,
-    decrementQuantity,
-    removeFromCart,
-    setCustomer,
-    unsyncedOrdersCount,
-    syncAllPendingOrders,
-    applyDiscount,
-  } = useBasketContext();
+  const { isLoading, basket, basketItems } = useBasketState();
+  const { incrementQuantity, decrementQuantity, removeFromBasket, setCustomer, applyDiscount } = useBasketActions();
+  const { unsyncedOrdersCount, syncAllPendingOrders } = useCheckoutContext();
 
   const {
     isProcessing,
@@ -76,7 +69,7 @@ export const BasketContent: React.FC<BasketContentProps> = ({ platform, onChecko
 
   const handleDecrement = async (itemId: string, currentQuantity: number) => {
     if (currentQuantity <= 1) {
-      await removeFromCart(itemId);
+      await removeFromBasket(itemId);
     } else {
       await decrementQuantity(itemId);
     }
@@ -97,7 +90,7 @@ export const BasketContent: React.FC<BasketContentProps> = ({ platform, onChecko
     }
   };
 
-  const renderItem = ({ item }: { item: CartItem }) => (
+  const renderItem = ({ item }: { item: BasketItem }) => (
     <View style={styles.cartItem}>
       <View style={styles.itemInfo}>
         <Text style={styles.itemName} numberOfLines={2}>
@@ -131,7 +124,7 @@ export const BasketContent: React.FC<BasketContentProps> = ({ platform, onChecko
         <Text style={styles.itemTotal}>{formatMoney(item.price * item.quantity, currency.code)}</Text>
         <TouchableOpacity
           style={styles.removeButton}
-          onPress={() => removeFromCart(item.id)}
+          onPress={() => removeFromBasket(item.id)}
           hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
           accessibilityLabel={`Remove ${item.name} from cart`}
           accessibilityRole="button"
@@ -149,7 +142,7 @@ export const BasketContent: React.FC<BasketContentProps> = ({ platform, onChecko
           <ActivityIndicator size="large" color={lightColors.primary} />
           <Text style={styles.loadingText}>Loading basket...</Text>
         </View>
-      ) : cartItems.length === 0 ? (
+      ) : basketItems.length === 0 ? (
         <View style={styles.centered}>
           <Text style={styles.emptyIcon}>🛒</Text>
           <Text style={styles.emptyText}>Your cart is empty</Text>
@@ -157,7 +150,7 @@ export const BasketContent: React.FC<BasketContentProps> = ({ platform, onChecko
         </View>
       ) : (
         <FlatList
-          data={cartItems}
+          data={basketItems}
           renderItem={renderItem}
           keyExtractor={item => item.id}
           style={styles.cartList}
@@ -287,9 +280,9 @@ export const BasketContent: React.FC<BasketContentProps> = ({ platform, onChecko
         {error && <Text style={styles.errorText}>{error}</Text>}
 
         <TouchableOpacity
-          style={[styles.checkoutButton, (cartItems.length === 0 || isProcessing) && styles.buttonDisabled]}
+          style={[styles.checkoutButton, (basketItems.length === 0 || isProcessing) && styles.buttonDisabled]}
           onPress={handleStartCheckout}
-          disabled={cartItems.length === 0 || isProcessing}
+          disabled={basketItems.length === 0 || isProcessing}
           accessibilityLabel={`Complete order, total ${formatMoney(total, currency.code)}`}
           accessibilityRole="button"
         >

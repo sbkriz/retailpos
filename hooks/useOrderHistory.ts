@@ -2,10 +2,10 @@ import { useState, useCallback, useEffect } from 'react';
 import { Alert } from 'react-native';
 import { LocalOrder } from '../services/basket/BasketServiceInterface';
 import { orderRepository } from '../repositories/OrderRepository';
-import { useBasketContext } from '../contexts/BasketProvider';
 import { useAuthContext } from '../contexts/AuthProvider';
 import { useLogger } from './useLogger';
 import { getDayStart, getDayEnd, filterAndSortOrders, canNavigateNext, canNavigatePrev } from '../utils/orderHistory.utils';
+import { useCheckoutContext } from '../contexts/CheckoutProvider';
 
 interface UseOrderHistoryReturn {
   orders: LocalOrder[];
@@ -26,7 +26,7 @@ interface UseOrderHistoryReturn {
 }
 
 export function useOrderHistory(): UseOrderHistoryReturn {
-  const { getLocalOrders, syncOrderToPlatform } = useBasketContext();
+  const { getLocalOrders, syncOrderToPlatform } = useCheckoutContext();
   const { user } = useAuthContext();
   const logger = useLogger('useOrderHistory');
 

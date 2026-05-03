@@ -1,8 +1,8 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, Alert, RefreshControl } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, RefreshControl } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { useBasketContext } from '../contexts/BasketProvider';
 import { useAuthContext } from '../contexts/AuthProvider';
 import { useDailyReport, DailyReportData } from '../hooks/useDailyReport';
 import type { MoreStackScreenProps } from '../navigation/types';
@@ -17,6 +17,7 @@ import { useCurrency } from '../hooks/useCurrency';
 import { useLogger } from '../hooks/useLogger';
 import { PrinterServiceFactory } from '../services/printer/PrinterServiceFactory';
 import { useOrderHistory } from '../hooks/useOrderHistory';
+import { useCheckoutContext } from '../contexts/CheckoutProvider';
 
 interface OrderHistoryScreenProps extends MoreStackScreenProps<'OrderHistory'> {}
 
@@ -25,7 +26,7 @@ const formatDate = (timestamp: number): string => {
 };
 
 const OrderHistoryScreen: React.FC<OrderHistoryScreenProps> = () => {
-  const { getSyncQueueStatus, unsyncedOrdersCount } = useBasketContext();
+  const { getSyncQueueStatus, unsyncedOrdersCount } = useCheckoutContext();
   const { user } = useAuthContext();
   const navigation = useNavigation<MoreStackScreenProps<'OrderHistory'>['navigation']>();
   const { currentShift, openShift, closeShift, generateReport, getReportLines } = useDailyReport();
@@ -287,7 +288,7 @@ const OrderHistoryScreen: React.FC<OrderHistoryScreenProps> = () => {
         </View>
       )}
 
-      <FlatList
+      <FlashList
         data={orders}
         keyExtractor={item => item.id}
         renderItem={renderOrderItem}

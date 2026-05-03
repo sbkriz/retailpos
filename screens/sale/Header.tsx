@@ -3,9 +3,10 @@ import { TouchableOpacity, View, Text, StyleSheet } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { lightColors, spacing, typography, borderRadius } from '../../utils/theme';
 import { useCategoryContext } from '../../contexts/CategoryProvider';
-import { useBasketContext } from '../../contexts/BasketProvider';
+import { usePanelState } from '../../contexts/PanelStateProvider';
 import { QuickActionsMenu, QuickAction } from '../../components/QuickActionsMenu';
 import { useResponsive } from '../../hooks/useResponsive';
+import { useCheckoutContext } from '../../contexts/CheckoutProvider';
 
 interface HeaderProps {
   username: string;
@@ -15,7 +16,8 @@ interface HeaderProps {
 
 const HeaderInner: React.FC<HeaderProps> = ({ username, cartItemTotal, onQuickAction }) => {
   const { isLeftPanelOpen, setIsLeftPanelOpen } = useCategoryContext();
-  const { isRightPanelOpen, setIsRightPanelOpen, unsyncedOrdersCount } = useBasketContext();
+  const { isRightPanelOpen, setIsRightPanelOpen } = usePanelState();
+  const { unsyncedOrdersCount } = useCheckoutContext();
   const { isMobile } = useResponsive();
 
   const toggleLeftPanel = () => {

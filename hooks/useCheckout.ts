@@ -19,7 +19,6 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import { ECommercePlatform } from '../utils/platforms';
-import { useBasketContext } from '../contexts/BasketProvider';
 import { usePayment } from './usePayment';
 import { cashDrawerServiceFactory } from '../services/drawer/CashDrawerServiceFactory';
 import { PrinterServiceFactory } from '../services/printer/PrinterServiceFactory';
@@ -33,6 +32,8 @@ import { storeCreditService } from '../services/storecredit/StoreCreditService';
 import { toCents } from '../utils/money';
 import { useLogger } from './useLogger';
 import { useManagerApproval } from './useManagerApproval';
+import { useBasketState } from '../contexts/BasketStateProvider';
+import { useCheckoutContext } from '../contexts/CheckoutProvider';
 
 interface UseCheckoutOptions {
   platform?: ECommercePlatform;
@@ -41,20 +42,8 @@ interface UseCheckoutOptions {
 
 export function useCheckout({ platform, onSuccess }: UseCheckoutOptions = {}) {
   const logger = useLogger('useCheckout');
-  const {
-    cartItems,
-    total,
-    subtotal,
-    tax,
-    itemCount,
-    currentOrder,
-    basket,
-    startCheckout,
-    markPaymentProcessing,
-    completePayment,
-    cancelOrder,
-    cancelDraftOrder,
-  } = useBasketContext();
+  const { basketItems, total, subtotal, tax, itemCount, basket } = useBasketState();
+  const { currentOrder, startCheckout, markPaymentProcessing, completePayment, cancelOrder, cancelDraftOrder } = useCheckoutContext();
 
   const { processPayment, isTerminalConnected } = usePayment();
   const { requestApproval } = useManagerApproval();
@@ -70,7 +59,7 @@ export function useCheckout({ platform, onSuccess }: UseCheckoutOptions = {}) {
 
   // ── Start checkout — creates platform draft ──────────────────────────
   const handleStartCheckout = useCallback(async () => {
-    if (cartItems.length === 0) return;
+    if (basketItems.length === 0) return;
     setIsProcessing(true);
     setError(null);
     setSplitMode(false);
@@ -86,7 +75,7 @@ export function useCheckout({ platform, onSuccess }: UseCheckoutOptions = {}) {
     } finally {
       setIsProcessing(false);
     }
-  }, [cartItems.length, startCheckout, platform]);
+  }, [basketItems.length, startCheckout, platform]);
 
   // ── Cancel draft — return to basket for editing ──────────────────────
   // Called when cashier closes CheckoutModal before paying

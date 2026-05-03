@@ -27,7 +27,7 @@ const SaleScreen: React.FC<SaleScreenProps> = ({ username = 'User' }) => {
     setSelectedCategory,
     setSelectedCategoryName,
     clearCategoryFilter,
-    cartItemsMap,
+    basketItemsMap,
     itemCount,
     handleAddToCart,
     isTabletOrDesktop,
@@ -87,7 +87,7 @@ const SaleScreen: React.FC<SaleScreenProps> = ({ username = 'User' }) => {
         <ProductGrid
           products={filteredProducts}
           onAddToCart={handleAddToCart}
-          cartItems={cartItemsMap}
+          basketItems={basketItemsMap}
           numColumns={numColumns}
           onLoadMore={loadMore}
         />

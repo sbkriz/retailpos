@@ -43,3 +43,4 @@ dist-electron/
 *.AppImage
 *.exe
 *.snap
+.vscode

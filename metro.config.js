@@ -29,6 +29,13 @@ config.transformer = {
       comments: process.env.NODE_ENV !== 'production',
     },
   },
+  getTransformOptions: async () => ({
+    transform: {
+      experimentalImportSupport: false,
+      // Critical: inline requires for better performance and smaller bundles
+      inlineRequires: true,
+    },
+  }),
 };
 
 // Add .wasm to asset extensions for expo-sqlite web support

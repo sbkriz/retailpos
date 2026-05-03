@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
-import { useBasketContext } from '../contexts/BasketProvider';
 import { PrinterConfig, ReceiptData } from '../services/printer/PrinterTypes';
 import { PrinterServiceFactory } from '../services/printer/PrinterServiceFactory';
 import { posConfig } from '../services/config/POSConfigService';
 import { lightColors, spacing, borderRadius, typography, elevation } from '../utils/theme';
+import { useBasketState } from '../contexts/BasketStateProvider';
+import { useBasketActions } from '../contexts/BasketActionsProvider';
 
 interface PrinterScreenProps {
   onGoBack?: () => void;
@@ -15,7 +16,8 @@ const PrinterScreen: React.FC<PrinterScreenProps> = ({ onGoBack }) => {
   const [selectedPrinter, setSelectedPrinter] = useState<PrinterConfig | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
-  const { cartItems, total, clearCart } = useBasketContext();
+  const { basketItems, total } = useBasketState();
+  const { clearBasket } = useBasketActions();
   const printerService = PrinterServiceFactory.getInstance();
 
   useEffect(() => {
@@ -57,7 +59,7 @@ const PrinterScreen: React.FC<PrinterScreenProps> = ({ onGoBack }) => {
       return;
     }
 
-    if (cartItems.length === 0) {
+    if (basketItems.length === 0) {
       Alert.alert('Empty Cart', 'There are no items in the cart to print.');
       return;
     }
@@ -68,7 +70,7 @@ const PrinterScreen: React.FC<PrinterScreenProps> = ({ onGoBack }) => {
       // Create receipt data from cart items
       const receiptData: ReceiptData = {
         orderId: `ORD-${Date.now().toString().slice(-6)}`,
-        items: cartItems.map(item => ({
+        items: basketItems.map(item => ({
           name: item.name,
           quantity: item.quantity,
           price: item.price,
@@ -88,7 +90,7 @@ const PrinterScreen: React.FC<PrinterScreenProps> = ({ onGoBack }) => {
           {
             text: 'Clear Cart',
             onPress: () => {
-              clearCart();
+              clearBasket();
               if (onGoBack) onGoBack();
             },
           },
@@ -162,11 +164,11 @@ const PrinterScreen: React.FC<PrinterScreenProps> = ({ onGoBack }) => {
         )}
 
         <TouchableOpacity
-          style={[styles.printButton, (!selectedPrinter || cartItems.length === 0) && styles.disabledButton]}
+          style={[styles.printButton, (!selectedPrinter || basketItems.length === 0) && styles.disabledButton]}
           onPress={handlePrintReceipt}
-          disabled={!selectedPrinter || cartItems.length === 0 || isPrinting}
+          disabled={!selectedPrinter || basketItems.length === 0 || isPrinting}
         >
-          <Text style={styles.printButtonText}>Print Receipt ({cartItems.length} items)</Text>
+          <Text style={styles.printButtonText}>Print Receipt ({basketItems.length} items)</Text>
         </TouchableOpacity>
 
         <TouchableOpacity

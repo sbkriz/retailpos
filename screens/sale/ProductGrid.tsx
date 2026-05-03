@@ -1,5 +1,6 @@
 import React, { memo, useCallback, useState } from 'react';
-import { View, FlatList, StyleSheet, ImageSourcePropType } from 'react-native';
+import { View, StyleSheet, ImageSourcePropType } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { spacing } from '../../utils/theme';
 import { ProductCard } from './ProductCard';
 import { ECommercePlatform } from '../../utils/platforms';
@@ -55,12 +56,12 @@ export interface DisplayProduct {
 interface ProductGridProps {
   products: DisplayProduct[];
   onAddToCart: (id: string, quantity: number, variantId?: string) => void;
-  cartItems?: Record<string, number>;
+  basketItems?: Record<string, number>;
   numColumns?: number;
   onLoadMore?: () => void;
 }
 
-const ProductGridInner: React.FC<ProductGridProps> = ({ products, onAddToCart, cartItems = {}, numColumns = 2, onLoadMore }) => {
+const ProductGridInner: React.FC<ProductGridProps> = ({ products, onAddToCart, basketItems = {}, numColumns = 2, onLoadMore }) => {
   const currency = useCurrency();
   const [pickerProduct, setPickerProduct] = useState<DisplayProduct | null>(null);
 
@@ -97,31 +98,24 @@ const ProductGridInner: React.FC<ProductGridProps> = ({ products, onAddToCart, c
         image={item.image}
         stock={item.stock}
         onAddToCart={handleCardPress}
-        inCart={!!cartItems[item.id]}
-        initialQuantity={cartItems[item.id] || 0}
+        inBasket={!!basketItems[item.id]}
+        initialQuantity={basketItems[item.id] || 0}
         widthPercent={cardWidthPercent}
       />
     ),
-    [handleCardPress, cartItems, cardWidthPercent]
+    [handleCardPress, basketItems, cardWidthPercent]
   );
 
   const keyExtractor = useCallback((item: DisplayProduct) => item.id, []);
 
   return (
     <View style={styles.container}>
-      <FlatList
-        key={`grid-${numColumns}`}
+      <FlashList
         data={products}
         renderItem={renderItem}
         keyExtractor={keyExtractor}
         numColumns={numColumns}
-        columnWrapperStyle={styles.row}
         showsVerticalScrollIndicator={false}
-        initialNumToRender={12}
-        maxToRenderPerBatch={8}
-        windowSize={5}
-        removeClippedSubviews={true}
-        updateCellsBatchingPeriod={50}
         onEndReached={onLoadMore}
         onEndReachedThreshold={0.3}
       />
@@ -147,9 +141,5 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: spacing.xs,
-  },
-  row: {
-    gap: spacing.xs,
-    paddingHorizontal: spacing.xs,
   },
 });

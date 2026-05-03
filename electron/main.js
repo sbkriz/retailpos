@@ -1,15 +1,49 @@
 const { app, BrowserWindow, ipcMain, Menu, shell } = require('electron');
 const path = require('path');
+const fs = require('fs');
 
 // Keep a global reference to prevent garbage collection
 let mainWindow = null;
 
 const isDev = process.env.NODE_ENV === 'development';
 
+// Simple window state persistence (no external dependencies)
+const stateFilePath = path.join(app.getPath('userData'), 'window-state.json');
+
+function loadWindowState() {
+  try {
+    if (fs.existsSync(stateFilePath)) {
+      return JSON.parse(fs.readFileSync(stateFilePath, 'utf8'));
+    }
+  } catch (err) {
+    console.error('Failed to load window state:', err);
+  }
+  return { width: 1280, height: 800 };
+}
+
+function saveWindowState() {
+  if (!mainWindow) return;
+  try {
+    const bounds = mainWindow.getBounds();
+    fs.writeFileSync(stateFilePath, JSON.stringify(bounds));
+  } catch (err) {
+    console.error('Failed to save window state:', err);
+  }
+}
+
+// Enable V8 optimizations for better performance
+app.commandLine.appendSwitch('enable-v8-code-cache');
+app.commandLine.appendSwitch('enable-gpu-rasterization');
+app.commandLine.appendSwitch('enable-zero-copy');
+
 function createWindow() {
+  const windowState = loadWindowState();
+
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 800,
+    width: windowState.width,
+    height: windowState.height,
+    x: windowState.x,
+    y: windowState.y,
     minWidth: 800,
     minHeight: 600,
     title: 'RetailPOS',
@@ -23,6 +57,7 @@ function createWindow() {
       // contextIsolation: true (renderer cannot access Node APIs) and
       // nodeIntegration: false (renderer has no require at all).
       sandbox: false,
+      backgroundThrottling: true, // Throttle when window is hidden
     },
     show: false,
     backgroundColor: '#F5F5F5',
@@ -49,8 +84,26 @@ function createWindow() {
     return { action: 'deny' };
   });
 
+  // Save window state on close
+  mainWindow.on('close', () => {
+    saveWindowState();
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
+  });
+
+  // Reduce resource usage when minimized
+  mainWindow.on('minimize', () => {
+    if (mainWindow && mainWindow.webContents) {
+      mainWindow.webContents.setBackgroundThrottling(true);
+    }
+  });
+
+  mainWindow.on('restore', () => {
+    if (mainWindow && mainWindow.webContents) {
+      mainWindow.webContents.setBackgroundThrottling(false);
+    }
   });
 }
 

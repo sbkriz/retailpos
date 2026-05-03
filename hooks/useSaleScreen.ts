@@ -8,7 +8,6 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRoute, type RouteProp } from '@react-navigation/native';
-import { useBasketContext, CartProduct } from '../contexts/BasketProvider';
 import { useCategoryContext } from '../contexts/CategoryProvider';
 import { useEcommerceSettings } from './useEcommerceSettings';
 import { useProductsForDisplay } from './useProducts';
@@ -17,10 +16,13 @@ import { useKeyboardShortcuts } from './useKeyboardShortcuts';
 import { ProductServiceFactory } from '../services/product/ProductServiceFactory';
 import { ECommercePlatform } from '../utils/platforms';
 import type { MainTabParamList } from '../navigation/types';
+import { useBasketState } from '../contexts/BasketStateProvider';
+import { BasketProduct, useBasketActions } from '../contexts/BasketActionsProvider';
 
 export function useSaleScreen() {
   const { selectedCategory, selectedCategoryName, setSelectedCategory, setSelectedCategoryName } = useCategoryContext();
-  const { cartItems, cartItemsMap, addToCart, updateQuantity, itemCount } = useBasketContext();
+  const { basketItems, basketItemsMap, itemCount } = useBasketState();
+  const { addToBasket, updateQuantity } = useBasketActions();
   const { isTabletOrDesktop, width } = useResponsive();
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -92,7 +94,7 @@ export function useSaleScreen() {
 
       if (!product) return;
 
-      const cartProduct: CartProduct = {
+      const basketProduct: BasketProduct = {
         id: product.id,
         name: product.name,
         price: product.price,
@@ -105,25 +107,25 @@ export function useSaleScreen() {
         taxProfileId: product.taxProfileId,
         taxCode: product.taxCode,
       };
-      addToCart(cartProduct, 1).catch(() => {});
+      addToBasket(basketProduct, 1).catch(() => {});
     };
 
     tryAdd();
-  }, [route.params?.scannedProductId, products, addToCart, currentPlatform]);
+  }, [route.params?.scannedProductId, products, addToBasket, currentPlatform]);
 
   const handleAddToCart = useCallback(
     async (id: string, quantity: number, variantId?: string) => {
       const product = products.find(p => p.id === id);
       if (!product) return;
 
-      const cartItem = cartItems.find(item => item.productId === id);
+      const cartItem = basketItems.find(item => item.productId === id);
 
       if (quantity <= 0 && cartItem) {
         await updateQuantity(cartItem.id, 0);
       } else if (cartItem) {
         await updateQuantity(cartItem.id, quantity);
       } else if (quantity > 0) {
-        const cartProduct: CartProduct = {
+        const basketProduct: BasketProduct = {
           id: product.id,
           name: product.name,
           price: product.price,
@@ -136,10 +138,10 @@ export function useSaleScreen() {
           taxProfileId: product.taxProfileId,
           taxCode: product.taxCode,
         };
-        await addToCart(cartProduct, quantity);
+        await addToBasket(basketProduct, quantity);
       }
     },
-    [products, cartItems, updateQuantity, addToCart]
+    [products, basketItems, updateQuantity, addToBasket]
   );
 
   const clearCategoryFilter = useCallback(() => {
@@ -166,7 +168,7 @@ export function useSaleScreen() {
     setSelectedCategoryName,
     clearCategoryFilter,
     // Cart
-    cartItemsMap,
+    basketItemsMap,
     itemCount,
     handleAddToCart,
     // Layout

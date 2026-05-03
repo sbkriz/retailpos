@@ -1,8 +1,9 @@
 import React, { useState, useEffect, memo } from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet, ImageSourcePropType, DimensionValue } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ImageSourcePropType, DimensionValue } from 'react-native';
 import { lightColors, spacing, borderRadius, typography, elevation } from '../../utils/theme';
 import { formatMoney } from '../../utils/money';
 import { useCurrency } from '../../hooks/useCurrency';
+import { OptimizedImage } from '../../components/OptimizedImage';
 
 interface ProductCardProps {
   id: string;
@@ -10,7 +11,7 @@ interface ProductCardProps {
   price: number;
   image: ImageSourcePropType;
   onAddToCart: (id: string, quantity: number) => void;
-  inCart?: boolean;
+  inBasket?: boolean;
   initialQuantity?: number;
   stock?: number;
   widthPercent?: number;
@@ -22,7 +23,7 @@ const ProductCardInner: React.FC<ProductCardProps> = ({
   price: priceProp,
   image,
   onAddToCart,
-  inCart = false,
+  inBasket = false,
   initialQuantity = 0,
   stock,
   widthPercent,
@@ -56,7 +57,7 @@ const ProductCardInner: React.FC<ProductCardProps> = ({
     }
   };
 
-  const isInCart = inCart || quantity > 0;
+  const isInBasket = inBasket || quantity > 0;
   const isOutOfStock = stock !== undefined && stock <= 0;
   const isLowStock = stock !== undefined && stock > 0 && stock <= 5;
 
@@ -64,7 +65,7 @@ const ProductCardInner: React.FC<ProductCardProps> = ({
 
   return (
     <TouchableOpacity
-      style={[styles.card, { width: cardWidth }, isInCart && styles.cardInCart, isOutOfStock && styles.cardOutOfStock]}
+      style={[styles.card, { width: cardWidth }, isInBasket && styles.cardInCart, isOutOfStock && styles.cardOutOfStock]}
       onPress={handleCardPress}
       activeOpacity={0.75}
       disabled={isOutOfStock}
@@ -73,10 +74,10 @@ const ProductCardInner: React.FC<ProductCardProps> = ({
       accessibilityState={{ disabled: isOutOfStock }}
     >
       <View style={styles.imageContainer}>
-        <Image source={image} style={styles.image} resizeMode="cover" />
+        <OptimizedImage source={image} style={styles.image} resizeMode="cover" priority="normal" />
 
         {/* Quantity badge — top-right corner */}
-        {isInCart && (
+        {isInBasket && (
           <View style={styles.quantityBadge}>
             <Text style={styles.quantityBadgeText}>{quantity}</Text>
           </View>
@@ -103,7 +104,7 @@ const ProductCardInner: React.FC<ProductCardProps> = ({
       </View>
 
       {/* Quantity controls — always below info, never overlapping */}
-      {isInCart && (
+      {isInBasket && (
         <View style={styles.quantityBar}>
           <TouchableOpacity
             style={styles.quantityButton}

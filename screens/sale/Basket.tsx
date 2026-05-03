@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { lightColors, spacing, typography, borderRadius } from '../../utils/theme';
 import { SwipeablePanel } from '../../components/SwipeablePanel';
-import { useBasketContext, CartItem } from '../../contexts/BasketProvider';
+import { usePanelState } from '../../contexts/PanelStateProvider';
 import { formatMoney } from '../../utils/money';
 import { ECommercePlatform } from '../../utils/platforms';
 import { useCurrency } from '../../hooks/useCurrency';
@@ -10,6 +10,9 @@ import { useTranslate } from '../../hooks/useTranslate';
 import { CheckoutModal } from '../../components/CheckoutModal';
 import { useCheckout } from '../../hooks/useCheckout';
 import { useLoyaltyBasket } from '../../hooks/useLoyaltyBasket';
+import { BasketItem, useBasketState } from '../../contexts/BasketStateProvider';
+import { useBasketActions } from '../../contexts/BasketActionsProvider';
+import { useCheckoutContext } from '../../contexts/CheckoutProvider';
 
 interface BasketProps {
   onCheckout?: () => void;
@@ -19,18 +22,10 @@ interface BasketProps {
 export const Basket: React.FC<BasketProps> = ({ onCheckout, platform }) => {
   const currency = useCurrency();
   const { t } = useTranslate();
-  const {
-    isRightPanelOpen,
-    setIsRightPanelOpen,
-    isLoading,
-    cartItems,
-    basket,
-    incrementQuantity,
-    decrementQuantity,
-    removeFromCart,
-    unsyncedOrdersCount,
-    syncAllPendingOrders,
-  } = useBasketContext();
+  const { isRightPanelOpen, setIsRightPanelOpen } = usePanelState();
+  const { isLoading, basketItems, basket } = useBasketState();
+  const { incrementQuantity, decrementQuantity, removeFromBasket } = useBasketActions();
+  const { unsyncedOrdersCount, syncAllPendingOrders } = useCheckoutContext();
 
   const {
     isProcessing,
@@ -81,7 +76,7 @@ export const Basket: React.FC<BasketProps> = ({ onCheckout, platform }) => {
     if (currentQuantity <= 1) {
       Alert.alert(t('basket.removeItem'), t('basket.removeItemConfirm'), [
         { text: t('common.cancel'), style: 'cancel' },
-        { text: t('common.remove'), style: 'destructive', onPress: () => removeFromCart(itemId) },
+        { text: t('common.remove'), style: 'destructive', onPress: () => removeFromBasket(itemId) },
       ]);
     } else {
       await decrementQuantity(itemId);
@@ -106,7 +101,7 @@ export const Basket: React.FC<BasketProps> = ({ onCheckout, platform }) => {
     }
   };
 
-  const renderItem = ({ item }: { item: CartItem }) => (
+  const renderItem = ({ item }: { item: BasketItem }) => (
     <View style={styles.cartItem}>
       <View style={styles.itemInfo}>
         <Text style={styles.itemName} numberOfLines={2}>
@@ -155,13 +150,13 @@ export const Basket: React.FC<BasketProps> = ({ onCheckout, platform }) => {
               <ActivityIndicator size="large" color={lightColors.primary} />
               <Text style={styles.loadingText}>{t('basket.loadingBasket')}</Text>
             </View>
-          ) : cartItems.length === 0 ? (
+          ) : basketItems.length === 0 ? (
             <View style={styles.emptyCart}>
               <Text style={styles.emptyCartText}>{t('basket.empty')}</Text>
             </View>
           ) : (
             <FlatList
-              data={cartItems}
+              data={basketItems}
               renderItem={renderItem}
               keyExtractor={item => item.id}
               style={styles.cartList}
@@ -195,9 +190,9 @@ export const Basket: React.FC<BasketProps> = ({ onCheckout, platform }) => {
             {/* no inline error — payment errors shown via Alert.alert (spec 2.9.8) */}
 
             <TouchableOpacity
-              style={[styles.checkoutButton, (cartItems.length === 0 || isProcessing) && styles.buttonDisabled]}
+              style={[styles.checkoutButton, (basketItems.length === 0 || isProcessing) && styles.buttonDisabled]}
               onPress={handleStartCheckout}
-              disabled={cartItems.length === 0 || isProcessing}
+              disabled={basketItems.length === 0 || isProcessing}
               accessibilityLabel="Complete order"
               accessibilityRole="button"
             >

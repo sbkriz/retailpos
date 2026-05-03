@@ -6,7 +6,9 @@ import { I18nextProvider } from 'react-i18next';
 import * as Localization from 'expo-localization';
 import i18n, { SUPPORTED_LANGUAGE_CODES, LanguageCode } from './locales/i18n';
 import { CategoryProvider } from './contexts/CategoryProvider';
-import { BasketProvider } from './contexts/BasketProvider';
+import { BasketStateProvider } from './contexts/BasketStateProvider';
+import { BasketActionsProvider } from './contexts/BasketActionsProvider';
+import { CheckoutProvider } from './contexts/CheckoutProvider';
 import { AuthProvider } from './contexts/AuthProvider';
 import { OnboardingProvider } from './contexts/OnboardingProvider';
 import { DataProvider } from './contexts/DataProvider';
@@ -27,6 +29,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import { NotificationProvider, useNotifications } from './contexts/NotificationProvider';
 import Toast from './components/Toast';
 import { ManagerApprovalModal } from './components/ManagerApprovalModal';
+import { PanelStateProvider } from './contexts/PanelStateProvider';
 //import { StripeTerminalBridgeProvider } from './contexts/StripeTerminalBridge';
 
 const AppContent = () => {
@@ -160,15 +163,21 @@ const AppContent = () => {
         <NotificationProvider>
           <OnboardingProvider>
             <AuthProvider>
-              <BasketProvider>
-                <CategoryProvider>
-                  <SettingsProvider>
-                    <DataProvider>
-                      <RootNavigator />
-                    </DataProvider>
-                  </SettingsProvider>
-                </CategoryProvider>
-              </BasketProvider>
+              <PanelStateProvider>
+                <BasketStateProvider>
+                  <BasketActionsProvider>
+                    <CheckoutProvider>
+                      <CategoryProvider>
+                        <SettingsProvider>
+                          <DataProvider>
+                            <RootNavigator />
+                          </DataProvider>
+                        </SettingsProvider>
+                      </CategoryProvider>
+                    </CheckoutProvider>
+                  </BasketActionsProvider>
+                </BasketStateProvider>
+              </PanelStateProvider>
             </AuthProvider>
           </OnboardingProvider>
           <AppToast />

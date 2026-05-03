@@ -1,25 +1,22 @@
 import { PaymentRequest, PaymentResponse, PaymentServiceInterface } from './PaymentServiceInterface';
 import { LoggerFactory } from '../logger/LoggerFactory';
 
-// For React Native, we'll use a bridge pattern since Stripe Terminal SDK
-// requires React hooks which can't be used in a service class
-// The actual SDK will be accessed through a hook in React components
-
 /**
  * Stripe Payment Terminal Service
- * Implements a bridge to the Stripe Terminal SDK for payment processing
+ * Implements integration with the Stripe Terminal SDK via the StripeTerminalBridgeManager
  */
 export class StripeService implements PaymentServiceInterface {
   private static instance: StripeService;
   private isConnected: boolean = false;
   private deviceId: string | null = null;
   private connectedDevice: unknown = null;
-  private stripeTerminalReady: boolean = false;
   private logger = LoggerFactory.getInstance().createLogger('StripeService');
 
+  // Store discovered readers cache
+  private discoveredReaders: Array<{ id: string; name: string }> = [];
+
   private constructor() {
-    // This is a bridge implementation - actual initialization happens via the React hook
-    this.logger.info('Stripe payment service bridge created');
+    this.logger.info('Stripe payment service created');
   }
 
   public static getInstance(): StripeService {
@@ -31,7 +28,7 @@ export class StripeService implements PaymentServiceInterface {
 
   /**
    * Set the connection status - called from the React component using the hook
-   * This is part of the bridge pattern
+   * This is part of the bridge pattern for backwards compatibility
    */
   public setConnectionStatus(connected: boolean, deviceId: string | null, deviceInfo: unknown = null): void {
     this.isConnected = connected;
@@ -42,88 +39,129 @@ export class StripeService implements PaymentServiceInterface {
 
   /**
    * Connect to a Stripe terminal reader
-   * In the bridge pattern, this just returns a status - actual connection happens in React component
+   * Uses the StripeTerminalBridgeManager to connect to the terminal
    */
   public async connectToTerminal(deviceId: string): Promise<boolean> {
-    // This is a stub - actual connection happens in the React component with useStripeTerminal
-    this.logger.info(`Request to connect to Stripe terminal: ${deviceId} - delegating to React component`);
-    return this.isConnected && this.deviceId === deviceId;
-  }
+    try {
+      this.logger.info(`Connecting to Stripe terminal: ${deviceId}`);
 
-  // This will store any pending payment requests that need to be processed by the React component
-  private pendingPaymentRequest: PaymentRequest | null = null;
-  private paymentResponseResolver: ((response: PaymentResponse) => void) | null = null;
+      // Import the bridge manager dynamically to avoid circular dependencies
+      const { StripeTerminalBridgeManager } = await import('../../contexts/StripeTerminalBridge');
+      const bridgeManager = StripeTerminalBridgeManager.getInstance();
+
+      // Check if bridge is initialized
+      if (!bridgeManager.isTerminalInitialized()) {
+        this.logger.error('Stripe Terminal Bridge is not initialized');
+        return false;
+      }
+
+      // Connect to the reader via the bridge
+      const connected = await bridgeManager.connectToReader(deviceId);
+
+      if (connected) {
+        // Update local state
+        this.isConnected = true;
+        this.deviceId = deviceId;
+        this.connectedDevice = bridgeManager.getConnectedReader();
+        this.logger.info(`Successfully connected to Stripe terminal: ${deviceId}`);
+      } else {
+        this.logger.error(`Failed to connect to Stripe terminal: ${deviceId}`);
+      }
+
+      return connected;
+    } catch (error) {
+      this.logger.error('Error connecting to Stripe terminal:', error);
+      return false;
+    }
+  }
 
   /**
    * Process payment with Stripe Terminal
-   * In the bridge pattern, this queues a payment request to be processed by the React component
+   * Uses the StripeTerminalBridgeManager to process the payment
    */
   public async processPayment(request: PaymentRequest): Promise<PaymentResponse> {
     if (!this.isConnected || !this.deviceId) {
       throw new Error('Not connected to payment terminal');
     }
 
-    this.logger.info(`Queueing payment of $${request.amount.toFixed(2)} for Stripe terminal ${this.deviceId}`);
+    try {
+      this.logger.info(`Processing payment of ${request.amount.toFixed(2)} via Stripe terminal ${this.deviceId}`);
 
-    // Store the request to be picked up by the React component using the hook
-    this.pendingPaymentRequest = request;
+      // Import the bridge manager dynamically to avoid circular dependencies
+      const { StripeTerminalBridgeManager } = await import('../../contexts/StripeTerminalBridge');
+      const bridgeManager = StripeTerminalBridgeManager.getInstance();
 
-    // Return a promise that will be resolved when the React component calls setPaymentResponse
-    return new Promise<PaymentResponse>(resolve => {
-      this.paymentResponseResolver = resolve;
+      // Check if bridge is initialized and reader is connected
+      if (!bridgeManager.isReaderConnected()) {
+        throw new Error('Stripe terminal is not connected');
+      }
 
-      // Timeout after 5 minutes if no response
-      setTimeout(
-        () => {
-          if (this.paymentResponseResolver === resolve) {
-            this.pendingPaymentRequest = null;
-            this.paymentResponseResolver = null;
-            resolve({
-              success: false,
-              errorMessage: 'Payment request timed out after 5 minutes',
-              timestamp: new Date(),
-            });
-          }
+      // Process payment via the bridge
+      const result = await bridgeManager.processPayment({
+        amount: request.amount,
+        currency: request.currency || 'usd',
+        description: `Order ${request.orderId || request.reference}`,
+        metadata: {
+          reference: request.reference,
+          orderId: request.orderId || '',
+          customerName: request.customerName || '',
         },
-        5 * 60 * 1000
-      );
-    });
-  }
+      });
 
-  /**
-   * Check if there's a pending payment request
-   * Called by React component using the hook
-   */
-  public getPendingPaymentRequest(): PaymentRequest | null {
-    return this.pendingPaymentRequest;
-  }
-
-  /**
-   * Set the payment response
-   * Called by React component using the hook when payment is complete
-   */
-  public setPaymentResponse(response: PaymentResponse): void {
-    if (this.paymentResponseResolver) {
-      this.paymentResponseResolver(response);
-      this.paymentResponseResolver = null;
-      this.pendingPaymentRequest = null;
+      this.logger.info(`Payment processing result: ${result.success ? 'success' : 'failed'}`);
+      return result;
+    } catch (error) {
+      this.logger.error('Error processing payment:', error);
+      return {
+        success: false,
+        errorMessage: error instanceof Error ? error.message : 'Payment processing failed',
+        timestamp: new Date(),
+      };
     }
   }
 
-  // Store discovered readers when detected by React component
-  private discoveredReaders: Array<{ id: string; name: string }> = [];
-
   /**
    * Get available Stripe readers
-   * In the bridge pattern, this returns the readers that have been discovered by the React component
+   * Uses the StripeTerminalBridgeManager to discover readers
    */
   public async getAvailableTerminals(): Promise<Array<{ id: string; name: string }>> {
-    this.logger.info('Getting available Stripe terminals from bridge cache');
-    return this.discoveredReaders;
+    try {
+      this.logger.info('Discovering available Stripe terminals');
+
+      // Import the bridge manager dynamically to avoid circular dependencies
+      const { StripeTerminalBridgeManager } = await import('../../contexts/StripeTerminalBridge');
+      const bridgeManager = StripeTerminalBridgeManager.getInstance();
+
+      // Check if bridge is initialized
+      if (!bridgeManager.isTerminalInitialized()) {
+        this.logger.warn('Stripe Terminal Bridge is not initialized, returning cached readers');
+        return this.discoveredReaders;
+      }
+
+      // Discover readers via the bridge
+      // Use bluetoothScan as the default discovery method
+      const readers = await bridgeManager.discoverReaders({
+        discoveryMethod: 'bluetoothScan',
+        simulated: false,
+      });
+
+      // Map the readers to our format
+      this.discoveredReaders = readers.map(reader => ({
+        id: reader.serialNumber,
+        name: reader.label || reader.deviceType || reader.serialNumber,
+      }));
+
+      this.logger.info(`Discovered ${this.discoveredReaders.length} Stripe terminals`);
+      return this.discoveredReaders;
+    } catch (error) {
+      this.logger.error('Error discovering Stripe terminals:', error);
+      // Return cached readers on error
+      return this.discoveredReaders;
+    }
   }
 
   /**
-   * Set the discovered readers
+   * Set the discovered readers - for backwards compatibility with bridge pattern
    * Called by React component using the hook when readers are discovered
    */
   public setDiscoveredReaders(readers: Array<{ id: string; name: string }>): void {
@@ -132,14 +170,37 @@ export class StripeService implements PaymentServiceInterface {
   }
 
   /**
-   * Request to disconnect from the Stripe reader
-   * In the bridge pattern, this just resets local state - actual disconnection happens in React component
+   * Disconnect from the Stripe reader
+   * Uses the StripeTerminalBridgeManager to disconnect from the terminal
    */
-  public disconnect(): void {
-    if (this.isConnected && this.deviceId) {
-      this.logger.info(`Request to disconnect from Stripe terminal: ${this.deviceId} - delegating to React component`);
+  public async disconnect(): Promise<void> {
+    if (!this.isConnected || !this.deviceId) {
+      this.logger.info('No active Stripe terminal connection to disconnect');
+      return;
+    }
 
-      // Reset local state - the React component will handle the actual disconnection
+    try {
+      this.logger.info(`Disconnecting from Stripe terminal: ${this.deviceId}`);
+
+      // Import the bridge manager dynamically to avoid circular dependencies
+      const { StripeTerminalBridgeManager } = await import('../../contexts/StripeTerminalBridge');
+      const bridgeManager = StripeTerminalBridgeManager.getInstance();
+
+      // Disconnect via the bridge
+      const disconnected = await bridgeManager.disconnectReader();
+
+      if (disconnected) {
+        // Reset local state
+        this.isConnected = false;
+        this.deviceId = null;
+        this.connectedDevice = null;
+        this.logger.info('Successfully disconnected from Stripe terminal');
+      } else {
+        this.logger.error('Failed to disconnect from Stripe terminal');
+      }
+    } catch (error) {
+      this.logger.error('Error disconnecting from Stripe terminal:', error);
+      // Reset local state even on error to avoid stuck state
       this.isConnected = false;
       this.deviceId = null;
       this.connectedDevice = null;
@@ -160,134 +221,80 @@ export class StripeService implements PaymentServiceInterface {
     return this.deviceId;
   }
 
-  // Store transaction statuses as they're updated by the React component
-  private transactionStatuses: Map<string, PaymentResponse> = new Map();
-
   /**
-   * Get transaction status from the cache
-   * In the bridge pattern, this returns statuses that have been cached by the React component
+   * Get transaction status
+   * Note: Stripe Terminal SDK doesn't provide direct transaction status queries
+   * This would need to be implemented via Stripe API calls
    */
   public async getTransactionStatus(transactionId: string): Promise<PaymentResponse> {
-    this.logger.info(`Getting transaction status for ${transactionId} from bridge cache`);
-    return this.transactionStatuses.get(transactionId) || { success: false, errorMessage: 'Transaction not found', timestamp: new Date() };
+    this.logger.info(`Getting transaction status for ${transactionId}`);
+    // This would require calling the Stripe API directly
+    // For now, return a not implemented response
+    return {
+      success: false,
+      errorMessage: 'Transaction status queries not implemented - use Stripe API directly',
+      timestamp: new Date(),
+    };
   }
-
-  /**
-   * Set a transaction status
-   * Called by React component using the hook when a transaction status is retrieved
-   */
-  public setTransactionStatus(transactionId: string, status: PaymentResponse): void {
-    this.transactionStatuses.set(transactionId, status);
-    this.logger.info(`Updated transaction status for ${transactionId}`);
-  }
-
-  // Store pending transaction operations that need to be processed by React component
-  private pendingVoidTransaction: string | null = null;
-  private pendingRefundTransaction: { transactionId: string; amount: number } | null = null;
-  private voidResponseResolver: ((response: PaymentResponse) => void) | null = null;
-  private refundResponseResolver: ((response: PaymentResponse) => void) | null = null;
 
   /**
    * Void/cancel a transaction
-   * In the bridge pattern, this queues a void request to be processed by the React component
+   * Note: Stripe Terminal SDK uses cancelPaymentIntent for this
    */
   public async voidTransaction(transactionId: string): Promise<PaymentResponse> {
-    this.logger.info(`Queueing void request for transaction ${transactionId}`);
+    try {
+      this.logger.info(`Voiding transaction ${transactionId}`);
 
-    // Store the request to be picked up by the React component using the hook
-    this.pendingVoidTransaction = transactionId;
+      // Import the bridge manager dynamically
+      const { StripeTerminalBridgeManager } = await import('../../contexts/StripeTerminalBridge');
+      const bridgeManager = StripeTerminalBridgeManager.getInstance();
 
-    // Return a promise that will be resolved when the React component calls setVoidResponse
-    return new Promise<PaymentResponse>(resolve => {
-      this.voidResponseResolver = resolve;
+      // Use the bridge's cancelPayment method
+      const success = await bridgeManager.bridge?.actions.cancelPayment(transactionId);
 
-      // Timeout after 2 minutes if no response
-      setTimeout(
-        () => {
-          if (this.voidResponseResolver === resolve) {
-            this.pendingVoidTransaction = null;
-            this.voidResponseResolver = null;
-            resolve({
-              success: false,
-              errorMessage: 'Void request timed out after 2 minutes',
-              timestamp: new Date(),
-            });
-          }
-        },
-        2 * 60 * 1000
-      );
-    });
-  }
-
-  /**
-   * Check if there's a pending void transaction
-   * Called by React component using the hook
-   */
-  public getPendingVoidTransaction(): string | null {
-    return this.pendingVoidTransaction;
-  }
-
-  /**
-   * Set the void response
-   * Called by React component using the hook when void is complete
-   */
-  public setVoidResponse(response: PaymentResponse): void {
-    if (this.voidResponseResolver) {
-      this.voidResponseResolver(response);
-      this.voidResponseResolver = null;
-      this.pendingVoidTransaction = null;
+      return {
+        success: success || false,
+        errorMessage: success ? undefined : 'Failed to void transaction',
+        timestamp: new Date(),
+      };
+    } catch (error) {
+      this.logger.error('Error voiding transaction:', error);
+      return {
+        success: false,
+        errorMessage: error instanceof Error ? error.message : 'Void transaction failed',
+        timestamp: new Date(),
+      };
     }
   }
 
   /**
    * Issue a refund
-   * In the bridge pattern, this queues a refund request to be processed by the React component
+   * Note: Refunds are handled through the Stripe API, not the Terminal SDK
    */
   public async refundTransaction(transactionId: string, amount: number): Promise<PaymentResponse> {
-    this.logger.info(`Queueing refund request for transaction ${transactionId} for amount ${amount.toFixed(2)}`);
+    try {
+      this.logger.info(`Refunding transaction ${transactionId} for amount ${amount.toFixed(2)}`);
 
-    // Store the request to be picked up by the React component using the hook
-    this.pendingRefundTransaction = { transactionId, amount };
+      // Import the bridge manager dynamically
+      const { StripeTerminalBridgeManager } = await import('../../contexts/StripeTerminalBridge');
+      const bridgeManager = StripeTerminalBridgeManager.getInstance();
 
-    // Return a promise that will be resolved when the React component calls setRefundResponse
-    return new Promise<PaymentResponse>(resolve => {
-      this.refundResponseResolver = resolve;
+      // Use the bridge's refundPayment method
+      const success = await bridgeManager.bridge?.actions.refundPayment(transactionId, amount);
 
-      // Timeout after 2 minutes if no response
-      setTimeout(
-        () => {
-          if (this.refundResponseResolver === resolve) {
-            this.pendingRefundTransaction = null;
-            this.refundResponseResolver = null;
-            resolve({
-              success: false,
-              errorMessage: 'Refund request timed out after 2 minutes',
-              timestamp: new Date(),
-            });
-          }
-        },
-        2 * 60 * 1000
-      );
-    });
-  }
-
-  /**
-   * Check if there's a pending refund transaction
-   * Called by React component using the hook
-   */
-  public getPendingRefundTransaction(): { transactionId: string; amount: number } | null {
-    return this.pendingRefundTransaction;
-  }
-
-  /**
-   * Set the refund response
-   * Called by React component using the hook when refund is complete
-   */
-  public setRefundResponse(response: PaymentResponse): void {
-    if (this.refundResponseResolver) {
-      this.refundResponseResolver(response);
-      this.refundResponseResolver = null;
-      this.pendingRefundTransaction = null;
+      return {
+        success: success || false,
+        errorMessage: success ? undefined : 'Failed to refund transaction',
+        timestamp: new Date(),
+        amount: success ? amount : undefined,
+      };
+    } catch (error) {
+      this.logger.error('Error refunding transaction:', error);
+      return {
+        success: false,
+        errorMessage: error instanceof Error ? error.message : 'Refund transaction failed',
+        timestamp: new Date(),
+      };
     }
   }
 }

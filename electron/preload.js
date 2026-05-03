@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Return a cleanup function the caller can invoke to unsubscribe
     return () => ipcRenderer.removeListener('barcode-scan', listener);
   },
+  scannerDiscover: () => ipcRenderer.invoke('scanner-discover'),
 
   // ── Payment IPC ───────────────────────────────────────────────────────────
   paymentInit: config => ipcRenderer.invoke('payment-init', config),

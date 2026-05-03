@@ -123,11 +123,28 @@ export class ElectronScannerService implements ScannerServiceInterface {
 
   /**
    * Discover available scanner devices.
-   * On Electron, HID scanners don't need discovery — they're keyboards.
-   * Returns a single logical device representing the HID input channel.
+   * On Electron, queries the main process for connected HID devices.
+   * Falls back to a logical HID device if enumeration is not available.
    */
   async discoverDevices(): Promise<Array<{ id: string; name: string }>> {
-    return [{ id: 'electron-hid', name: 'USB / Bluetooth HID Scanner (Desktop)' }];
+    try {
+      const api = getElectronAPI();
+      if (api?.scannerDiscover) {
+        this.logger.info('Discovering scanner devices via Electron IPC');
+        const devices = await api.scannerDiscover();
+        if (devices && devices.length > 0) {
+          this.logger.info(`Found ${devices.length} scanner devices`);
+          return devices;
+        }
+      }
+
+      // Fallback: Return logical HID device
+      this.logger.info('Using default HID scanner device');
+      return [{ id: 'electron-hid', name: 'USB / Bluetooth HID Scanner (Desktop)' }];
+    } catch (error) {
+      this.logger.error({ message: 'Error discovering scanner devices' }, error instanceof Error ? error : new Error(String(error)));
+      return [{ id: 'electron-hid', name: 'USB / Bluetooth HID Scanner (Desktop)' }];
+    }
   }
 
   // ── Internal helpers ─────────────────────────────────────────

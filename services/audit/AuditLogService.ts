@@ -36,6 +36,7 @@ export type AuditAction =
   | 'permission_set:unassigned'
   | 'customer:updated'
   | 'loyalty:adjusted'
+  | 'loyalty:expired'
   | 'store_credit:issued'
   | 'store_credit:redeemed'
   | 'store_credit:expired'

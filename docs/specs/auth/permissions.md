@@ -1,259 +1,412 @@
-# Roles & Granular Permissions – EARS Requirements
+# Permissions – EARS Requirements
 
-> **System**: RetailPOS – Custom Permission Sets & Manager Approval Flows
-> **Actor**: Admin, Manager, Cashier, System
-> **Date**: 2026-05-02
-> **Source**: `utils/roleAccess.ts`, `utils/menuCapabilityAccess.ts`, `services/navigation/MoreMenuComposer.ts`, `services/navigation/SettingsTabComposer.ts`, `repositories/UserRepository.ts`, `contexts/AuthProvider.tsx`
+> **System**: RetailPOS – Permission System & Manager Approval  
+> **Actor**: Cashier, Manager, Admin, System  
+> **Date**: 2026-05-03  
+> **Source**: `services/permissions/PermissionService.ts`, `services/permissions/ManagerApprovalService.ts`, `repositories/PermissionRepository.ts`, `repositories/UserRepository.ts`, `utils/actionRegistry.ts`, `services/audit/AuditLogService.ts`, `services/auth/AuthService.ts`
 
 ---
 
 ## Context
 
-### Current State
+The permission system controls access to sensitive actions in the POS. It uses a role-based model with optional per-user overrides. When a cashier attempts an action they don't have permission for, the system can trigger an in-context manager approval flow where a manager authenticates with their PIN to authorize the action.
 
-The POS has three fixed roles (`admin`, `manager`, `cashier`) with hardcoded permission sets in `utils/roleAccess.ts`. Role-based access is enforced at the menu item level (`canAccessMoreMenuItem`) and settings tab level (`evaluateCombinedAccess`). There is no concept of custom permission sets, per-action overrides, or manager approval/override flows.
+### Permission Resolution
 
-### Target State
+The system resolves permissions in priority order:
 
-This spec extends the permission model with:
+1. **Admin bypass** — admin role always returns `true`
+2. **User-level overrides** — explicit grants or denials in `permission_overrides` table
+3. **Action registry default** — minimum role requirement from `ACTION_MAP`
+4. **Deny** — unknown actions are denied by default
 
-1. **Custom permission sets** — admins can create named permission profiles that override the defaults for specific actions, then assign them to individual users.
-2. **Action-level permissions** — a fine-grained registry of every sensitive action in the POS (e.g. `discount:apply`, `refund:process`, `inventory:adjust`, `order:void`), each with a default role requirement and an optional override.
-3. **Manager approval / override flows** — when a cashier attempts an action they are not permitted to perform, the system prompts for a manager PIN or biometric to approve the action in-context without requiring the cashier to log out.
+### Manager Approval Flow
 
-### Architectural Approach
+When a cashier needs manager approval:
 
-The existing `canAccessMoreMenuItem` / `evaluateCombinedAccess` pattern is the right abstraction. The extension adds:
+1. Cashier triggers an action requiring elevated permission
+2. System calls `managerApprovalService.requestApproval(actionKey, cashierId)`
+3. `ManagerApprovalModal` opens, prompting for manager PIN
+4. Manager enters PIN → system authenticates and checks manager's permission
+5. If approved, the action proceeds; if denied/cancelled, the action is blocked
 
-- A `PermissionService` singleton that resolves whether a given user/role can perform a given action, consulting both the default role matrix and any custom overrides.
-- A `PermissionRepository` (SQLite) storing custom permission sets and user-level overrides.
-- A `ManagerApprovalService` that orchestrates the in-context PIN/biometric challenge.
+### Actors
 
-The `roleAccess.ts` defaults remain as the fallback — custom overrides layer on top.
+| Actor   | Role                                                                               |
+| ------- | ---------------------------------------------------------------------------------- |
+| Cashier | Attempts actions, triggers manager approval when needed                            |
+| Manager | Approves actions via PIN authentication                                            |
+| Admin   | Configures permission overrides, bypasses all permission checks                    |
+| System  | Resolves permissions, caches results, logs approvals, enforces brute-force lockout |
 
-### Platform Capability Gating
+### User Roles
 
-**Permissions and roles are entirely local** — `PermissionService`, `ManagerApprovalService`, and all SQLite tables are independent of the e-commerce platform. No capability keys are required and no entries in `PLATFORM_CAPABILITY_MATRIX` need to change for this feature.
+| Role    | Rank | Description                                                          |
+| ------- | ---- | -------------------------------------------------------------------- |
+| Cashier | 1    | Basic POS operations (sales, returns, customer lookup)               |
+| Manager | 2    | Elevated operations (discounts, voids, refunds, reports)             |
+| Admin   | 3    | Full system access (settings, user management, permission overrides) |
 
-The permission system gates actions within the POS itself. Platform capabilities gate what the POS can do with the platform's API. These are orthogonal concerns — a cashier may be permitted to process a refund (`refund:process` action allowed) but the platform may not support refunds (`refunds: 'not_recommended'`). Both checks apply independently.
+Role rank is used for default permission checks: `userRank >= requiredRank`.
 
-### New SQLite Tables
+### Key Defaults
 
-| Table                  | Purpose                                           |
-| ---------------------- | ------------------------------------------------- |
-| `permission_sets`      | Named permission profiles (e.g. "Senior Cashier") |
-| `permission_overrides` | Per-action overrides within a permission set      |
-| `user_permission_sets` | Many-to-many: users assigned to permission sets   |
-| `approval_log`         | Audit trail of manager approval events            |
-
-### Action Registry
-
-Every sensitive action is identified by a dot-namespaced string key. The default minimum role is the fallback when no override exists.
-
-| Action key               | Default minimum role | Description                            |
-| ------------------------ | -------------------- | -------------------------------------- |
-| `discount:apply`         | `cashier`            | Apply a discount code to the basket    |
-| `discount:manual`        | `manager`            | Apply a manual/custom discount amount  |
-| `refund:process`         | `manager`            | Process a refund or return             |
-| `order:void`             | `manager`            | Void an unpaid order                   |
-| `order:reopen`           | `manager`            | Reopen a completed order for exchange  |
-| `inventory:adjust`       | `manager`            | Manually adjust stock levels           |
-| `inventory:count`        | `manager`            | Start or finalise an inventory count   |
-| `price:override`         | `manager`            | Override the price of a basket item    |
-| `customer:edit`          | `manager`            | Edit a customer profile                |
-| `loyalty:adjust`         | `manager`            | Manually adjust loyalty points         |
-| `store_credit:issue`     | `manager`            | Issue store credit to a customer       |
-| `cash_drawer:open`       | `cashier`            | Open the cash drawer outside of a sale |
-| `report:view`            | `manager`            | View daily/period reports              |
-| `report:export`          | `manager`            | Export report data                     |
-| `settings:view`          | `manager`            | Access the Settings screen             |
-| `settings:edit`          | `admin`              | Save changes in Settings               |
-| `user:create`            | `admin`              | Create a new user                      |
-| `user:edit`              | `admin`              | Edit an existing user                  |
-| `user:delete`            | `admin`              | Delete a user                          |
-| `purchase_order:create`  | `manager`            | Create a purchase order                |
-| `purchase_order:receive` | `manager`            | Receive goods against a purchase order |
-| `exchange:process`       | `manager`            | Process an exchange                    |
-| `sync:retry`             | `manager`            | Manually retry a failed sync           |
+| Field               | Default                                   | Source                                |
+| ------------------- | ----------------------------------------- | ------------------------------------- |
+| Admin bypass        | Always `true` for admin role              | `PermissionService.resolve()`         |
+| Unknown action      | Deny (return `false`)                     | `PermissionService.resolve()`         |
+| Cache invalidation  | Per-user or global                        | `PermissionService.invalidateCache()` |
+| Brute-force lockout | 5 failures, 60-second cooldown            | `ManagerApprovalService` constants    |
+| Approval timeout    | None (modal remains open until dismissed) | `ManagerApprovalService`              |
 
 ---
 
 ## 1. Ubiquitous Requirements
 
-**1.1** `PermissionService.can(userId, action)` shall be the single authoritative check for whether a user may perform a given action — no screen, hook, or service shall hardcode role comparisons for action-level checks.
+**1.1** The system shall resolve permissions using a four-tier priority: admin bypass, user overrides, action registry default, deny.
 
-**1.2** `PermissionService.can()` shall resolve permissions in the following priority order:
+**1.2** The system shall cache permission results in memory per user and action key to avoid repeated database queries.
 
-1. User-level permission set overrides (highest priority)
-2. Role-level default from the action registry
-3. Deny (lowest priority / unknown action)
+**1.3** The system shall invalidate the cache for a user when their role or permission overrides change.
 
-**1.3** The three built-in roles (`admin`, `manager`, `cashier`) shall always exist and cannot be deleted or renamed.
+**1.4** The system shall audit-log every manager approval with action `permission:approved`, including the approving manager's ID and role.
 
-**1.4** `admin` role shall implicitly have permission for all actions — no override can restrict an admin.
+**1.5** The system shall enforce a brute-force lockout after 5 failed manager approval attempts, locking the requesting user for 60 seconds.
 
-**1.5** Custom permission sets shall only be able to grant permissions up to the assigning admin's own role level — a manager cannot create a permission set that grants `admin`-only actions.
+**1.6** The system shall use the action registry (`ACTION_MAP`) as the source of truth for action keys, descriptions, and default minimum roles.
 
-**1.6** All permission changes (create/edit/delete permission set, assign/unassign user) shall be recorded to `AuditLogService`.
+**1.7** The system shall never grant admin-only actions to non-admin users via permission overrides — the admin role ceiling is enforced.
 
-**1.7** `PermissionService` shall cache the resolved permission map for the currently logged-in user in memory and invalidate the cache when the user's permission sets change.
+**1.8** The system shall fail closed — any error during permission resolution returns `false`.
 
 ---
 
 ## 2. Event-Driven Requirements
 
-### 2.1 Permission Check — Standard Flow
+### 2.1 Check Permission
 
-**2.1.1** When any screen or service calls `PermissionService.can(userId, action)`, the system shall:
+**2.1.1** When `can(userId, action)` is called, the system shall check the in-memory cache for a cached result.
 
-1. Load the user's assigned permission sets from `user_permission_sets`.
-2. Check each set's `permission_overrides` for the action key.
-3. If an override exists with `granted: true`, return `true`.
-4. If an override exists with `granted: false`, return `false`.
-5. If no override exists, fall back to the action registry default role and compare against the user's base role.
+**2.1.2** When a cached result exists, the system shall return it immediately without querying the database.
 
-**2.1.2** When `PermissionService.can()` is called for an unknown action key, the system shall return `false` and log a warning.
+**2.1.3** When no cached result exists, the system shall call `resolve(userId, action)` to compute the permission.
 
-**2.1.3** When `MoreMenuComposer` composes the menu, the system shall call `PermissionService.can(userId, action)` for each action-gated menu item in addition to the existing role and capability checks.
+**2.1.4** When `resolve()` returns a result, the system shall store it in the cache under `userId → action → result`.
 
-**2.1.4** When `SettingsTabComposer` composes the settings tabs, the system shall call `PermissionService.can(userId, 'settings:view')` as the gate for all settings tabs.
+**2.1.5** When any step in `can()` throws an error, the system shall catch it, log an error message, and return `false`.
 
-### 2.2 Manager Approval Flow
+### 2.2 Resolve Permission
 
-**2.2.1** When a cashier attempts an action for which `PermissionService.can(cashierId, action)` returns `false`, the system shall display a `ManagerApprovalModal` with the action description and a PIN/biometric input.
+**2.2.1** When `resolve(userId, action)` is called, the system shall call `UserRepository.findById(userId)` to retrieve the user.
 
-**2.2.2** When the `ManagerApprovalModal` is displayed, the system shall prompt: "Manager approval required for: {actionDescription}. Please ask a manager to authenticate."
+**2.2.2** When the user is not found, the system shall return `false`.
 
-**2.2.3** When a manager enters their PIN in the `ManagerApprovalModal`, the system shall call `AuthService.authenticate('pin', pin)` and verify the authenticated user has `PermissionService.can(managerId, action) === true`.
+**2.2.3** When the user is found and `user.role === 'admin'`, the system shall return `true` immediately (admin bypass).
 
-**2.2.4** When the manager authentication succeeds and the manager has permission for the action, the system shall:
+**2.2.4** When the user is not an admin, the system shall call `PermissionRepository.findOverridesForUser(userId)` to retrieve permission overrides.
 
-1. Record an `approval_log` entry with `actionKey`, `requestingUserId`, `approvingUserId`, `timestamp`.
-2. Record an audit log entry `permission:approved`.
-3. Dismiss the modal and proceed with the original action.
+**2.2.5** When an override exists for the action and `override.granted === true`, the system shall check if the action is admin-only.
 
-**2.2.5** When the manager authentication fails (wrong PIN), the system shall display "Incorrect PIN. Please try again." and allow retry — the modal remains open.
+**2.2.6** When the action is admin-only and the user is not an admin, the system shall log a warning and return `false` (ceiling enforced).
 
-**2.2.6** When the authenticated manager does not have permission for the action (e.g. a manager trying to approve an `admin`-only action), the system shall display "This action requires admin approval." and not proceed.
+**2.2.7** When the action is not admin-only or the user is an admin, the system shall return `true` (override grants permission).
 
-**2.2.7** When the cashier dismisses the `ManagerApprovalModal` without completing approval, the system shall cancel the original action and return to the previous state.
+**2.2.8** When an override exists for the action and `override.granted === false`, the system shall return `false` (override denies permission).
 
-**2.2.8** When `ManagerApprovalService.requestApproval(action, requestingUserId)` is called, the system shall return a `Promise<ApprovalResult>` that resolves when the modal is dismissed — `{ approved: true, approvingUserId }` on success, `{ approved: false }` on cancellation or failure.
+**2.2.9** When no override exists, the system shall look up the action in `ACTION_MAP`.
 
-### 2.3 Permission Sets — Admin Management
+**2.2.10** When the action is not found in `ACTION_MAP`, the system shall log a warning and return `false` (unknown action denied).
 
-**2.3.1** When an admin navigates to Settings → User Management → Permission Sets, the system shall display all `permission_sets` rows with name, description, and the count of users assigned.
+**2.2.11** When the action is found, the system shall compare `ROLE_RANK[user.role] >= ROLE_RANK[action.defaultMinRole]` and return the result.
 
-**2.3.2** When an admin creates a permission set, the system shall persist a `permission_sets` row with `name`, `description`, `createdBy`, and `createdAt`, and record an audit log entry `permission_set:created`.
+### 2.3 Check Permission by Role (Synchronous)
 
-**2.3.3** When an admin edits a permission set, the system shall display the full action registry with the current override state for each action (granted / denied / default). The admin may toggle any action to `granted`, `denied`, or `default` (inherits role default).
+**2.3.1** When `canByRole(role, action)` is called, the system shall default `role` to `'cashier'` if `undefined`.
 
-**2.3.4** When an admin saves a permission set, the system shall upsert `permission_overrides` rows for each non-default action and delete rows for actions reset to default, then record an audit log entry `permission_set:updated`.
+**2.3.2** When the role is `'admin'`, the system shall return `true` immediately.
 
-**2.3.5** When an admin deletes a permission set, the system shall delete the set and all associated `permission_overrides` and `user_permission_sets` rows, and record an audit log entry `permission_set:deleted`.
+**2.3.3** When the role is not admin, the system shall look up the action in `ACTION_MAP`.
 
-### 2.4 Permission Sets — User Assignment
+**2.3.4** When the action is not found, the system shall return `false`.
 
-**2.4.1** When an admin views a user's profile in User Management, the system shall display the user's assigned permission sets as a list of tags.
+**2.3.5** When the action is found, the system shall compare `ROLE_RANK[role] >= ROLE_RANK[action.defaultMinRole]` and return the result.
 
-**2.4.2** When an admin assigns a permission set to a user, the system shall insert a `user_permission_sets` row and invalidate `PermissionService`'s cache for that user, and record an audit log entry `permission_set:assigned`.
+**2.3.6** When `canByRole()` is called, the system shall NOT consult user-level permission overrides — this is a role-only check for navigation composers.
 
-**2.4.3** When an admin removes a permission set from a user, the system shall delete the `user_permission_sets` row and invalidate the cache, and record an audit log entry `permission_set:unassigned`.
+### 2.4 Invalidate Cache
 
-### 2.5 Price Override (Example Action-Gated Flow)
+**2.4.1** When `invalidateCache(userId)` is called, the system shall delete the cache entry for that user.
 
-**2.5.1** When a cashier taps the price of a basket item and `PermissionService.can(cashierId, 'price:override')` returns `false`, the system shall trigger the manager approval flow for `price:override`.
+**2.4.2** When `invalidateAll()` is called, the system shall clear the entire cache.
 
-**2.5.2** When manager approval is granted for `price:override`, the system shall open the price override input for the item and allow the cashier to enter a new price.
+### 2.5 Request Manager Approval
 
-**2.5.3** When the price override is saved, the system shall record an audit log entry `price:overridden` with `originalPrice`, `newPrice`, `itemId`, `approvingManagerId`.
+**2.5.1** When `requestApproval(actionKey, requestingUserId)` is called, the system shall check if the requesting user is locked out.
 
-### 2.6 Manual Discount (Example Action-Gated Flow)
+**2.5.2** When the user is locked out (`Date.now() < lockoutUntil`), the system shall return `{ approved: false }` immediately without opening the modal.
 
-**2.6.1** When a cashier attempts to apply a manual discount amount (not a code) and `PermissionService.can(cashierId, 'discount:manual')` returns `false`, the system shall trigger the manager approval flow for `discount:manual`.
+**2.5.3** When the user is not locked out, the system shall look up the action description from `ACTION_MAP`.
 
-**2.6.2** When manager approval is granted for `discount:manual`, the system shall allow the cashier to enter the discount amount and apply it to the basket.
+**2.5.4** When the action is found, the system shall create a `PendingApproval` object with `actionKey`, `actionDescription`, `requestingUserId`, and a `resolve` function.
+
+**2.5.5** When the pending approval is created, the system shall store it in `this.pending` and call `notifyListeners()` to trigger UI updates.
+
+**2.5.6** When `requestApproval()` returns, the system shall return a `Promise<ApprovalResult>` that resolves when the modal is dismissed.
+
+### 2.6 Submit Manager PIN
+
+**2.6.1** When `submitManagerPin(pin)` is called and no pending approval exists, the system shall return `{ success: false, error: 'No pending approval' }`.
+
+**2.6.2** When a pending approval exists, the system shall call `AuthService.authenticate('pin', pin)` to authenticate the manager.
+
+**2.6.3** When authentication fails, the system shall call `recordFailure(requestingUserId)` to increment the failure count.
+
+**2.6.4** When the failure count reaches 5, the system shall set a lockout timestamp 60 seconds in the future and emit a warning notification.
+
+**2.6.5** When authentication fails, the system shall return `{ success: false, error: 'Incorrect PIN. Please try again.' }` without resolving the pending approval.
+
+**2.6.6** When authentication succeeds, the system shall call `PermissionService.can(managerId, actionKey)` to check if the manager has permission.
+
+**2.6.7** When the manager does not have permission, the system shall return `{ success: false, error: 'This action requires admin approval.' }` (for admin-only actions) or `{ success: false, error: 'This manager does not have permission for this action.' }` (for other actions).
+
+**2.6.8** When the manager has permission, the system shall call `PermissionRepository.logApproval(actionKey, requestingUserId, managerId, true)` to record the approval.
+
+**2.6.9** When the approval is logged, the system shall call `auditLogService.log('permission:approved')` with metadata including `actionKey`, `requestingUserId`, `approvingUserId`, and `managerRole`.
+
+**2.6.10** When the audit log succeeds, the system shall reset the failure count for the requesting user.
+
+**2.6.11** When all steps succeed, the system shall clear `this.pending`, call `notifyListeners()`, resolve the promise with `{ approved: true, approvingUserId: managerId }`, and return `{ success: true }`.
+
+### 2.7 Cancel Approval
+
+**2.7.1** When `cancel()` is called and no pending approval exists, the system shall return immediately.
+
+**2.7.2** When a pending approval exists, the system shall clear `this.pending`, call `notifyListeners()`, and resolve the promise with `{ approved: false }`.
+
+### 2.8 Subscribe to Approval Changes
+
+**2.8.1** When `subscribe(listener)` is called, the system shall add the listener function to the `listeners` array.
+
+**2.8.2** When `subscribe()` returns, the system shall return an unsubscribe function that removes the listener from the array.
+
+**2.8.3** When `notifyListeners()` is called, the system shall invoke every listener function in the `listeners` array.
 
 ---
 
 ## 3. State-Driven Requirements
 
-**3.1** While `ManagerApprovalModal` is open, the underlying screen shall be non-interactive — a semi-transparent overlay shall block all touches behind the modal.
+**3.1** While a user is locked out, the system shall reject all `requestApproval()` calls for that user with `{ approved: false }` without opening the modal.
 
-**3.2** While the manager PIN is being verified in `ManagerApprovalModal`, the confirm button shall show a loading indicator and be non-interactive.
+**3.2** While a pending approval exists, the system shall allow only one approval request at a time — subsequent calls to `requestApproval()` will overwrite the pending approval.
 
-**3.3** While `PermissionService` cache is being rebuilt (after a permission set change), `can()` calls shall fall back to the role-default matrix — no action shall be incorrectly blocked during the rebuild.
+**3.3** While the manager is entering their PIN, the system shall allow multiple submission attempts until the approval is resolved or cancelled.
 
-**3.4** While a user has no assigned permission sets, `PermissionService.can()` shall use only the role-default matrix.
+**3.4** While the cache contains a result for a user-action pair, the system shall return the cached result without querying the database.
+
+**3.5** While a user's role is `'admin'`, the system shall always return `true` for any action without checking overrides or the action registry.
 
 ---
 
 ## 4. Optional Feature Requirements
 
-**4.1** Where `ManagerApprovalService` is configured with `allowBiometric: true`, the `ManagerApprovalModal` shall offer a biometric option alongside PIN entry.
+**4.1** Where a user has a permission override with `granted: true`, the system shall grant the permission unless the action is admin-only and the user is not an admin.
 
-**4.2** Where an approval is granted, the system may optionally time-box the approval — `approvalExpiresAt` can be set so the same manager does not need to re-approve the same action within a short window (e.g. 5 minutes). This is configurable via `settings.permissions.approvalWindowSeconds`.
+**4.2** Where a user has a permission override with `granted: false`, the system shall deny the permission regardless of their role.
 
-**4.3** Where `approval_log` entries exist for a user, the admin may view the approval history in the user's profile.
+**4.3** Where an action is not found in `ACTION_MAP`, the system shall deny the permission and log a warning.
 
 ---
 
 ## 5. Unwanted Behaviour / Edge Cases
 
-**5.1** If `PermissionService.can()` throws (e.g. database error), the system shall default to `false` (deny) and log the error — no action shall be silently permitted due to a permission check failure.
+### 5.1 User Not Found
 
-**5.2** If a user's role is changed while they are logged in, the system shall invalidate the `PermissionService` cache on the next action check — the new role takes effect immediately without requiring re-login.
+**5.1.1** If `can()` is called with a `userId` that does not exist in the database, then the system shall return `false`.
 
-**5.3** If a permission set is deleted while a user is logged in with that set assigned, the system shall invalidate the cache — the user falls back to role defaults for the deleted set's actions.
+### 5.2 Unknown Action
 
-**5.4** If a cashier repeatedly fails manager approval (e.g. 5 consecutive failures), the system shall lock the approval flow for 60 seconds and notify the admin via `notificationService` — this prevents brute-force PIN guessing via the approval modal.
+**5.2.1** If `can()` is called with an action key that is not in `ACTION_MAP`, then the system shall log a warning and return `false`.
 
-**5.5** If the `ManagerApprovalModal` is dismissed by the OS (e.g. app backgrounded), the system shall treat it as a cancellation — the original action is not proceeded with.
+**5.2.2** If `canByRole()` is called with an unknown action, then the system shall return `false` without logging a warning (synchronous check).
 
-**5.6** A permission set shall not be able to grant `admin`-only actions to a `cashier` or `manager` role user — `PermissionService` shall enforce this ceiling at resolution time, not just at creation time.
+### 5.3 Admin Ceiling Violation
+
+**5.3.1** If a permission override grants an admin-only action to a non-admin user, then the system shall log a warning and return `false` — the admin ceiling is enforced.
+
+### 5.4 Permission Resolution Error
+
+**5.4.1** If any step in `resolve()` throws an error (e.g. database query failure), then `can()` shall catch the error, log it, and return `false` — the system fails closed.
+
+### 5.5 Brute-Force Lockout
+
+**5.5.1** If a user triggers 5 failed manager approval attempts, then the system shall lock them out for 60 seconds and emit a warning notification.
+
+**5.5.2** If a locked-out user calls `requestApproval()`, then the system shall return `{ approved: false }` immediately without opening the modal.
+
+**5.5.3** If the lockout period expires, then the next `requestApproval()` call shall proceed normally.
+
+### 5.6 Manager Lacks Permission
+
+**5.6.1** If a manager authenticates successfully but does not have permission for the requested action, then the system shall return `{ success: false, error }` without resolving the approval.
+
+**5.6.2** If the action is admin-only and the manager is not an admin, then the error message shall be `'This action requires admin approval.'`.
+
+**5.6.3** If the action is not admin-only but the manager's role is insufficient, then the error message shall be `'This manager does not have permission for this action.'`.
+
+### 5.7 No Pending Approval
+
+**5.7.1** If `submitManagerPin()` is called when `this.pending` is `null`, then the system shall return `{ success: false, error: 'No pending approval' }`.
+
+**5.7.2** If `cancel()` is called when `this.pending` is `null`, then the system shall return immediately without throwing.
+
+### 5.8 Concurrent Approval Requests
+
+**5.8.1** If `requestApproval()` is called while a pending approval already exists, then the system shall overwrite `this.pending` with the new approval — the previous approval is abandoned.
 
 ---
 
 ## 6. Complex Requirements
 
-**6.1** When `PermissionService.can(userId, action)` is called, the resolution algorithm shall be:
+**6.1** When `can()` is called and the user is an admin, the system shall return `true` immediately without checking overrides or the action registry — admin bypass takes precedence over all other rules.
 
-```
-1. Load user record → get base role
-2. If role === 'admin' → return true (admin bypass)
-3. Load user_permission_sets for userId → get list of permission_set_ids
-4. For each set (ordered by priority desc):
-   a. Load permission_overrides where action_key = action
-   b. If override.granted = true → return true
-   c. If override.granted = false → return false
-5. Load action registry default for action → get minimumRole
-6. Return roleRank(user.role) >= roleRank(minimumRole)
-   where roleRank: admin=3, manager=2, cashier=1
-```
+**6.2** When `resolve()` finds a permission override with `granted: true` for an admin-only action and the user is not an admin, the system shall log a warning, enforce the admin ceiling, and return `false` — overrides cannot grant admin-only actions to non-admins.
 
-**6.2** When `ManagerApprovalService.requestApproval(action, requestingUserId)` resolves with `approved: true`, the calling service shall proceed with the action using the **requesting user's** session context (not the approving manager's) — the manager approval is an authorisation event, not a session switch.
+**6.3** When `submitManagerPin()` succeeds and the manager has permission, the system shall atomically log the approval to the database, audit-log the event, reset the failure count, clear the pending approval, notify listeners, and resolve the promise with `{ approved: true, approvingUserId }`.
+
+**6.4** When `recordFailure()` increments the failure count to 5, the system shall set a lockout timestamp 60 seconds in the future, reset the failure count to 0, log a warning, and emit a notification — the lockout is enforced on the next `requestApproval()` call.
+
+**6.5** When `canByRole()` is called, the system shall perform a synchronous role-only check without consulting the database or user-level overrides — this is used by navigation composers where async is not available.
 
 ---
 
-## 7. Component Traceability
+## 7. Permission System Lifecycle Summary
 
-| Requirement (summary)                        | Component / Service                                                        | Source File (target)                             |
-| -------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------ |
-| `PermissionService.can(userId, action)`      | `PermissionService` singleton                                              | `services/permissions/PermissionService.ts`      |
-| Action registry (default role matrix)        | `ACTION_REGISTRY` constant                                                 | `utils/actionRegistry.ts`                        |
-| `permission_sets` table                      | `PermissionRepository`                                                     | `repositories/PermissionRepository.ts`           |
-| `permission_overrides` table                 | `PermissionRepository`                                                     | `repositories/PermissionRepository.ts`           |
-| `user_permission_sets` table                 | `PermissionRepository`                                                     | `repositories/PermissionRepository.ts`           |
-| `approval_log` table                         | `PermissionRepository`                                                     | `repositories/PermissionRepository.ts`           |
-| Manager approval modal                       | `ManagerApprovalModal`                                                     | `components/ManagerApprovalModal.tsx`            |
-| `ManagerApprovalService.requestApproval()`   | `ManagerApprovalService`                                                   | `services/permissions/ManagerApprovalService.ts` |
-| Approval audit log                           | `ManagerApprovalService` → `auditLogService.log('permission:approved')`    | `services/permissions/ManagerApprovalService.ts` |
-| Approval failure lockout                     | `ManagerApprovalService` failure counter                                   | `services/permissions/ManagerApprovalService.ts` |
-| Permission set management UI                 | `PermissionSetsScreen`                                                     | `screens/settings/PermissionSetsScreen.tsx`      |
-| User permission set assignment               | `UsersScreen` permission set tags                                          | `screens/UsersScreen.tsx`                        |
-| `MoreMenuComposer` — action-level gate       | `composeMoreMenu` → `PermissionService.can`                                | `services/navigation/MoreMenuComposer.ts`        |
-| `SettingsTabComposer` — `settings:view` gate | `composeSettingsTabs` → `PermissionService.can`                            | `services/navigation/SettingsTabComposer.ts`     |
-| Price override approval flow                 | `BasketContent` price tap → `ManagerApprovalService.requestApproval`       | `screens/order/BasketContent.tsx`                |
-| Manual discount approval flow                | `CheckoutModal` manual discount → `ManagerApprovalService.requestApproval` | `components/CheckoutModal.tsx`                   |
-| Cache invalidation on role/set change        | `PermissionService.invalidateCache(userId)`                                | `services/permissions/PermissionService.ts`      |
-| `roleAccess.ts` — legacy fallback preserved  | `canAccessMoreMenuItem`, `canAccessTab`                                    | `utils/roleAccess.ts`                            |
+### Permission Check Flow
+
+```
+Component checks permission
+  → PermissionService.can(userId, action)
+    → Check cache: return cached result if exists
+    → resolve(userId, action)
+      → UserRepository.findById(userId)
+      → Return false if user not found
+      → Return true if user.role === 'admin' (admin bypass)
+      → PermissionRepository.findOverridesForUser(userId)
+      → For each override matching action:
+        → If granted === true:
+          → Check if action is admin-only
+          → If admin-only and user is not admin: log warning, return false (ceiling)
+          → Else: return true (override grants)
+        → If granted === false: return false (override denies)
+      → ACTION_MAP.get(action)
+      → Return false if action not found (unknown action)
+      → Return ROLE_RANK[user.role] >= ROLE_RANK[action.defaultMinRole]
+    → Cache result: cache.set(userId, action, result)
+    → Return result
+```
+
+### Manager Approval Flow
+
+```
+Cashier triggers action requiring approval
+  → ManagerApprovalService.requestApproval(actionKey, cashierId)
+    → Check lockout: return { approved: false } if locked out
+    → Create PendingApproval { actionKey, actionDescription, requestingUserId, resolve }
+    → Store in this.pending
+    → notifyListeners() → ManagerApprovalModal opens
+    → Return Promise<ApprovalResult>
+
+Manager enters PIN
+  → ManagerApprovalModal.handleSubmit(pin)
+    → ManagerApprovalService.submitManagerPin(pin)
+      → Return { success: false, error } if no pending approval
+      → AuthService.authenticate('pin', pin)
+      → If auth fails:
+        → recordFailure(requestingUserId)
+          → Increment failure count
+          → If count >= 5: set lockout timestamp, emit notification
+        → Return { success: false, error: 'Incorrect PIN' }
+      → PermissionService.can(managerId, actionKey)
+      → If manager lacks permission:
+        → Return { success: false, error: 'This action requires admin approval' } (admin-only)
+        → Return { success: false, error: 'This manager does not have permission' } (other)
+      → PermissionRepository.logApproval(actionKey, requestingUserId, managerId, true)
+      → auditLogService.log('permission:approved', { actionKey, requestingUserId, approvingUserId, managerRole })
+      → Reset failure count
+      → Clear this.pending
+      → notifyListeners() → ManagerApprovalModal closes
+      → resolve({ approved: true, approvingUserId: managerId })
+      → Return { success: true }
+
+Cashier cancels
+  → ManagerApprovalModal.handleCancel()
+    → ManagerApprovalService.cancel()
+      → Clear this.pending
+      → notifyListeners() → ManagerApprovalModal closes
+      → resolve({ approved: false })
+```
+
+### Permission Resolution Priority
+
+| Priority | Rule                    | Example                                                       |
+| -------- | ----------------------- | ------------------------------------------------------------- |
+| 1        | Admin bypass            | Admin user → always `true`                                    |
+| 2        | User override (granted) | Cashier granted `refund:process` → `true` (if not admin-only) |
+| 3        | User override (denied)  | Manager denied `settings:edit` → `false`                      |
+| 4        | Action registry default | Manager role rank >= action min role → `true`                 |
+| 5        | Deny (unknown action)   | Action not in `ACTION_MAP` → `false`                          |
+
+### Brute-Force Lockout
+
+| Attempt   | Result                                                        |
+| --------- | ------------------------------------------------------------- |
+| 1–4       | Failure recorded, modal remains open                          |
+| 5         | Lockout triggered, 60-second cooldown, notification emitted   |
+| 6+        | `requestApproval()` returns `{ approved: false }` immediately |
+| After 60s | Lockout expires, next `requestApproval()` proceeds normally   |
+
+---
+
+## 8. Component Traceability
+
+| Requirement (summary)          | Component / Hook / Service                                 | Source File                                      |
+| ------------------------------ | ---------------------------------------------------------- | ------------------------------------------------ |
+| Permission checked             | `PermissionService.can`                                    | `services/permissions/PermissionService.ts`      |
+| Cache checked for result       | `PermissionService.cache.get`                              | `services/permissions/PermissionService.ts`      |
+| Permission resolved            | `PermissionService.resolve`                                | `services/permissions/PermissionService.ts`      |
+| User retrieved from database   | `UserRepository.findById`                                  | `repositories/UserRepository.ts`                 |
+| Admin bypass applied           | `PermissionService.resolve` (admin check)                  | `services/permissions/PermissionService.ts`      |
+| Permission overrides retrieved | `PermissionRepository.findOverridesForUser`                | `repositories/PermissionRepository.ts`           |
+| Admin ceiling enforced         | `PermissionService.resolve` (admin-only check)             | `services/permissions/PermissionService.ts`      |
+| Action registry consulted      | `ACTION_MAP.get(action)`                                   | `utils/actionRegistry.ts`                        |
+| Role rank compared             | `ROLE_RANK[user.role] >= ROLE_RANK[action.defaultMinRole]` | `utils/actionRegistry.ts`                        |
+| Result cached                  | `PermissionService.cache.set`                              | `services/permissions/PermissionService.ts`      |
+| Cache invalidated for user     | `PermissionService.invalidateCache`                        | `services/permissions/PermissionService.ts`      |
+| Cache cleared globally         | `PermissionService.invalidateAll`                          | `services/permissions/PermissionService.ts`      |
+| Role-only check performed      | `PermissionService.canByRole`                              | `services/permissions/PermissionService.ts`      |
+| Manager approval requested     | `ManagerApprovalService.requestApproval`                   | `services/permissions/ManagerApprovalService.ts` |
+| Lockout checked                | `ManagerApprovalService.lockoutUntil.get`                  | `services/permissions/ManagerApprovalService.ts` |
+| Pending approval created       | `ManagerApprovalService.pending`                           | `services/permissions/ManagerApprovalService.ts` |
+| Listeners notified             | `ManagerApprovalService.notifyListeners`                   | `services/permissions/ManagerApprovalService.ts` |
+| Manager PIN submitted          | `ManagerApprovalService.submitManagerPin`                  | `services/permissions/ManagerApprovalService.ts` |
+| Manager authenticated          | `AuthService.authenticate('pin', pin)`                     | `services/auth/AuthService.ts`                   |
+| Failure recorded               | `ManagerApprovalService.recordFailure`                     | `services/permissions/ManagerApprovalService.ts` |
+| Lockout triggered              | `ManagerApprovalService.lockoutUntil.set`                  | `services/permissions/ManagerApprovalService.ts` |
+| Manager permission checked     | `PermissionService.can(managerId, actionKey)`              | `services/permissions/PermissionService.ts`      |
+| Approval logged to database    | `PermissionRepository.logApproval`                         | `repositories/PermissionRepository.ts`           |
+| Approval audit logged          | `auditLogService.log('permission:approved')`               | `services/audit/AuditLogService.ts`              |
+| Failure count reset            | `ManagerApprovalService.failureCounts.delete`              | `services/permissions/ManagerApprovalService.ts` |
+| Pending approval cleared       | `ManagerApprovalService.pending = null`                    | `services/permissions/ManagerApprovalService.ts` |
+| Approval cancelled             | `ManagerApprovalService.cancel`                            | `services/permissions/ManagerApprovalService.ts` |
+| Listener subscribed            | `ManagerApprovalService.subscribe`                         | `services/permissions/ManagerApprovalService.ts` |
+| Listener unsubscribed          | Unsubscribe function returned by `subscribe`               | `services/permissions/ManagerApprovalService.ts` |
+
+---
+
+**Document Metadata**:
+
+- **Author**: Kiro AI Agent
+- **Date**: 2026-05-03
+- **Version**: 1.0
+- **Status**: Final
+- **Related**: `docs/specs/auth/login.md`, `docs/specs/auth/logout.md`

@@ -26,6 +26,7 @@ export const ACTION_REGISTRY: readonly ActionDefinition[] = [
   { key: 'refund:process', description: 'Process a refund or return', defaultMinRole: 'manager' },
   { key: 'order:void', description: 'Void an unpaid order', defaultMinRole: 'manager' },
   { key: 'order:reopen', description: 'Reopen a completed order for exchange', defaultMinRole: 'manager' },
+  { key: 'order:high_value', description: 'Complete a high-value transaction', defaultMinRole: 'manager' },
   { key: 'inventory:adjust', description: 'Manually adjust stock levels', defaultMinRole: 'manager' },
   { key: 'inventory:count', description: 'Start or finalise an inventory count', defaultMinRole: 'manager' },
   { key: 'price:override', description: 'Override the price of a basket item', defaultMinRole: 'manager' },

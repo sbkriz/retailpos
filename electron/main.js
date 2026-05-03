@@ -211,6 +211,35 @@ function registerIpcHandlers() {
     return true;
   });
 
+  ipcMain.handle('scanner-discover', async () => {
+    // Discover connected HID scanner devices
+    // In a full implementation, this would use node-hid to enumerate USB devices
+    // and filter by known QR scanner vendor IDs (Zebra, Honeywell, Datalogic, etc.)
+    //
+    // For now, we return a logical HID device since most USB QR scanners
+    // act as keyboards and don't require explicit enumeration
+    try {
+      // Future: Use node-hid to enumerate actual devices
+      // const HID = require('node-hid');
+      // const devices = HID.devices();
+      // const scanners = devices.filter(d => KNOWN_SCANNER_VENDOR_IDS.includes(d.vendorId));
+      // return scanners.map(d => ({
+      //   id: `${d.vendorId}-${d.productId}`,
+      //   name: d.product || `QR Scanner (${d.vendorId}:${d.productId})`
+      // }));
+
+      return [
+        {
+          id: 'qr-hid-default',
+          name: 'USB/Bluetooth HID QR Scanner',
+        },
+      ];
+    } catch (err) {
+      console.error('[IPC] scanner-discover failed:', err);
+      return [];
+    }
+  });
+
   // ── Payment IPC ───────────────────────────────────────────────────────────
   // Stripe Terminal JS SDK runs in the renderer process (it is a browser SDK).
   // These handlers are stubs — the renderer calls the SDK directly and only

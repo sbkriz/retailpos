@@ -108,6 +108,53 @@ export class LoyaltyRepository {
   async findTransactionById(id: string): Promise<LoyaltyTransactionRow | null> {
     return db.getFirstAsync<LoyaltyTransactionRow>('SELECT * FROM loyalty_transactions WHERE id = ?', [id]);
   }
+
+  // ── Expiry Support ────────────────────────────────────────────────────
+
+  /**
+   * Find all customers who have earn transactions older than the threshold.
+   * Used by the expiry job to identify customers with potentially expired points.
+   */
+  async findCustomersWithExpiredTransactions(expiryThreshold: number): Promise<string[]> {
+    const rows = await db.getAllAsync<{ customer_email: string }>(
+      `SELECT DISTINCT customer_email 
+       FROM loyalty_transactions 
+       WHERE type = 'earn' AND created_at < ?`,
+      [expiryThreshold]
+    );
+    return rows.map(row => row.customer_email);
+  }
+
+  /**
+   * Find all earn transactions for a customer that are older than the threshold.
+   * These are the transactions whose points should be expired.
+   */
+  async findExpiredEarnTransactions(email: string, expiryThreshold: number): Promise<LoyaltyTransactionRow[]> {
+    return db.getAllAsync<LoyaltyTransactionRow>(
+      `SELECT * FROM loyalty_transactions 
+       WHERE customer_email = ? 
+         AND type = 'earn' 
+         AND created_at < ?
+       ORDER BY created_at ASC`,
+      [email.toLowerCase(), expiryThreshold]
+    );
+  }
+
+  /**
+   * Find earn transactions that will expire soon (between expiry threshold and warning threshold).
+   * Used to warn customers about upcoming expiry.
+   */
+  async findEarnTransactionsBetween(email: string, expiryThreshold: number, warningThreshold: number): Promise<LoyaltyTransactionRow[]> {
+    return db.getAllAsync<LoyaltyTransactionRow>(
+      `SELECT * FROM loyalty_transactions 
+       WHERE customer_email = ? 
+         AND type = 'earn' 
+         AND created_at < ? 
+         AND created_at >= ?
+       ORDER BY created_at ASC`,
+      [email.toLowerCase(), warningThreshold, expiryThreshold]
+    );
+  }
 }
 
 export const loyaltyRepository = new LoyaltyRepository();

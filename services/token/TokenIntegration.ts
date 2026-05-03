@@ -85,42 +85,224 @@ function createPlatformClient(
   }
 
   // Return a simple HTTP client with the configured headers
-  // In a real implementation, this could return an Axios instance or similar
   return {
-    get: async (endpoint: string, _params: Record<string, unknown> = {}) => {
-      logger.info(`Making GET request to ${platform} API: ${endpoint}`);
-      // Here you would use fetch or axios to make the actual API call
-      // This is just a placeholder implementation
-      return { success: true, data: {} };
+    get: async (endpoint: string, params: Record<string, unknown> = {}) => {
+      const url = new URL(endpoint, baseUrl);
+
+      // Add query parameters
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          url.searchParams.append(key, String(value));
+        }
+      });
+
+      logger.info({ message: `GET ${url.toString()}` });
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), options.timeout || 30000);
+
+        const response = await fetch(url.toString(), {
+          method: 'GET',
+          headers,
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          logger.error({ message: `GET ${url.toString()} failed`, status: response.status });
+          return {
+            success: false,
+            data,
+            status: response.status,
+            statusText: response.statusText,
+          };
+        }
+
+        return { success: true, data, status: response.status };
+      } catch (error) {
+        logger.error({ message: `GET ${url.toString()} error` }, error instanceof Error ? error : new Error(String(error)));
+        throw error;
+      }
     },
 
-    post: async (endpoint: string, _data: unknown) => {
-      logger.info(`Making POST request to ${platform} API: ${endpoint}`);
-      // Here you would use fetch or axios to make the actual API call
-      // This is just a placeholder implementation
-      return { success: true, data: {} };
+    post: async (endpoint: string, data: unknown) => {
+      const url = new URL(endpoint, baseUrl);
+      logger.info({ message: `POST ${url.toString()}` });
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), options.timeout || 30000);
+
+        const response = await fetch(url.toString(), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(data),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        const responseData = await response.json();
+
+        if (!response.ok) {
+          logger.error({ message: `POST ${url.toString()} failed`, status: response.status });
+          return {
+            success: false,
+            data: responseData,
+            status: response.status,
+            statusText: response.statusText,
+          };
+        }
+
+        return { success: true, data: responseData, status: response.status };
+      } catch (error) {
+        logger.error({ message: `POST ${url.toString()} error` }, error instanceof Error ? error : new Error(String(error)));
+        throw error;
+      }
     },
 
-    put: async (endpoint: string, _data: unknown) => {
-      logger.info(`Making PUT request to ${platform} API: ${endpoint}`);
-      // Here you would use fetch or axios to make the actual API call
-      // This is just a placeholder implementation
-      return { success: true, data: {} };
+    put: async (endpoint: string, data: unknown) => {
+      const url = new URL(endpoint, baseUrl);
+      logger.info({ message: `PUT ${url.toString()}` });
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), options.timeout || 30000);
+
+        const response = await fetch(url.toString(), {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify(data),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        const responseData = await response.json();
+
+        if (!response.ok) {
+          logger.error({ message: `PUT ${url.toString()} failed`, status: response.status });
+          return {
+            success: false,
+            data: responseData,
+            status: response.status,
+            statusText: response.statusText,
+          };
+        }
+
+        return { success: true, data: responseData, status: response.status };
+      } catch (error) {
+        logger.error({ message: `PUT ${url.toString()} error` }, error instanceof Error ? error : new Error(String(error)));
+        throw error;
+      }
     },
 
     delete: async (endpoint: string) => {
-      logger.info(`Making DELETE request to ${platform} API: ${endpoint}`);
-      // Here you would use fetch or axios to make the actual API call
-      // This is just a placeholder implementation
-      return { success: true, data: {} };
+      const url = new URL(endpoint, baseUrl);
+      logger.info({ message: `DELETE ${url.toString()}` });
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), options.timeout || 30000);
+
+        const response = await fetch(url.toString(), {
+          method: 'DELETE',
+          headers,
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        // DELETE may not return JSON
+        let responseData;
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          responseData = await response.json();
+        } else {
+          responseData = await response.text();
+        }
+
+        if (!response.ok) {
+          logger.error({ message: `DELETE ${url.toString()} failed`, status: response.status });
+          return {
+            success: false,
+            data: responseData,
+            status: response.status,
+            statusText: response.statusText,
+          };
+        }
+
+        return { success: true, data: responseData, status: response.status };
+      } catch (error) {
+        logger.error({ message: `DELETE ${url.toString()} error` }, error instanceof Error ? error : new Error(String(error)));
+        throw error;
+      }
     },
 
     // Add custom request function
-    request: async (method: string, endpoint: string, _options: Record<string, unknown> = {}) => {
-      logger.info(`Making ${method} request to ${platform} API: ${endpoint}`);
-      // Here you would use fetch or axios to make the actual API call
-      // This is just a placeholder implementation
-      return { success: true, data: {} };
+    request: async (method: string, endpoint: string, requestOptions: Record<string, unknown> = {}) => {
+      const url = new URL(endpoint, baseUrl);
+      logger.info({ message: `${method.toUpperCase()} ${url.toString()}` });
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), options.timeout || 30000);
+
+        const fetchOptions: RequestInit = {
+          method: method.toUpperCase(),
+          headers,
+          signal: controller.signal,
+        };
+
+        // Add body if provided
+        if (requestOptions.body) {
+          fetchOptions.body = JSON.stringify(requestOptions.body);
+        }
+
+        // Add query params if provided
+        if (requestOptions.params && typeof requestOptions.params === 'object') {
+          Object.entries(requestOptions.params as Record<string, unknown>).forEach(([key, value]) => {
+            if (value !== undefined && value !== null) {
+              url.searchParams.append(key, String(value));
+            }
+          });
+        }
+
+        const response = await fetch(url.toString(), fetchOptions);
+
+        clearTimeout(timeoutId);
+
+        // Try to parse as JSON, fallback to text
+        let responseData;
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          responseData = await response.json();
+        } else {
+          responseData = await response.text();
+        }
+
+        if (!response.ok) {
+          logger.error({ message: `${method.toUpperCase()} ${url.toString()} failed`, status: response.status });
+          return {
+            success: false,
+            data: responseData,
+            status: response.status,
+            statusText: response.statusText,
+          };
+        }
+
+        return { success: true, data: responseData, status: response.status };
+      } catch (error) {
+        logger.error(
+          { message: `${method.toUpperCase()} ${url.toString()} error` },
+          error instanceof Error ? error : new Error(String(error))
+        );
+        throw error;
+      }
     },
   };
 }
@@ -140,6 +322,8 @@ export interface ApiClientOptions {
 export interface ApiResponse<T = unknown> {
   success: boolean;
   data: T;
+  status?: number;
+  statusText?: string;
 }
 
 /**

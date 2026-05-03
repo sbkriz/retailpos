@@ -45,4 +45,12 @@ export class ProductRepository {
   async delete(id: string): Promise<void> {
     await db.runAsync('DELETE FROM products WHERE id = ?', [id]);
   }
+
+  async findByIds(ids: string[]): Promise<Product[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+    const placeholders = ids.map(() => '?').join(', ');
+    return await db.getAllAsync<Product>(`SELECT * FROM products WHERE id IN (${placeholders})`, ids);
+  }
 }

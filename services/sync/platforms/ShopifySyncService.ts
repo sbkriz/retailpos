@@ -281,25 +281,59 @@ export class ShopifySyncService extends BasePlatformSyncService {
         stats.entityCount += options.entityIds.length;
         this.updateSyncProgress(syncId, 0, stats.entityCount);
 
-        // TODO: In a real implementation, we would fetch products from database
-        // const products = await getProductsFromDatabase(options.entityIds);
+        // Fetch products from database
+        const { ProductRepository } = await import('../../../repositories/ProductRepository');
+        const productRepo = new ProductRepository();
+        const dbProducts = await productRepo.findByIds(options.entityIds);
 
-        // For now, just simulate some progress
-        for (let i = 0; i < options.entityIds.length; i++) {
+        if (dbProducts.length === 0) {
+          stats.warnings.push('No products found in database for the specified IDs');
+          return;
+        }
+
+        // Sync each product to Shopify
+        for (let i = 0; i < dbProducts.length; i++) {
+          const dbProduct = dbProducts[i];
+
           if (options.dryRun) {
             stats.skipped++;
+            this.logger.info({ message: `[Dry run] Would sync product: ${dbProduct.id} (${dbProduct.name})` });
           } else {
             try {
-              // In a real implementation, sync each product to Shopify
-              // await productService.syncProducts([products[i]]);
+              // Convert database product to platform product format
+              const platformProduct = {
+                id: dbProduct.id,
+                title: dbProduct.name,
+                description: dbProduct.description || undefined,
+                variants: [
+                  {
+                    id: dbProduct.id,
+                    title: 'Default',
+                    sku: dbProduct.sku || undefined,
+                    barcode: dbProduct.barcode || undefined,
+                    price: dbProduct.price,
+                    inventoryQuantity: dbProduct.stock,
+                    taxable: true,
+                  },
+                ],
+              };
+
+              // Sync product to Shopify
+              await productService.syncProducts([platformProduct]);
               stats.successful++;
+              this.logger.info({ message: `Synced product to Shopify: ${dbProduct.id} (${dbProduct.name})` });
             } catch (error) {
               stats.failed++;
+              const errorMessage = error instanceof Error ? error.message : 'Unknown error';
               stats.errors.push({
-                entityId: options.entityIds[i],
-                message: `Failed to sync product: ${error.message || 'Unknown error'}`,
+                entityId: dbProduct.id,
+                message: `Failed to sync product: ${errorMessage}`,
                 details: error,
               });
+              this.logger.error(
+                { message: `Failed to sync product ${dbProduct.id} to Shopify` },
+                error instanceof Error ? error : new Error(String(error))
+              );
             }
           }
 

@@ -217,6 +217,137 @@ export class LoyaltyService {
   async getTransactions(email: string, limit = 50) {
     return loyaltyRepository.findTransactionsByEmail(email, limit);
   }
+
+  // ── Points Expiry ─────────────────────────────────────────────────────
+
+  /**
+   * Expire points for transactions older than the configured expiry period.
+   * This should be called by a background job (e.g. daily cron).
+   *
+   * @param email Optional email to expire points for a specific customer
+   * @returns Number of customers processed and total points expired
+   */
+  async expireOldPoints(email?: string): Promise<{ customersProcessed: number; pointsExpired: number }> {
+    const config = await this.getConfig();
+
+    // If expiry is disabled, return immediately
+    if (!config.expiryDays || config.expiryDays <= 0) {
+      return { customersProcessed: 0, pointsExpired: 0 };
+    }
+
+    const expiryThreshold = Date.now() - config.expiryDays * 24 * 60 * 60 * 1000;
+    let customersProcessed = 0;
+    let totalPointsExpired = 0;
+
+    try {
+      // Get all customers with transactions older than expiry threshold
+      const customers = email ? [email] : await loyaltyRepository.findCustomersWithExpiredTransactions(expiryThreshold);
+
+      for (const customerEmail of customers) {
+        try {
+          // Get expired transactions for this customer
+          const expiredTransactions = await loyaltyRepository.findExpiredEarnTransactions(customerEmail, expiryThreshold);
+
+          if (expiredTransactions.length === 0) continue;
+
+          // Calculate total points to expire
+          const pointsToExpire = expiredTransactions.reduce((sum, tx) => sum + tx.points, 0);
+
+          if (pointsToExpire <= 0) continue;
+
+          // Get current balance to ensure we don't expire more than available
+          const account = await loyaltyRepository.getOrCreateAccount(customerEmail);
+          const actualPointsToExpire = Math.min(pointsToExpire, account.balance);
+
+          if (actualPointsToExpire <= 0) continue;
+
+          // Create expiry transaction
+          await loyaltyRepository.appendTransaction(
+            customerEmail,
+            'expire',
+            -actualPointsToExpire,
+            null,
+            `Points expired after ${config.expiryDays} days`,
+            'system'
+          );
+
+          // Update balance
+          await loyaltyRepository.updateBalance(customerEmail, -actualPointsToExpire);
+
+          // Log the expiry
+          await auditLogService.log('loyalty:expired', {
+            userId: 'system',
+            details: `Expired ${actualPointsToExpire} points for ${customerEmail} (${expiredTransactions.length} transactions older than ${config.expiryDays} days)`,
+            metadata: {
+              email: customerEmail,
+              pointsExpired: actualPointsToExpire,
+              transactionCount: expiredTransactions.length,
+              expiryDays: config.expiryDays,
+            },
+          });
+
+          customersProcessed++;
+          totalPointsExpired += actualPointsToExpire;
+
+          this.logger.info(`Expired ${actualPointsToExpire} points for ${customerEmail} (${expiredTransactions.length} transactions)`);
+        } catch (err) {
+          this.logger.error(
+            { message: `Failed to expire points for ${customerEmail}` },
+            err instanceof Error ? err : new Error(String(err))
+          );
+          // Continue processing other customers
+        }
+      }
+
+      if (customersProcessed > 0) {
+        this.logger.info(`Points expiry completed: ${customersProcessed} customers processed, ${totalPointsExpired} points expired`);
+      }
+
+      return { customersProcessed, pointsExpired: totalPointsExpired };
+    } catch (err) {
+      this.logger.error({ message: 'Failed to run points expiry job' }, err instanceof Error ? err : new Error(String(err)));
+      return { customersProcessed, pointsExpired: totalPointsExpired };
+    }
+  }
+
+  /**
+   * Check if a customer has points that will expire soon.
+   * Useful for sending expiry warnings.
+   *
+   * @param email Customer email
+   * @param warningDays Number of days before expiry to warn (default 7)
+   * @returns Points expiring soon and expiry date
+   */
+  async getExpiringPoints(email: string, warningDays = 7): Promise<{ pointsExpiring: number; expiryDate: Date | null }> {
+    const config = await this.getConfig();
+
+    if (!config.expiryDays || config.expiryDays <= 0) {
+      return { pointsExpiring: 0, expiryDate: null };
+    }
+
+    const expiryThreshold = Date.now() - config.expiryDays * 24 * 60 * 60 * 1000;
+    const warningThreshold = Date.now() - (config.expiryDays - warningDays) * 24 * 60 * 60 * 1000;
+
+    try {
+      const expiringTransactions = await loyaltyRepository.findEarnTransactionsBetween(email, expiryThreshold, warningThreshold);
+
+      if (expiringTransactions.length === 0) {
+        return { pointsExpiring: 0, expiryDate: null };
+      }
+
+      const pointsExpiring = expiringTransactions.reduce((sum, tx) => sum + tx.points, 0);
+
+      // Find the earliest expiry date
+      const earliestTransaction = expiringTransactions.reduce((earliest, tx) => (tx.created_at < earliest.created_at ? tx : earliest));
+
+      const expiryDate = new Date(earliestTransaction.created_at + config.expiryDays * 24 * 60 * 60 * 1000);
+
+      return { pointsExpiring, expiryDate };
+    } catch (err) {
+      this.logger.error({ message: `Failed to get expiring points for ${email}` }, err instanceof Error ? err : new Error(String(err)));
+      return { pointsExpiring: 0, expiryDate: null };
+    }
+  }
 }
 
 export const loyaltyService = LoyaltyService.getInstance();

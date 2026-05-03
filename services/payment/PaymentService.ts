@@ -38,7 +38,14 @@ class PaymentService implements PaymentServiceInterface {
   }
 
   disconnect(): void {
-    this.activeService.disconnect();
+    // Handle both sync and async disconnect methods
+    const result = this.activeService.disconnect();
+    if (result instanceof Promise) {
+      // If it's async, handle it but don't wait
+      result.catch(error => {
+        this.logger.error('Error during disconnect:', error);
+      });
+    }
   }
 
   isTerminalConnected(): boolean {

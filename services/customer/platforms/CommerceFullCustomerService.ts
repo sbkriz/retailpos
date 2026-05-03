@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- raw platform API response mapping */
-import { CustomerServiceInterface, PlatformCustomer, CustomerSearchOptions, CustomerSearchResult } from '../CustomerServiceInterface';
+import { CustomerSearchOptions, CustomerSearchResult, PlatformCustomer } from '../CustomerServiceInterface';
+import { BaseCustomerService } from './BaseCustomerService';
 import { CommerceFullApiClient, CommerceFullConfig } from '../../clients/commercefull/CommerceFullApiClient';
 import { ECommercePlatform } from '../../../utils/platforms';
 import { LoggerFactory } from '../../logger/LoggerFactory';
@@ -11,15 +12,16 @@ import { LoggerFactory } from '../../logger/LoggerFactory';
  *   GET /business/customers?search=...  → searchCustomers
  *   GET /business/customers/:id         → getCustomer
  */
-export class CommerceFullCustomerService implements CustomerServiceInterface {
-  private initialized = false;
+export class CommerceFullCustomerService extends BaseCustomerService {
   private config: Record<string, any>;
   private apiClient: CommerceFullApiClient;
-  private logger = LoggerFactory.getInstance().createLogger('CommerceFullCustomerService');
 
   constructor(config: Record<string, any> = {}) {
+    super();
     this.config = config;
     this.apiClient = CommerceFullApiClient.getInstance();
+    // Override the logger with a more specific name
+    this.logger = LoggerFactory.getInstance().createLogger('CommerceFullCustomerService');
   }
 
   async initialize(): Promise<boolean> {
@@ -33,7 +35,9 @@ export class CommerceFullCustomerService implements CustomerServiceInterface {
 
       this.apiClient.configure(clientConfig);
       const ok = await this.apiClient.initialize();
-      if (ok) this.initialized = true;
+      if (ok) {
+        this.initialized = true;
+      }
       return ok;
     } catch (error) {
       this.logger.error(
@@ -42,10 +46,6 @@ export class CommerceFullCustomerService implements CustomerServiceInterface {
       );
       return false;
     }
-  }
-
-  isInitialized(): boolean {
-    return this.initialized;
   }
 
   async searchCustomers(options: CustomerSearchOptions): Promise<CustomerSearchResult> {

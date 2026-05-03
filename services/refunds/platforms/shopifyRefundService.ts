@@ -1,22 +1,23 @@
-import { PlatformRefundServiceInterface, PlatformCredentials } from './PlatformRefundServiceInterface';
+import { PlatformCredentials } from './PlatformRefundServiceInterface';
+import { BaseRefundService } from './BaseRefundService';
 import { RefundData, RefundResult, RefundRecord } from '../RefundService';
-import { LoggerFactory } from '../../logger/LoggerFactory';
 import { SecretsServiceFactory } from '../../secrets/SecretsService';
 import { SecretsServiceInterface } from '../../secrets/SecretsServiceInterface';
 import { ShopifyApiClient } from '../../clients/shopify/ShopifyApiClient';
+import { LoggerFactory } from '../../logger/LoggerFactory';
 
 /**
  * Shopify-specific implementation of the refund service
  * Handles refunds for Shopify orders
  */
-export class ShopifyRefundService implements PlatformRefundServiceInterface {
-  private initialized: boolean = false;
+export class ShopifyRefundService extends BaseRefundService {
   private refundHistory: Map<string, RefundRecord[]> = new Map();
-  private logger: ReturnType<typeof LoggerFactory.prototype.createLogger>;
   private secretsService: SecretsServiceInterface;
   private apiClient = ShopifyApiClient.getInstance();
 
   constructor() {
+    super();
+    // Override the logger with a more specific name
     this.logger = LoggerFactory.getInstance().createLogger('ShopifyRefundService');
     this.secretsService = SecretsServiceFactory.getInstance().getService();
   }
@@ -126,9 +127,8 @@ export class ShopifyRefundService implements PlatformRefundServiceInterface {
    */
   async processRefund(orderId: string, refundData: RefundData): Promise<RefundResult> {
     try {
-      if (!this.isInitialized()) {
-        throw new Error('Shopify refund service not initialized');
-      }
+      this.ensureInitialized();
+      this.validateRefundData(refundData);
 
       this.logger.info(`Processing Shopify refund for order: ${orderId}`);
 

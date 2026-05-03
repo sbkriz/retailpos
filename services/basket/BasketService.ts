@@ -5,6 +5,8 @@ import { LoggerInterface } from '../logger/LoggerInterface';
 import { multiplyMoney, sumMoney, roundMoney } from '../../utils/money';
 import { generateUUID } from '../../utils/uuid';
 import { localCustomerService } from '../customer/LocalCustomerService';
+import { DiscountServiceFactory } from '../discount/DiscountServiceFactory';
+import { ECommercePlatform } from '../../utils/platforms';
 
 /**
  * Basket service — cart CRUD only.
@@ -65,14 +67,40 @@ export class BasketService implements BasketServiceInterface {
     this.currentBasketId = null;
   }
 
-  async applyDiscount(code: string): Promise<Basket> {
+  async applyDiscount(code: string, platform?: ECommercePlatform): Promise<Basket> {
     const basket = await this.getOrCreateBasket();
-    // TODO: Validate discount code against platform/local discounts
-    basket.discountCode = code;
-    basket.discountAmount = 0;
-    basket.updatedAt = new Date();
-    await this.updateBasketInDb(basket);
-    return basket;
+
+    try {
+      // Get discount service for current platform
+      const discountService = DiscountServiceFactory.getInstance().getService(platform);
+
+      // Validate discount code and calculate discount amount
+      const validation = await discountService.validateDiscount(code, basket.subtotal);
+
+      if (!validation.valid) {
+        this.logger.warn({ message: `Discount validation failed: ${code}`, error: validation.error });
+        throw new Error(validation.error || 'Invalid discount code');
+      }
+
+      // Apply validated discount
+      basket.discountCode = code;
+      basket.discountAmount = validation.discountAmount;
+      basket.updatedAt = new Date();
+
+      // Recalculate totals with discount applied
+      await this.recalculateAndSave(basket);
+
+      this.logger.info({
+        message: `Discount applied: ${code}`,
+        amount: validation.discountAmount,
+        type: validation.discountType,
+      });
+
+      return basket;
+    } catch (error) {
+      this.logger.error({ message: `Error applying discount: ${code}` }, error instanceof Error ? error : new Error(String(error)));
+      throw error;
+    }
   }
 
   async removeDiscount(): Promise<Basket> {

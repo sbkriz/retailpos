@@ -32,6 +32,7 @@ import { loyaltyService } from '../services/loyalty/LoyaltyService';
 import { storeCreditService } from '../services/storecredit/StoreCreditService';
 import { toCents } from '../utils/money';
 import { useLogger } from './useLogger';
+import { useManagerApproval } from './useManagerApproval';
 
 interface UseCheckoutOptions {
   platform?: ECommercePlatform;
@@ -56,6 +57,7 @@ export function useCheckout({ platform, onSuccess }: UseCheckoutOptions = {}) {
   } = useBasketContext();
 
   const { processPayment, isTerminalConnected } = usePayment();
+  const { requestApproval } = useManagerApproval();
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [checkoutVisible, setCheckoutVisible] = useState(false);
@@ -352,6 +354,20 @@ export function useCheckout({ platform, onSuccess }: UseCheckoutOptions = {}) {
       setIsProcessing(true);
       setError(null);
       try {
+        // Check if manager approval is required for high-value transactions
+        const settings = await keyValueRepository.getObject<{ highValueThreshold?: number }>('checkoutSettings');
+        const highValueThreshold = settings?.highValueThreshold ?? 500; // Default £500
+
+        if (total >= highValueThreshold) {
+          logger.info(`High-value transaction detected (${total} >= ${highValueThreshold}), requesting manager approval`);
+          const approved = await requestApproval('order:high_value');
+          if (!approved) {
+            setError('Manager approval required for high-value transactions');
+            setIsProcessing(false);
+            return;
+          }
+        }
+
         await markPaymentProcessing(currentOrder.id);
 
         // Show payment screen on customer display
@@ -437,7 +453,20 @@ export function useCheckout({ platform, onSuccess }: UseCheckoutOptions = {}) {
         setIsProcessing(false);
       }
     },
-    [currentOrder, markPaymentProcessing, processPayment, completePayment, cancelOrder, total, tax, itemCount, subtotal, onSuccess]
+    [
+      currentOrder,
+      markPaymentProcessing,
+      processPayment,
+      completePayment,
+      cancelOrder,
+      total,
+      tax,
+      itemCount,
+      subtotal,
+      onSuccess,
+      logger,
+      requestApproval,
+    ]
   );
 
   return {

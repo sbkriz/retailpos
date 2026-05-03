@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { returnService, RefundData, RefundResult, RefundRecord } from '../services/refunds/RefundService';
 import { useLogger } from './useLogger';
 import { ECommercePlatform } from '../utils/platforms';
+import { useManagerApproval } from './useManagerApproval';
 
 /**
  * Hook for return and refund operations in the POS system.
@@ -12,6 +13,7 @@ export function useRefund(platform?: ECommercePlatform) {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const logger = useLogger('useRefund');
+  const { requestApproval } = useManagerApproval();
 
   // Initialize the refund subsystem within ReturnService
   useEffect(() => {
@@ -53,6 +55,19 @@ export function useRefund(platform?: ECommercePlatform) {
           throw new Error('Returns service not initialized');
         }
 
+        // Request manager approval for all refunds
+        logger.info(`Requesting manager approval for refund on order: ${orderId}`);
+        const approved = await requestApproval('refund:process');
+        if (!approved) {
+          logger.warn(`Manager approval denied for refund on order: ${orderId}`);
+          setError('Manager approval required to process refunds');
+          return {
+            success: false,
+            error: 'Manager approval required to process refunds',
+            timestamp: new Date(),
+          };
+        }
+
         logger.info(`Processing e-commerce refund for order: ${orderId}`);
 
         const result = await returnService.processRefund(orderId, refundData, platform);
@@ -82,7 +97,7 @@ export function useRefund(platform?: ECommercePlatform) {
         setIsLoading(false);
       }
     },
-    [isInitialized, platform, logger]
+    [isInitialized, platform, logger, requestApproval]
   );
 
   /**
@@ -97,6 +112,19 @@ export function useRefund(platform?: ECommercePlatform) {
         if (!isInitialized) {
           logger.warn('Attempting to process payment refund with uninitialized service');
           throw new Error('Returns service not initialized');
+        }
+
+        // Request manager approval for all refunds
+        logger.info(`Requesting manager approval for payment refund on transaction: ${transactionId}`);
+        const approved = await requestApproval('refund:process');
+        if (!approved) {
+          logger.warn(`Manager approval denied for payment refund on transaction: ${transactionId}`);
+          setError('Manager approval required to process refunds');
+          return {
+            success: false,
+            error: 'Manager approval required to process refunds',
+            timestamp: new Date(),
+          };
         }
 
         logger.info(`Processing payment refund for transaction: ${transactionId}`);
@@ -128,7 +156,7 @@ export function useRefund(platform?: ECommercePlatform) {
         setIsLoading(false);
       }
     },
-    [isInitialized, logger]
+    [isInitialized, logger, requestApproval]
   );
 
   /**
@@ -192,6 +220,22 @@ export function useRefund(platform?: ECommercePlatform) {
           throw new Error('Returns service not initialized');
         }
 
+        // Request manager approval if issuing a refund
+        if (input.issueRefund) {
+          logger.info(`Requesting manager approval for return with refund on order: ${input.orderId}`);
+          const approved = await requestApproval('refund:process');
+          if (!approved) {
+            logger.warn(`Manager approval denied for return with refund on order: ${input.orderId}`);
+            setError('Manager approval required to process refunds');
+            return {
+              success: false,
+              returnIds: [],
+              totalRefund: 0,
+              error: 'Manager approval required to process refunds',
+            };
+          }
+        }
+
         logger.info(`Processing return for order: ${input.orderId}`);
 
         const result = await returnService.processReturn(input);
@@ -222,7 +266,7 @@ export function useRefund(platform?: ECommercePlatform) {
         setIsLoading(false);
       }
     },
-    [isInitialized, logger]
+    [isInitialized, logger, requestApproval]
   );
 
   /**

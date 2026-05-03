@@ -103,6 +103,8 @@ export interface ElectronAPI {
   // ── Scanner IPC ──────────────────────────────────────────────
   /** Subscribe to HID barcode scanner events from the main process */
   onBarcodeScan: (callback: (data: string) => void) => () => void;
+  /** Discover connected HID scanner devices */
+  scannerDiscover: () => Promise<Array<{ id: string; name: string }>>;
 
   // ── Drawer IPC ───────────────────────────────────────────────
   /** Open cash drawer via printer kick or dedicated USB drawer */

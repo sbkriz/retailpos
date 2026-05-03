@@ -140,31 +140,136 @@ export class QRHardwareScannerService implements ScannerServiceInterface {
   /**
    * Discover available QR hardware scanner devices.
    *
-   * In production this would enumerate USB HID devices filtered by known
-   * QR scanner vendor IDs (e.g. Zebra, Honeywell, Datalogic, Newland).
+   * Implementation strategy:
+   * 1. Electron: Query IPC for connected HID devices
+   * 2. React Native: Use native module (if available)
+   * 3. Fallback: Return known/configured devices from storage
+   *
+   * Note: Most USB QR scanners are HID keyboard devices, so they don't
+   * require explicit enumeration. This method returns logical devices
+   * that represent the HID input channel.
    */
   async discoverDevices(): Promise<Array<{ id: string; name: string }>> {
-    // Real implementation would use a native module to enumerate USB HID devices:
-    //
-    // try {
-    //   const usbDevices = await USBModule.getConnectedDevices();
-    //   return usbDevices
-    //     .filter(device => QR_SCANNER_VENDOR_IDS.includes(device.vendorId))
-    //     .map(device => ({
-    //       id: `${device.vendorId}-${device.productId}`,
-    //       name: device.productName || `QR Scanner (${device.vendorId}:${device.productId})`
-    //     }));
-    // } catch (error) {
-    //   this.logger.error('Error discovering QR hardware devices:', error);
-    //   return [];
-    // }
+    try {
+      // Strategy 1: Electron IPC
+      if (typeof window !== 'undefined') {
+        const electronAPI = (window as { electronAPI?: { scannerDiscover?: () => Promise<Array<{ id: string; name: string }>> } })
+          .electronAPI;
+        if (electronAPI?.scannerDiscover) {
+          this.logger.info('Discovering QR hardware devices via Electron IPC');
+          const devices = await electronAPI.scannerDiscover();
+          if (devices && devices.length > 0) {
+            this.logger.info(`Found ${devices.length} QR hardware devices via IPC`);
+            return devices;
+          }
+        }
+      }
 
-    // Placeholder — returns mock data until native module is wired
-    return [
-      { id: 'qr-hw-1', name: 'Zebra DS9308 QR Scanner' },
-      { id: 'qr-hw-2', name: 'Honeywell Youjie YJ4600 QR Reader' },
-      { id: 'qr-hw-3', name: 'Newland FR80 Desktop QR Scanner' },
-    ];
+      // Strategy 2: React Native native module
+      const qrScannerModule = (global as { QRScannerModule?: { discoverDevices: () => Promise<Array<{ id: string; name: string }>> } })
+        .QRScannerModule;
+      if (qrScannerModule) {
+        this.logger.info('Discovering QR hardware devices via React Native module');
+        const devices = await qrScannerModule.discoverDevices();
+        if (devices && devices.length > 0) {
+          this.logger.info(`Found ${devices.length} QR hardware devices via native module`);
+          return devices;
+        }
+      }
+
+      // Strategy 3: Check for stored/configured devices
+      const storedDevices = await this.getStoredDevices();
+      if (storedDevices.length > 0) {
+        this.logger.info(`Using ${storedDevices.length} stored QR hardware devices`);
+        return storedDevices;
+      }
+
+      // Strategy 4: Return default HID device
+      // Most USB QR scanners work as HID keyboards, so we return a logical device
+      this.logger.info('No specific devices found, returning default HID QR scanner');
+      return [
+        {
+          id: 'qr-hid-default',
+          name: 'USB/Bluetooth HID QR Scanner',
+        },
+      ];
+    } catch (error) {
+      this.logger.error({ message: 'Error discovering QR hardware devices' }, error instanceof Error ? error : new Error(String(error)));
+
+      // Return default device on error
+      return [
+        {
+          id: 'qr-hid-default',
+          name: 'USB/Bluetooth HID QR Scanner',
+        },
+      ];
+    }
+  }
+
+  /**
+   * Get stored/configured QR scanner devices from local storage.
+   * This allows users to manually configure known devices.
+   */
+  private async getStoredDevices(): Promise<Array<{ id: string; name: string }>> {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        const stored = localStorage.getItem('qr_hardware_devices');
+        if (stored) {
+          const devices = JSON.parse(stored);
+          if (Array.isArray(devices)) {
+            return devices;
+          }
+        }
+      }
+    } catch (error) {
+      this.logger.error({ message: 'Error reading stored QR devices' }, error instanceof Error ? error : new Error(String(error)));
+    }
+    return [];
+  }
+
+  /**
+   * Store a QR scanner device configuration for future discovery.
+   * This allows users to manually add known devices.
+   */
+  async storeDevice(device: { id: string; name: string }): Promise<boolean> {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        const stored = await this.getStoredDevices();
+        // Check if device already exists
+        const exists = stored.some(d => d.id === device.id);
+        if (!exists) {
+          stored.push(device);
+          localStorage.setItem('qr_hardware_devices', JSON.stringify(stored));
+          this.logger.info(`Stored QR device: ${device.name} (${device.id})`);
+          return true;
+        }
+      }
+      return false;
+    } catch (error) {
+      this.logger.error({ message: 'Error storing QR device' }, error instanceof Error ? error : new Error(String(error)));
+      return false;
+    }
+  }
+
+  /**
+   * Remove a stored QR scanner device.
+   */
+  async removeStoredDevice(deviceId: string): Promise<boolean> {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        const stored = await this.getStoredDevices();
+        const filtered = stored.filter(d => d.id !== deviceId);
+        if (filtered.length < stored.length) {
+          localStorage.setItem('qr_hardware_devices', JSON.stringify(filtered));
+          this.logger.info(`Removed stored QR device: ${deviceId}`);
+          return true;
+        }
+      }
+      return false;
+    } catch (error) {
+      this.logger.error({ message: 'Error removing stored QR device' }, error instanceof Error ? error : new Error(String(error)));
+      return false;
+    }
   }
 
   /**

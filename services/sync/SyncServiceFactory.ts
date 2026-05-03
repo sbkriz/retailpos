@@ -331,22 +331,22 @@ export class SyncServiceFactory {
     // 2. Register default event listeners for real-time sync
     service.onWebhookEvent('product.*', async event => {
       this.logger.info({ message: `[Webhook] Product event: ${event.event}` });
-      // TODO: update local product cache / DB from event.data
+      await this.handleProductWebhook(event);
     });
 
     service.onWebhookEvent('order.*', async event => {
       this.logger.info({ message: `[Webhook] Order event: ${event.event}` });
-      // TODO: update local order state from event.data
+      await this.handleOrderWebhook(event);
     });
 
     service.onWebhookEvent('inventory.*', async event => {
       this.logger.info({ message: `[Webhook] Inventory event: ${event.event}` });
-      // TODO: update local stock levels from event.data
+      await this.handleInventoryWebhook(event);
     });
 
     service.onWebhookEvent('customer.*', async event => {
       this.logger.info({ message: `[Webhook] Customer event: ${event.event}` });
-      // TODO: update local customer cache from event.data
+      await this.handleCustomerWebhook(event);
     });
 
     // 3. Auto-register webhooks on CommerceFull if webhookUrl is provided
@@ -366,6 +366,237 @@ export class SyncServiceFactory {
             err instanceof Error ? err : new Error(String(err))
           );
         });
+    }
+  }
+
+  /**
+   * Handle product webhook events
+   * Updates local product cache/database and emits sync events
+   */
+  private async handleProductWebhook(event: { event: string; data: Record<string, unknown> }): Promise<void> {
+    try {
+      const { ProductRepository } = await import('../../repositories/ProductRepository');
+      const { syncEventBus } = await import('../instoreapi/sync/SyncEventBus');
+      const productRepo = new ProductRepository();
+
+      // Parse event type (e.g., 'product.created', 'product.updated', 'product.deleted')
+      const eventType = event.event.split('.')[1]; // 'created', 'updated', 'deleted'
+
+      if (eventType === 'created' || eventType === 'updated') {
+        const productData = event.data as {
+          id: string;
+          name: string;
+          description?: string;
+          price: number;
+          sku?: string;
+          barcode?: string;
+          category_id?: string;
+          stock?: number;
+        };
+
+        // Check if product exists
+        const existing = await productRepo.findById(productData.id);
+
+        if (existing) {
+          // Update existing product
+          await productRepo.update(productData.id, {
+            name: productData.name,
+            description: productData.description,
+            price: productData.price,
+            sku: productData.sku,
+            barcode: productData.barcode,
+            category_id: productData.category_id,
+            stock: productData.stock,
+          });
+          this.logger.info({ message: `[Webhook] Updated product: ${productData.id}` });
+        } else {
+          // Create new product
+          await productRepo.create({
+            name: productData.name,
+            description: productData.description,
+            price: productData.price,
+            sku: productData.sku,
+            barcode: productData.barcode,
+            category_id: productData.category_id,
+            stock: productData.stock ?? 0,
+          });
+          this.logger.info({ message: `[Webhook] Created product: ${productData.id}` });
+        }
+
+        // Emit sync event for UI updates
+        syncEventBus.emit('product:updated', { productId: productData.id });
+      } else if (eventType === 'deleted') {
+        const productId = (event.data.id || event.data.productId) as string;
+        await productRepo.delete(productId);
+        this.logger.info({ message: `[Webhook] Deleted product: ${productId}` });
+        syncEventBus.emit('product:updated', { productId, deleted: true });
+      }
+    } catch (error) {
+      this.logger.error(
+        { message: `[Webhook] Error handling product event: ${event.event}` },
+        error instanceof Error ? error : new Error(String(error))
+      );
+    }
+  }
+
+  /**
+   * Handle order webhook events
+   * Updates local order state and emits sync events
+   */
+  private async handleOrderWebhook(event: { event: string; data: Record<string, unknown> }): Promise<void> {
+    try {
+      const { getOrderRepository } = await import('../../repositories/OrderRepository');
+      const { syncEventBus } = await import('../instoreapi/sync/SyncEventBus');
+      const { generateUUID } = await import('../../utils/uuid');
+      const orderRepo = getOrderRepository();
+
+      const eventType = event.event.split('.')[1]; // 'created', 'updated', 'paid', etc.
+      const orderData = event.data as {
+        id?: string;
+        platform?: string;
+        platformOrderId?: string;
+        status?: string;
+        subtotal: number;
+        tax: number;
+        total: number;
+        discountAmount?: number;
+        discountCode?: string;
+        customerEmail?: string;
+        customerName?: string;
+        note?: string;
+        cashierId?: string;
+        cashierName?: string;
+        registerId?: string;
+        paymentMethod?: string;
+        transactionId?: string;
+      };
+
+      if (eventType === 'created') {
+        // Order created on another register - sync to local DB
+        await orderRepo.create({
+          id: orderData.id || generateUUID(),
+          platform: orderData.platform || null,
+          platformOrderId: orderData.platformOrderId || null,
+          status: orderData.status || 'pending',
+          subtotal: orderData.subtotal,
+          tax: orderData.tax,
+          total: orderData.total,
+          discountAmount: orderData.discountAmount || null,
+          discountCode: orderData.discountCode || null,
+          customerEmail: orderData.customerEmail || null,
+          customerName: orderData.customerName || null,
+          note: orderData.note || null,
+          cashierId: orderData.cashierId || null,
+          cashierName: orderData.cashierName || null,
+          registerId: orderData.registerId || null,
+        });
+        this.logger.info({ message: `[Webhook] Created order: ${orderData.platformOrderId || orderData.id}` });
+        syncEventBus.emit('order:created', { orderId: orderData.platformOrderId || orderData.id });
+      } else if (eventType === 'updated' || eventType === 'paid') {
+        // Order updated - update local state
+        if (orderData.id && orderData.status) {
+          await orderRepo.updateStatus(orderData.id, orderData.status);
+        }
+        if (orderData.id && orderData.paymentMethod) {
+          await orderRepo.updatePayment(orderData.id, orderData.paymentMethod, orderData.transactionId || null);
+        }
+        this.logger.info({ message: `[Webhook] Updated order: ${orderData.id}` });
+
+        const syncEventType = orderData.status === 'paid' ? 'order:paid' : 'order:updated';
+        syncEventBus.emit(syncEventType, { orderId: orderData.id });
+      }
+    } catch (error) {
+      this.logger.error(
+        { message: `[Webhook] Error handling order event: ${event.event}` },
+        error instanceof Error ? error : new Error(String(error))
+      );
+    }
+  }
+
+  /**
+   * Handle inventory webhook events
+   * Updates local stock levels and emits sync events
+   */
+  private async handleInventoryWebhook(event: { event: string; data: Record<string, unknown> }): Promise<void> {
+    try {
+      const { ProductRepository } = await import('../../repositories/ProductRepository');
+      const { syncEventBus } = await import('../instoreapi/sync/SyncEventBus');
+      const productRepo = new ProductRepository();
+
+      const inventoryData = event.data as {
+        productId?: string;
+        stock?: number;
+        items?: Array<{ productId: string; stock: number }>;
+      };
+
+      // Update stock level for product
+      if (inventoryData.productId && inventoryData.stock !== undefined) {
+        await productRepo.update(inventoryData.productId, {
+          stock: inventoryData.stock,
+        });
+        this.logger.info({
+          message: `[Webhook] Updated inventory: ${inventoryData.productId} → ${inventoryData.stock}`,
+        });
+        syncEventBus.emit('inventory:updated', {
+          productId: inventoryData.productId,
+          stock: inventoryData.stock,
+        });
+      }
+
+      // Handle bulk inventory updates
+      if (Array.isArray(inventoryData.items)) {
+        for (const item of inventoryData.items) {
+          if (item.productId && item.stock !== undefined) {
+            await productRepo.update(item.productId, { stock: item.stock });
+          }
+        }
+        this.logger.info({ message: `[Webhook] Updated ${inventoryData.items.length} inventory items` });
+        syncEventBus.emit('inventory:updated', { bulk: true, count: inventoryData.items.length });
+      }
+    } catch (error) {
+      this.logger.error(
+        { message: `[Webhook] Error handling inventory event: ${event.event}` },
+        error instanceof Error ? error : new Error(String(error))
+      );
+    }
+  }
+
+  /**
+   * Handle customer webhook events
+   * Updates local customer cache and emits sync events
+   */
+  private async handleCustomerWebhook(event: { event: string; data: Record<string, unknown> }): Promise<void> {
+    try {
+      const { LocalCustomerRepository } = await import('../../repositories/LocalCustomerRepository');
+      const { syncEventBus } = await import('../instoreapi/sync/SyncEventBus');
+      const customerRepo = new LocalCustomerRepository();
+
+      const eventType = event.event.split('.')[1]; // 'created', 'updated', 'deleted'
+      const customerData = event.data as {
+        email: string;
+        name?: string;
+        phone?: string;
+        notes?: string;
+        segment?: string;
+      };
+
+      if (eventType === 'created' || eventType === 'updated') {
+        // Upsert customer (creates if new, updates if exists)
+        await customerRepo.upsert({
+          email: customerData.email,
+          name: customerData.name,
+          phone: customerData.phone,
+          notes: customerData.notes,
+          segment: customerData.segment,
+        });
+        this.logger.info({ message: `[Webhook] Upserted customer: ${customerData.email}` });
+        syncEventBus.emit('user:updated', { email: customerData.email });
+      }
+    } catch (error) {
+      this.logger.error(
+        { message: `[Webhook] Error handling customer event: ${event.event}` },
+        error instanceof Error ? error : new Error(String(error))
+      );
     }
   }
 

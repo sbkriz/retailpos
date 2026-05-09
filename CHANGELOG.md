@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.4.0](https://github.com/n17foo/retailpos/compare/v0.3.1...v0.4.0) (2026-05-09)
+
+### Features
+
+- remove non tap-to-pay providers ([28c2f60](https://github.com/n17foo/retailpos/commit/28c2f6010c4ee48f6a05c8fb88b55d175c94e6f6))
+
+### Bug Fixes
+
+- build ([286789f](https://github.com/n17foo/retailpos/commit/286789f2daf0e473d7e568e48239f3ed3e037ec0))
+- build ([539a7bb](https://github.com/n17foo/retailpos/commit/539a7bb8461d846838428d5fc2340884dd461dd8))
+- correct the payment loading per platform ([f6095e6](https://github.com/n17foo/retailpos/commit/f6095e607dbd791c3f22fefff31cae7ca78afd15))
+
 ### [0.3.1](https://github.com/n17foo/retailpos/compare/v0.3.0...v0.3.1) (2026-05-03)
 
 ### Features

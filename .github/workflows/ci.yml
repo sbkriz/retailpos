@@ -22,6 +22,7 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: '22'
+        cache: 'yarn'
 
     - name: Setup Expo
       uses: expo/expo-github-action@v8
@@ -37,6 +38,7 @@ jobs:
     - name: Install dependencies
       run: yarn install --frozen-lockfile --network-timeout 100000 --network-concurrency 1 --mutex file
       env:
+        YARN_ENABLE_GLOBAL_CACHE: 'false'
         YARN_CACHE_FOLDER: ${{ runner.temp }}/yarn-cache
 
     - name: Setup environment

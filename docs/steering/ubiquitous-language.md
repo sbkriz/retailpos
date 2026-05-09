@@ -348,7 +348,7 @@ An optional cache that suppresses repeated approval prompts for the same action 
 
 ### PaymentProvider
 
-The card terminal or payment SDK in use. Values: `WORLDPAY`, `STRIPE`, `STRIPE_NFC`, `SQUARE`, `ELECTRON_STRIPE`. Selected via `PaymentServiceFactory`.
+The card terminal or payment SDK in use. Values: `STRIPE_NFC`, `STRIPE`, `SQUARE`, `ADYEN`, `TAP_PAYMENTS`. Selected via `PaymentServiceFactory`. Only providers that ship a React Native SDK for tap-to-pay are represented here — non-SDK providers are integrated through the Instore API.
 
 - **Code**: `services/payment/PaymentServiceFactory.ts`
 

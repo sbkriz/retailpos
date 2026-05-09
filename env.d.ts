@@ -5,9 +5,6 @@ declare module '@env' {
 
   // Payment related environment variables
   export const USE_MOCK_PAYMENT: string;
-  export const WORLDPAY_MERCHANT_ID: string;
-  export const WORLDPAY_SITE_REFERENCE: string;
-  export const WORLDPAY_INSTALLATION_ID: string;
 
   // Scanner related environment variables
   export const USE_MOCK_SCANNER: string;

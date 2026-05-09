@@ -6,7 +6,7 @@
 
 ## Context
 
-PIN Entry Devices (PEDs) are specialized payment terminals that handle chip-and-PIN, contactless, and signature-based card transactions. Unlike integrated payment SDKs (Stripe, Square, Worldpay), PEDs communicate via proprietary protocols (serial, USB, Ethernet) and require vendor-specific drivers. Direct PED integration in the POS client would introduce several challenges:
+PIN Entry Devices (PEDs) are specialized payment terminals that handle chip-and-PIN, contactless, and signature-based card transactions. Unlike integrated payment SDKs, PEDs communicate via proprietary protocols (serial, USB, Ethernet) and require vendor-specific drivers. Direct PED integration in the POS client would introduce several challenges:
 
 1. **Platform fragmentation**: Different PED vendors (Ingenico, Verifone, PAX) use different communication protocols and SDKs
 2. **PCI compliance burden**: Handling raw card data in the client increases PCI DSS scope and audit requirements

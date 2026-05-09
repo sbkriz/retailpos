@@ -1,31 +1,51 @@
-// Only import mock payment services to avoid native module errors in Expo Go
-import { SquareMockService } from './mock/SquareMockService';
-import { StripeMockService } from './mock/StripeMockService';
-import { StripeNfcMockService } from './mock/StripeNfcMockService';
-import { WorldpayMockService } from './mock/WorldpayMockService';
 import { PaymentServiceInterface } from './PaymentServiceInterface';
 import { LoggerFactory } from '../logger/LoggerFactory';
-import { isElectron } from '../../utils/electron';
 import { USE_MOCK_PAYMENT } from '@env';
+import Constants from 'expo-constants';
+import { MockPaymentService } from './mock/MockPaymentService';
+
 /**
- * Available payment processors
+ * Available tap-to-pay payment providers.
+ *
+ * Only providers that ship a React Native SDK for contactless (tap-to-pay)
+ * payments on mobile / tablet are listed here.
+ *
+ * Providers without a React Native SDK
+ * must be integrated through the Instore API layer and are NOT represented here.
  */
 export enum PaymentProvider {
-  WORLDPAY = 'worldpay',
-  STRIPE = 'stripe',
   STRIPE_NFC = 'stripe_nfc',
+  STRIPE = 'stripe',
   SQUARE = 'square',
-  ELECTRON_STRIPE = 'electron_stripe',
+  ADYEN = 'adyen',
+  TAP_PAYMENTS = 'tap_payments',
+}
+
+/** Returns true when the app is running inside Expo Go (no native modules). */
+function isExpoGo(): boolean {
+  return Constants.appOwnership === 'expo';
+}
+
+/** Returns true when mock mode is explicitly requested via the environment. */
+function isMockMode(): boolean {
+  return USE_MOCK_PAYMENT === 'true';
 }
 
 /**
- * Factory for creating payment service instances
- * Allows the application to switch between different payment providers
+ * Singleton factory that resolves the active PaymentServiceInterface
+ * implementation based on the configured provider and runtime environment.
+ *
+ * Resolution order:
+ *   1. Expo Go or USE_MOCK_PAYMENT=true  → MockPaymentService (all providers)
+ *   2. Production build                  → real SDK service for currentProvider
+ *
+ * Square, Adyen, and Tap Payments are lazy-loaded via require() to avoid
+ * bundling their SDKs on platforms where they are not used.
  */
 export class PaymentServiceFactory {
   private static instance: PaymentServiceFactory;
-  private currentProvider: PaymentProvider = PaymentProvider.WORLDPAY; // Default provider
-  private logger = LoggerFactory.getInstance().createLogger('PaymentServiceFactory');
+  private currentProvider: PaymentProvider = PaymentProvider.STRIPE_NFC;
+  private readonly logger = LoggerFactory.getInstance().createLogger('PaymentServiceFactory');
 
   private constructor() {}
 
@@ -37,73 +57,83 @@ export class PaymentServiceFactory {
   }
 
   /**
-   * Get the current payment service
-   * Note: Only mock services are used in this build to avoid native module errors
+   * Returns the PaymentServiceInterface implementation for the current provider.
+   *
+   * @throws {Error} 'Failed to initialize payment service: <message>' when the
+   *   provider service cannot be instantiated.
    */
   public getPaymentService(): PaymentServiceInterface {
-    this.logger.info(`Getting payment service (mock=${USE_MOCK_PAYMENT}, provider=${this.currentProvider}, electron=${isElectron()})`);
+    this.logger.info(`Resolving payment service (provider=${this.currentProvider}, mock=${isMockMode()}, expoGo=${isExpoGo()})`);
+
     try {
-      // On Electron desktop, auto-resolve to the Electron payment service
-      // unless a mock is explicitly requested
-      if (isElectron() && USE_MOCK_PAYMENT !== 'true' && this.currentProvider !== PaymentProvider.ELECTRON_STRIPE) {
-        this.logger.info('Electron detected — auto-selecting ELECTRON_STRIPE provider');
-        this.currentProvider = PaymentProvider.ELECTRON_STRIPE;
+      // Expo Go and explicit mock mode both use the single MockPaymentService.
+      if (isExpoGo() || isMockMode()) {
+        this.logger.info('Mock mode active — returning MockPaymentService');
+        return MockPaymentService.getInstance();
       }
 
       switch (this.currentProvider) {
-        case PaymentProvider.ELECTRON_STRIPE: {
-          if (USE_MOCK_PAYMENT === 'true') {
-            return StripeMockService.getInstance();
-          }
-          const { ElectronPaymentService } = require('./ElectronPaymentService');
-          return ElectronPaymentService.getInstance();
-        }
-        case PaymentProvider.STRIPE:
-          return USE_MOCK_PAYMENT === 'true' ? StripeMockService.getInstance() : require('./StripeService').StripeService.getInstance();
         case PaymentProvider.STRIPE_NFC:
-          return USE_MOCK_PAYMENT === 'true'
-            ? StripeNfcMockService.getInstance()
-            : require('./StripeNfcService').StripeNfcService.getInstance();
+          return require('./StripeNfcService').StripeNfcService.getInstance();
+
+        case PaymentProvider.STRIPE:
+          return require('./StripeService').StripeService.getInstance();
+
         case PaymentProvider.SQUARE:
-          if (USE_MOCK_PAYMENT === 'true') {
-            return SquareMockService.getInstance();
-          } else {
-            // Lazy load to avoid bundling issues with react-native-square-in-app-payments
-            try {
-              const { SquareService } = require('./SquareService');
-              return SquareService.getInstance();
-            } catch (error) {
-              this.logger.warn(
-                { message: 'Square service not available, falling back to mock' },
-                error instanceof Error ? error : new Error(String(error))
-              );
-              return SquareMockService.getInstance();
-            }
-          }
-        case PaymentProvider.WORLDPAY:
-        default:
-          return USE_MOCK_PAYMENT === 'true'
-            ? WorldpayMockService.getInstance()
-            : require('./WorldpayService').WorldpayService.getInstance();
+          return this.loadWithMockFallback(() => require('./SquareService').SquareService.getInstance(), 'Square');
+
+        case PaymentProvider.ADYEN:
+          return this.loadWithMockFallback(() => require('./AdyenService').AdyenService.getInstance(), 'Adyen');
+
+        case PaymentProvider.TAP_PAYMENTS:
+          return this.loadWithMockFallback(() => require('./TapPaymentsService').TapPaymentsService.getInstance(), 'TapPayments');
+
+        default: {
+          // TypeScript exhaustiveness guard — should never reach here at runtime
+          // if callers only pass valid PaymentProvider values.
+          const unsupported: never = this.currentProvider;
+          throw new Error(`Unsupported payment provider: ${unsupported}`);
+        }
       }
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       this.logger.error({ message: 'Failed to initialize payment service' }, error instanceof Error ? error : new Error(msg));
-      throw new Error('Failed to initialize payment service: ' + msg);
+      throw new Error(`Failed to initialize payment service: ${msg}`);
     }
   }
 
   /**
-   * Set the payment provider to use
+   * Attempts to load a real SDK service via the provided factory function.
+   * Falls back to MockPaymentService and logs a warning if the load fails
+   * (e.g. native module not available on the current platform).
+   */
+  private loadWithMockFallback(factory: () => PaymentServiceInterface, providerName: string): PaymentServiceInterface {
+    try {
+      return factory();
+    } catch (error) {
+      this.logger.warn(
+        { message: `${providerName} SDK not available — falling back to MockPaymentService` },
+        error instanceof Error ? error : new Error(String(error))
+      );
+      return MockPaymentService.getInstance();
+    }
+  }
+
+  /**
+   * Switches the active provider.
+   *
+   * @throws {Error} 'Unsupported payment provider: <value>' when the value is
+   *   not a member of the PaymentProvider enum.
    */
   public setPaymentProvider(provider: PaymentProvider): void {
+    if (!Object.values(PaymentProvider).includes(provider)) {
+      throw new Error(`Unsupported payment provider: ${provider}`);
+    }
     this.currentProvider = provider;
     this.logger.info(`Payment provider set to: ${provider}`);
   }
 
-  /**
-   * Get the current payment provider
-   */
+  /** Returns the currently configured provider. */
   public getCurrentProvider(): PaymentProvider {
     return this.currentProvider;
   }

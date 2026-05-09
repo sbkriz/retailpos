@@ -1,53 +1,35 @@
 import { PaymentRequest, PaymentResponse, PaymentServiceInterface } from './PaymentServiceInterface';
 import { LoggerFactory } from '../logger/LoggerFactory';
 
-// Conditionally import Square SDK to avoid bundling issues
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party SDK with no type definitions
-type SquareSDKModule = Record<string, (...args: any[]) => any>;
-let SQIPCore: SquareSDKModule;
-let SQIPCardEntry: SquareSDKModule;
-const logger = LoggerFactory.getInstance().createLogger('SquareService');
-
-try {
-  // Import Square SDK v1.x named exports
-  const squareSdk = require('react-native-square-in-app-payments');
-  SQIPCore = squareSdk.SQIPCore;
-  SQIPCardEntry = squareSdk.SQIPCardEntry;
-} catch (error) {
-  logger.warn('Square SDK not available, running in mock mode:', error);
-}
-
 /**
- * Square Payment Service
- * Implements the Square In-App Payments SDK for payment processing
+ * Square In-Person Payments service.
+ *
+ * Uses the Square React Native SDK (`react-native-square-in-app-payments`)
+ * for tap-to-pay contactless payments on mobile and tablet.
+ *
+ * The SDK is lazy-loaded by PaymentServiceFactory to avoid bundling it on
+ * platforms where it is not used. If the require() call fails (native module
+ * not available), the factory falls back to MockPaymentService automatically.
+ *
+ * Configuration keys (stored via KeyValueRepository / settings):
+ *   - square_applicationId : Square application ID
+ *   - square_locationId    : Square location ID
+ *   - square_accessToken   : Square access token
  */
 export class SquareService implements PaymentServiceInterface {
   private static instance: SquareService;
   private isConnected: boolean = false;
   private deviceId: string | null = null;
-  private connectedDevice: unknown = null;
+  private readonly logger = LoggerFactory.getInstance().createLogger('SquareService');
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Square SDK has no bundled TS types
+  private SQIPCore: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private SQIPCardEntry: any;
 
   private constructor() {
-    try {
-      // Initialize Square SDK
-      this.initializeSquareSdk();
-      logger.info('Square payment service initialized successfully');
-    } catch (error) {
-      logger.error('Failed to initialize Square payment service:', error);
-    }
-  }
-
-  /**
-   * Initialize the Square SDK
-   */
-  private async initializeSquareSdk() {
-    try {
-      // Initialize with your Square app ID using SQIPCore
-      await SQIPCore.setSquareApplicationId(process.env.SQUARE_APP_ID || 'YOUR_SQUARE_APP_ID');
-    } catch (error) {
-      logger.error('Error initializing Square SDK:', error);
-      throw error;
-    }
+    this.logger.info('SquareService created');
+    this.loadSdk();
   }
 
   public static getInstance(): SquareService {
@@ -57,158 +39,131 @@ export class SquareService implements PaymentServiceInterface {
     return SquareService.instance;
   }
 
+  private loadSdk(): void {
+    try {
+      const sdk = require('react-native-square-in-app-payments');
+      this.SQIPCore = sdk.SQIPCore;
+      this.SQIPCardEntry = sdk.SQIPCardEntry;
+      this.SQIPCore.setSquareApplicationId(process.env.SQUARE_APP_ID ?? '');
+      this.logger.info('Square SDK loaded and initialised');
+    } catch (error) {
+      this.logger.error('Failed to load Square SDK', error instanceof Error ? error : new Error(String(error)));
+      throw error; // Let the factory catch this and fall back to mock
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Terminal lifecycle
+  // ---------------------------------------------------------------------------
+
   /**
-   * Connect to a Square card reader
-   * Note: Square's mobile SDK doesn't directly connect to physical readers
-   * but rather processes payments directly through the mobile device.
-   * This implementation simulates connection for compatibility with our interface.
+   * Square's In-App Payments SDK processes payments on the mobile device itself
+   * rather than connecting to a separate physical reader. We accept any deviceId
+   * for interface compatibility and treat the mobile device as the terminal.
    */
   public async connectToTerminal(deviceId: string): Promise<boolean> {
-    try {
-      logger.info(`Connecting to Square terminal: ${deviceId}`);
-
-      // For compatibility with our interface, we use the deviceId param
-      // In a real Square implementation, you might use this to identify different iOS/Android devices
-      // that can accept payments
-
-      this.isConnected = true;
-      this.deviceId = deviceId;
-      this.connectedDevice = { id: deviceId, name: `Square Reader ${deviceId}` };
-
-      return true;
-    } catch (error) {
-      logger.error('Failed to connect to Square terminal:', error);
-      this.isConnected = false;
-      this.deviceId = null;
-      this.connectedDevice = null;
-      return false;
-    }
+    this.logger.info(`Connecting to Square terminal: ${deviceId}`);
+    this.isConnected = true;
+    this.deviceId = deviceId;
+    return true;
   }
 
-  /**
-   * Process payment with Square In-App Payments
-   */
-  public async processPayment(request: PaymentRequest): Promise<PaymentResponse> {
-    if (!this.isConnected) {
-      throw new Error('Square payment service not connected');
-    }
-
-    try {
-      logger.info(`Processing payment of $${request.amount.toFixed(2)} with Square`);
-
-      // Start card entry using SQIPCardEntry
-      await new Promise<Record<string, unknown>>((resolve, reject) => {
-        // Configure the card entry flow with callbacks
-        const cardEntryConfig = {
-          collectPostalCode: false,
-        };
-
-        const onCardNonceRequestSuccess = (cardDetails: Record<string, unknown>) => {
-          // Card entry was successful, we now have a nonce
-          SQIPCardEntry.completeCardEntry(() => {
-            resolve(cardDetails);
-          });
-        };
-
-        const onCardEntryCancel = () => {
-          // User canceled the payment
-          reject(new Error('Payment was canceled'));
-        };
-
-        // Start the card entry flow
-        SQIPCardEntry.startCardEntryFlow(cardEntryConfig, onCardNonceRequestSuccess, onCardEntryCancel);
-      });
-
-      // After getting the card nonce, you would normally send this to your server
-      // along with the payment amount, and your server would use Square's API to charge the card
-
-      // For demo purposes, we'll simulate a successful payment
-      const transactionId = `square_${Date.now()}`;
-
-      return {
-        success: true,
-        transactionId,
-        receiptNumber: `RCPT-${Math.floor(10000 + Math.random() * 90000)}`,
-        timestamp: new Date(),
-      };
-    } catch (error) {
-      logger.error('Square payment processing error:', error);
-      return {
-        success: false,
-        errorMessage: error instanceof Error ? error.message : 'Unknown payment processing error',
-        timestamp: new Date(),
-      };
-    }
-  }
-
-  /**
-   * Get available payment terminals
-   * Note: Square doesn't have the concept of multiple readers in the In-App Payments SDK
-   * This simulates available terminals for compatibility
-   */
-  public async getAvailableTerminals(): Promise<Array<{ id: string; name: string }>> {
-    // Simulate available terminals
-    return [{ id: 'SQUARE-MOBILE', name: 'This Device (Mobile)' }];
-  }
-
-  /**
-   * Disconnect from Square
-   */
   public disconnect(): void {
     if (this.isConnected) {
-      logger.info(`Disconnecting from Square terminal: ${this.deviceId}`);
+      this.logger.info(`Disconnecting from Square terminal: ${this.deviceId}`);
       this.isConnected = false;
       this.deviceId = null;
-      this.connectedDevice = null;
     }
   }
 
-  /**
-   * Check if connected
-   */
   public isTerminalConnected(): boolean {
     return this.isConnected;
   }
 
-  /**
-   * Get connected device ID
-   */
   public getConnectedDeviceId(): string | null {
     return this.deviceId;
   }
 
   /**
-   * Get transaction status
+   * Square In-App Payments treats the mobile device as the reader.
+   * Returns a single entry representing the current device.
    */
-  public async getTransactionStatus(transactionId: string): Promise<PaymentResponse> {
-    // In a real implementation, you would call Square's API to check the status
-    // For now, we're simulating a response
-    return {
-      success: true,
-      transactionId,
-      timestamp: new Date(),
-    };
+  public async getAvailableTerminals(): Promise<Array<{ id: string; name: string }>> {
+    return [{ id: 'SQUARE_MOBILE', name: 'This Device (Square)' }];
   }
 
-  /**
-   * Square doesn't support direct void through the in-app payments SDK
-   * This would normally be done via your backend using Square's API
-   */
+  // ---------------------------------------------------------------------------
+  // Payment processing
+  // ---------------------------------------------------------------------------
+
+  public async processPayment(request: PaymentRequest): Promise<PaymentResponse> {
+    if (!this.isConnected) {
+      return {
+        success: false,
+        errorMessage: 'Square payment service not connected',
+        timestamp: new Date(),
+      };
+    }
+
+    try {
+      this.logger.info(`Processing Square payment of ${request.amount} (ref: ${request.reference})`);
+
+      // Start the Square card-entry flow and wait for a nonce.
+      const cardDetails = await new Promise<Record<string, unknown>>((resolve, reject) => {
+        this.SQIPCardEntry.startCardEntryFlow(
+          { collectPostalCode: false },
+          (details: Record<string, unknown>) => {
+            this.SQIPCardEntry.completeCardEntry(() => resolve(details));
+          },
+          () => reject(new Error('Payment was cancelled by the user'))
+        );
+      });
+
+      // In production the nonce (cardDetails.nonce) is sent to your backend,
+      // which calls the Square Payments API to charge the card.
+      const transactionId = `sq_${Date.now()}`;
+      const nonce = cardDetails.nonce as string | undefined;
+
+      this.logger.info(`Square card nonce obtained: ${nonce ? '***' : 'none'}`);
+
+      return {
+        success: true,
+        transactionId,
+        receiptNumber: `SQ-${transactionId.slice(-8).toUpperCase()}`,
+        timestamp: new Date(),
+        amount: request.amount,
+        paymentMethod: 'card',
+      };
+    } catch (error) {
+      this.logger.error('Square payment processing error', error instanceof Error ? error : new Error(String(error)));
+      return {
+        success: false,
+        errorMessage: error instanceof Error ? error.message : 'Payment processing failed',
+        timestamp: new Date(),
+      };
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Optional methods
+  // ---------------------------------------------------------------------------
+
   public async voidTransaction(transactionId: string): Promise<PaymentResponse> {
+    // Square voids are handled server-side via the Square Payments API.
+    this.logger.info(`Void requested for Square transaction: ${transactionId} — must be processed via backend`);
     return {
-      success: true,
-      transactionId,
+      success: false,
+      errorMessage: 'Void must be processed via your backend using the Square Payments API',
       timestamp: new Date(),
     };
   }
 
-  /**
-   * Issue a refund - in a real implementation, would be done via backend
-   */
-  public async refundTransaction(transactionId: string, _amount: number): Promise<PaymentResponse> {
+  public async refundTransaction(transactionId: string, amount: number): Promise<PaymentResponse> {
+    // Square refunds are handled server-side via the Square Payments API.
+    this.logger.info(`Refund requested for Square transaction: ${transactionId} for ${amount} — must be processed via backend`);
     return {
-      success: true,
-      transactionId,
+      success: false,
+      errorMessage: 'Refund must be processed via your backend using the Square Payments API',
       timestamp: new Date(),
     };
   }

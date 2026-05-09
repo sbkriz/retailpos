@@ -104,13 +104,8 @@
     "testConnection": "Tester la connexion",
     "connectionSuccess": "Test de connexion réussi.",
     "connectionFailed": "Test de connexion échoué.",
-    "worldpay": {
-      "title": "Paramètres Worldpay",
-      "merchantId": "ID du commerçant",
-      "merchantIdRequired": "Veuillez entrer un ID de commerçant Worldpay."
-    },
     "stripe": {
-      "title": "Paramètres Stripe Terminal (PED)",
+      "title": "Paramètres Stripe Terminal",
       "apiKey": "Clé API",
       "locationId": "ID de localisation",
       "required": "Veuillez entrer la clé API et l'ID de localisation Stripe."
@@ -128,6 +123,20 @@
       "locationId": "ID de localisation",
       "accessToken": "Jeton d'accès",
       "applicationIdRequired": "Veuillez entrer un ID d'application Square."
+    },
+    "adyen": {
+      "title": "Paramètres Adyen",
+      "apiKey": "Clé API",
+      "clientKey": "Clé client",
+      "merchantAccount": "Compte marchand",
+      "required": "Veuillez entrer la clé API et le compte marchand Adyen."
+    },
+    "tapPayments": {
+      "title": "Paramètres Tap Payments",
+      "apiKey": "Clé API",
+      "publishableKey": "Clé publiable",
+      "merchantId": "ID marchand",
+      "required": "Veuillez entrer la clé API et l'ID marchand Tap Payments."
     },
     "syncInventory": "Synchroniser l'inventaire"
   },
@@ -295,10 +304,7 @@
       "connectionError": "Échec de la connexion au fournisseur de paiement",
       "connectionTestFailed": "Le test de connexion a échoué. Vérifiez vos paramètres.",
       "loadingPayment": "Chargement des paramètres de paiement...",
-      "worldpaySettings": "Paramètres Worldpay",
-      "merchantId": "ID marchand",
-      "siteReference": "Référence du site",
-      "stripeSettings": "Paramètres Stripe Terminal (PED)",
+      "stripeSettings": "Paramètres Stripe Terminal",
       "stripeNfcSettings": "Paramètres Stripe NFC Tap to Pay",
       "apiCredentials": "Identifiants API",
       "apiKey": "Clé API",
@@ -319,6 +325,11 @@
       "squareSettings": "Paramètres Square",
       "applicationId": "ID d'application",
       "accessToken": "Jeton d'accès",
+      "adyenSettings": "Paramètres Adyen",
+      "merchantAccount": "Compte marchand",
+      "environment": "Environnement",
+      "tapPaymentsSettings": "Paramètres Tap Payments",
+      "merchantId": "ID marchand",
       "on": "Activé",
       "off": "Désactivé"
     },

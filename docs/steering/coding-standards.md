@@ -40,7 +40,7 @@ const user: any = { ... };
 | Repository files    | PascalCase + `Repository`    | `OrderRepository.ts`        |
 | Data / type files   | camelCase                    | `basket.ts`, `types.ts`     |
 | Context files       | PascalCase + `Provider`      | `BasketProvider.tsx`        |
-| Mock files          | PascalCase + `Mock`          | `StripeMockService.ts`      |
+| Mock files          | PascalCase + `Mock`          | `MockPaymentService.ts`     |
 | Constants           | SCREAMING_SNAKE_CASE         | `DEFAULT_PAGE_SIZE`         |
 | Functions / methods | camelCase                    | `fetchProducts`             |
 | React components    | PascalCase                   | `ProductCard`               |

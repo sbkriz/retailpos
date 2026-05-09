@@ -2,30 +2,29 @@
 
 > **System**: RetailPOS – Payment Processing & Terminal Management
 > **Actor**: Cashier, System
-> **Date**: 2026-04-12
+> **Date**: 2026-05-09
 > **Source**: `services/payment/PaymentService.ts`, `services/payment/PaymentServiceInterface.ts`, `services/payment/PaymentServiceFactory.ts`, `hooks/usePayment.ts`, `screens/PaymentTerminalScreen.tsx`, `components/StripeNfcPaymentTerminal.tsx`, `screens/order-history/OrderCard.tsx`, `services/audit/AuditLogService.ts`
 
 ---
 
 ## Context
 
-The payment layer is a provider-agnostic abstraction over multiple card terminal integrations. `PaymentService` is a singleton facade that delegates every operation to the currently active `PaymentServiceInterface` implementation, selected by `PaymentServiceFactory` based on the configured `PaymentProvider`.
+The payment layer is a provider-agnostic abstraction over tap-to-pay React Native SDK integrations. `PaymentService` is a singleton facade that delegates every operation to the currently active `PaymentServiceInterface` implementation, selected by `PaymentServiceFactory` based on the configured `PaymentProvider`.
 
 `usePayment` exposes the singleton to React components as stable, memoised callbacks. `PaymentTerminalScreen` handles the standard terminal discovery → connect → charge flow. `StripeNfcPaymentTerminal` is a specialised component for Stripe NFC tap-to-pay that replaces the standard screen entirely when the active provider is `STRIPE_NFC`.
 
-All providers share the same `PaymentRequest` / `PaymentResponse` contract. Mock implementations exist for every provider and are activated when `USE_MOCK_PAYMENT=true`, enabling safe demo and test usage without real hardware.
+All providers share the same `PaymentRequest` / `PaymentResponse` contract. A single `MockPaymentService` is used for all providers when running in Expo Go or when `USE_MOCK_PAYMENT=true`, enabling safe demo and test usage without real hardware.
 
-### Future PED Integration
+### Architecture Boundaries
 
-**Important**: If PED (PIN Entry Device) integration is required in the future, it **must be implemented through the Instore API** rather than as a direct payment provider in this layer. This architectural decision ensures:
+**Tap-to-pay only**: This payment layer exclusively supports providers that offer a React Native SDK for tap-to-pay (contactless) payments on mobile and tablet hardware. Providers that require a physical PED (PIN Entry Device) or a desktop integration are **not** implemented here.
 
-- **Separation of concerns**: POS client remains focused on UI/UX, while Instore API handles payment hardware protocols
-- **Centralized management**: Single point of control for PED communication across multiple POS terminals
-- **Vendor agnostic**: Consistent interface regardless of PED vendor (Ingenico, Verifone, PAX, etc.)
-- **PCI compliance**: Sensitive payment data remains server-side, simplifying compliance requirements
-- **Scalability**: New PED vendors can be added to Instore API without modifying POS client code
+**Non-tap-to-pay providers via Instore API**: Any provider that does not offer a React Native tap-to-pay SDK must be integrated through the Instore API layer (`InstoreApiTransport`). The POS client calls Instore API endpoints (e.g. `/api/payment/initiate`, `/api/payment/status`) and the Instore API handles all PED hardware communication. This ensures:
 
-**Implementation approach**: POS client calls Instore API endpoints (e.g., `/api/ped/initiate`, `/api/ped/status`) via `InstoreApiTransport`, which communicates with physical PED hardware. The payment flow remains consistent with the existing provider pattern from the POS perspective.
+- **Separation of concerns**: POS client remains focused on UI/UX; Instore API owns hardware protocols.
+- **PCI compliance**: Sensitive payment data stays server-side.
+- **Vendor agnostic**: New PED vendors are added to the Instore API without touching POS client code.
+- **No Electron payment path**: Desktop (Electron) builds do not have a direct payment provider — they route through the Instore API.
 
 ### Actors
 
@@ -36,23 +35,22 @@ All providers share the same `PaymentRequest` / `PaymentResponse` contract. Mock
 
 ### Supported Providers
 
-| Provider         | Enum              | Real service             | Mock fallback          | Platform        |
-| ---------------- | ----------------- | ------------------------ | ---------------------- | --------------- |
-| Worldpay         | `WORLDPAY`        | `WorldpayService`        | `WorldpayMockService`  | All             |
-| Stripe Terminal  | `STRIPE`          | `StripeService`          | `StripeMockService`    | All             |
-| Stripe NFC       | `STRIPE_NFC`      | `StripeNfcService`       | `StripeNfcMockService` | Mobile / tablet |
-| Square           | `SQUARE`          | `SquareService`          | `SquareMockService`    | All             |
-| Stripe (Desktop) | `ELECTRON_STRIPE` | `ElectronPaymentService` | `StripeMockService`    | Electron only   |
+| Provider     | Enum           | Real service         | Mock fallback        | Platform        |
+| ------------ | -------------- | -------------------- | -------------------- | --------------- |
+| Stripe NFC   | `STRIPE_NFC`   | `StripeNfcService`   | `MockPaymentService` | Mobile / tablet |
+| Stripe       | `STRIPE`       | `StripeService`      | `MockPaymentService` | Mobile / tablet |
+| Square       | `SQUARE`       | `SquareService`      | `MockPaymentService` | Mobile / tablet |
+| Adyen        | `ADYEN`        | `AdyenService`       | `MockPaymentService` | Mobile / tablet |
+| Tap Payments | `TAP_PAYMENTS` | `TapPaymentsService` | `MockPaymentService` | Mobile / tablet |
 
 ### Key Defaults
 
-| Field                      | Default                 | Source                                      |
-| -------------------------- | ----------------------- | ------------------------------------------- |
-| Active provider on startup | `WORLDPAY`              | `PaymentServiceFactory` constructor         |
-| Electron auto-provider     | `ELECTRON_STRIPE`       | `PaymentServiceFactory.getPaymentService()` |
-| Mock mode                  | `USE_MOCK_PAYMENT=true` | `.env` / `@env`                             |
-| Demo amount                | `$25.99`                | `PaymentTerminalScreen` (no route params)   |
-| NFC tap animation duration | 800 ms per cycle        | `StripeNfcPaymentTerminal` useEffect        |
+| Field                      | Default                 | Source                                    |
+| -------------------------- | ----------------------- | ----------------------------------------- |
+| Active provider on startup | `STRIPE_NFC`            | `PaymentServiceFactory` constructor       |
+| Mock mode                  | `USE_MOCK_PAYMENT=true` | `.env` / `@env`                           |
+| Demo amount                | `$25.99`                | `PaymentTerminalScreen` (no route params) |
+| NFC tap animation duration | 800 ms per cycle        | `StripeNfcPaymentTerminal` useEffect      |
 
 ---
 
@@ -60,9 +58,9 @@ All providers share the same `PaymentRequest` / `PaymentResponse` contract. Mock
 
 **1.1** The system shall route all payment operations through the `PaymentService` singleton, which delegates to the active `PaymentServiceInterface` implementation returned by `PaymentServiceFactory.getPaymentService()`.
 
-**1.2** The system shall auto-select `ELECTRON_STRIPE` as the active provider when `isElectron()` returns `true` and `USE_MOCK_PAYMENT !== 'true'`, overriding any previously set provider.
+**1.2** The system shall only support providers that offer a React Native tap-to-pay SDK (`STRIPE_NFC`, `STRIPE`, `SQUARE`, `ADYEN`, `TAP_PAYMENTS`). Any other provider must be integrated through the Instore API and is outside the scope of this layer.
 
-**1.3** The system shall use the mock implementation for any provider when `USE_MOCK_PAYMENT === 'true'`, regardless of which provider is active.
+**1.3** The system shall use `MockPaymentService` for all providers when `USE_MOCK_PAYMENT === 'true'` or when running in Expo Go, regardless of which provider is active.
 
 **1.4** The system shall disconnect from the terminal when `PaymentTerminalScreen` or `StripeNfcPaymentTerminal` unmounts, calling `disconnect()` only if `isTerminalConnected()` returns `true`.
 
@@ -78,11 +76,15 @@ All providers share the same `PaymentRequest` / `PaymentResponse` contract. Mock
 
 **2.1.1** When `PaymentService.setPaymentProvider(provider)` is called, the system shall call `PaymentServiceFactory.setPaymentProvider(provider)` and immediately re-fetch the active service via `getPaymentService()`, so subsequent calls use the new provider.
 
-**2.1.2** When `PaymentServiceFactory.getPaymentService()` is called on Electron with `USE_MOCK_PAYMENT !== 'true'`, the system shall set `currentProvider` to `ELECTRON_STRIPE` and return `ElectronPaymentService.getInstance()`.
+**2.1.2** When `PaymentServiceFactory.getPaymentService()` is called with `USE_MOCK_PAYMENT === 'true'` or in Expo Go, the system shall return `MockPaymentService.getInstance()` regardless of the configured provider.
 
-**2.1.3** When `PaymentServiceFactory.getPaymentService()` is called for `SQUARE` and the real `SquareService` module fails to load, the system shall log a warning and return `SquareMockService.getInstance()` as a fallback.
+**2.1.3** When `PaymentServiceFactory.getPaymentService()` is called for `SQUARE` and the real `SquareService` module fails to load, the system shall log a warning and return `MockPaymentService.getInstance()` as a fallback.
 
-**2.1.4** When `PaymentServiceFactory.getPaymentService()` throws for any provider, the system shall log the error and re-throw `'Failed to initialize payment service: <message>'`.
+**2.1.4** When `PaymentServiceFactory.getPaymentService()` is called for `ADYEN` and the real `AdyenService` module fails to load, the system shall log a warning and return `MockPaymentService.getInstance()` as a fallback.
+
+**2.1.5** When `PaymentServiceFactory.getPaymentService()` is called for `TAP_PAYMENTS` and the real `TapPaymentsService` module fails to load, the system shall log a warning and return `MockPaymentService.getInstance()` as a fallback.
+
+**2.1.6** When `PaymentServiceFactory.getPaymentService()` throws for any provider, the system shall log the error and re-throw `'Failed to initialize payment service: <message>'`.
 
 ### 2.2 Terminal Discovery
 
@@ -216,7 +218,7 @@ All providers share the same `PaymentRequest` / `PaymentResponse` contract. Mock
 
 **5.1.1** If `PaymentServiceFactory.getPaymentService()` throws (e.g. native module not available), then `PaymentService` shall propagate the error as `'Failed to initialize payment service: <message>'` — the caller is responsible for handling it.
 
-**5.1.2** If `SquareService` fails to load (native module missing), then `PaymentServiceFactory` shall catch the error, log a warning, and return `SquareMockService` as a silent fallback.
+**5.1.2** If any SDK-backed service (`SquareService`, `AdyenService`, `TapPaymentsService`) fails to load (native module missing), then `PaymentServiceFactory` shall catch the error, log a warning, and return `MockPaymentService` as a silent fallback.
 
 ### 5.2 Connection Failures
 
@@ -248,23 +250,27 @@ All providers share the same `PaymentRequest` / `PaymentResponse` contract. Mock
 
 **5.6.1** If `PaymentTerminalScreen` is opened with `amount === 0` (demo mode), then the amount card shall be hidden and the pay button shall not show a currency amount.
 
+### 5.7 Unsupported Provider
+
+**5.7.1** If `setPaymentProvider()` is called with a provider value that is not one of `STRIPE_NFC`, `STRIPE`, `SQUARE`, `ADYEN`, or `TAP_PAYMENTS`, then `PaymentServiceFactory` shall throw `'Unsupported payment provider: <value>'` — callers must only pass valid tap-to-pay provider values.
+
 ---
 
 ## 6. Complex Requirements
 
-**6.1** When `PaymentServiceFactory.getPaymentService()` is called on Electron with `USE_MOCK_PAYMENT !== 'true'`, the system shall mutate `currentProvider` to `ELECTRON_STRIPE` as a side-effect of the call, so that `getCurrentProvider()` reflects the auto-selected provider for the lifetime of the session.
+**6.1** When `StripeNfcPaymentTerminal` transitions through the NFC payment states (`ready` → `connecting` → `waiting_for_tap` → `approved` / `declined` / `connection_error` / `error`), the tap animation shall be started exactly once when entering `waiting_for_tap` and stopped exactly once when leaving it — preventing animation leaks across retries.
 
-**6.2** When `StripeNfcPaymentTerminal` transitions through the NFC payment states (`ready` → `connecting` → `waiting_for_tap` → `approved` / `declined` / `connection_error` / `error`), the tap animation shall be started exactly once when entering `waiting_for_tap` and stopped exactly once when leaving it — preventing animation leaks across retries.
+**6.2** When `processPayment()` is called from `PaymentTerminalScreen`, the `reference` field is set to `'ORDER-<Date.now()>'` — this is a timestamp-based reference, not the `orderId`. When `orderId` is available from route params it is passed separately as `PaymentRequest.orderId`, allowing the provider to associate the transaction with the local order record independently of the reference string.
 
-**6.3** When `processPayment()` is called from `PaymentTerminalScreen`, the `reference` field is set to `'ORDER-<Date.now()>'` — this is a timestamp-based reference, not the `orderId`. When `orderId` is available from route params it is passed separately as `PaymentRequest.orderId`, allowing the provider to associate the transaction with the local order record independently of the reference string.
+**6.3** When `PaymentService.setPaymentProvider(provider)` is called, the factory's `currentProvider` is updated and `activeService` on the `PaymentService` singleton is replaced atomically — any subsequent call to any `PaymentServiceInterface` method will use the new provider without requiring a new `PaymentService` instance.
 
-**6.4** When `PaymentService.setPaymentProvider(provider)` is called, the factory's `currentProvider` is updated and `activeService` on the `PaymentService` singleton is replaced atomically — any subsequent call to any `PaymentServiceInterface` method will use the new provider without requiring a new `PaymentService` instance.
+**6.4** When `MockPaymentService` is active (Expo Go or `USE_MOCK_PAYMENT=true`), it shall simulate the full provider lifecycle — `getAvailableTerminals()`, `connectToTerminal()`, `processPayment()`, `disconnect()` — returning realistic stub data so the UI can be exercised without real hardware.
 
 ---
 
 ## 7. Payment Flow Summary
 
-### Standard terminal flow
+### Standard terminal flow (Stripe, Square, Adyen, Tap Payments)
 
 ```
 PaymentTerminalScreen mounts
@@ -298,11 +304,11 @@ Cashier taps "Process Payment"
   → paymentStatus: 'connecting' → 'waiting_for_tap'
   → tap animation starts
   → processPayment({ amount, reference, currency, orderId, customerName, items })
-  → [success] paymentStatus: 'approved'
-              → setTimeout(onPaymentComplete, 1500)
-  → [card_declined] paymentStatus: 'card_declined'  ← retry
-  → [connection_error] paymentStatus: 'connection_error'  ← reconnect + retry
-  → [throw] paymentStatus: 'error'  ← retry
+  → [success]          paymentStatus: 'approved'
+                       → setTimeout(onPaymentComplete, 1500)
+  → [card_declined]    paymentStatus: 'card_declined'       ← retry
+  → [connection_error] paymentStatus: 'connection_error'    ← reconnect + retry
+  → [throw]            paymentStatus: 'error'               ← retry
 
 StripeNfcPaymentTerminal unmounts
   → isTerminalConnected() && disconnect()
@@ -312,47 +318,46 @@ StripeNfcPaymentTerminal unmounts
 
 ```
 PaymentServiceFactory.getPaymentService()
-  → isElectron() && !mock  → ELECTRON_STRIPE → ElectronPaymentService
-  → STRIPE_NFC + mock      → StripeNfcMockService
-  → STRIPE_NFC             → StripeNfcService
-  → STRIPE + mock          → StripeMockService
-  → STRIPE                 → StripeService
-  → SQUARE + mock          → SquareMockService
-  → SQUARE                 → SquareService (lazy, fallback to mock on load error)
-  → WORLDPAY + mock        → WorldpayMockService
-  → WORLDPAY               → WorldpayService
+  → USE_MOCK_PAYMENT=true || Expo Go  → MockPaymentService
+  → STRIPE_NFC                        → StripeNfcService
+  → STRIPE                            → StripeService
+  → SQUARE                            → SquareService   (lazy, fallback to mock on load error)
+  → ADYEN                             → AdyenService    (lazy, fallback to mock on load error)
+  → TAP_PAYMENTS                      → TapPaymentsService (lazy, fallback to mock on load error)
+  → any other value                   → throw 'Unsupported payment provider'
 ```
 
 ---
 
 ## 8. Component Traceability
 
-| Requirement (summary)                   | Component / Hook / Service                                                 | Source File                                 |
-| --------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------- |
-| Provider selected / switched            | `PaymentService.setPaymentProvider` → `PaymentServiceFactory`              | `services/payment/PaymentService.ts`        |
-| Electron auto-provider                  | `PaymentServiceFactory.getPaymentService` (isElectron branch)              | `services/payment/PaymentServiceFactory.ts` |
-| Mock mode activated                     | `PaymentServiceFactory.getPaymentService` (USE_MOCK_PAYMENT check)         | `services/payment/PaymentServiceFactory.ts` |
-| Square native fallback to mock          | `PaymentServiceFactory.getPaymentService` (SQUARE catch branch)            | `services/payment/PaymentServiceFactory.ts` |
-| Stable payment callbacks in React       | `usePayment` (useMemo + useCallback)                                       | `hooks/usePayment.ts`                       |
-| Terminal auto-scan on mount             | `PaymentTerminalScreen` useEffect → `handleScan()`                         | `screens/PaymentTerminalScreen.tsx`         |
-| Terminal list rendered                  | `PaymentTerminalScreen` (availableTerminals.map)                           | `screens/PaymentTerminalScreen.tsx`         |
-| Terminal connect                        | `PaymentTerminalScreen.handleConnect` → `connectToTerminal()`              | `screens/PaymentTerminalScreen.tsx`         |
-| Terminal disconnect button              | `PaymentTerminalScreen.handleDisconnect` → `disconnect()`                  | `screens/PaymentTerminalScreen.tsx`         |
-| Auto-disconnect on unmount              | `PaymentTerminalScreen` useEffect cleanup → `disconnect()`                 | `screens/PaymentTerminalScreen.tsx`         |
-| Standard payment processed              | `PaymentTerminalScreen.handleProcessPayment` → `processPayment()`          | `screens/PaymentTerminalScreen.tsx`         |
-| Success → onPaymentComplete after delay | `PaymentTerminalScreen` (setTimeout 1500ms)                                | `screens/PaymentTerminalScreen.tsx`         |
-| Failure result card + retry             | `PaymentTerminalScreen` (result.success === false branch)                  | `screens/PaymentTerminalScreen.tsx`         |
-| Stripe NFC component rendered           | `PaymentTerminalScreen` (isStripeNfcActive branch)                         | `screens/PaymentTerminalScreen.tsx`         |
-| NFC payment states managed              | `StripeNfcPaymentTerminal.handlePayment` (paymentStatus transitions)       | `components/StripeNfcPaymentTerminal.tsx`   |
-| Tap animation started / stopped         | `StripeNfcPaymentTerminal` useEffect (paymentStatus === 'waiting_for_tap') | `components/StripeNfcPaymentTerminal.tsx`   |
-| NFC card declined state                 | `StripeNfcPaymentTerminal` (errorCode === 'card_declined' branch)          | `components/StripeNfcPaymentTerminal.tsx`   |
-| NFC connection error state              | `StripeNfcPaymentTerminal` (errorCode === 'connection_error' branch)       | `components/StripeNfcPaymentTerminal.tsx`   |
-| NFC auto-disconnect on unmount          | `StripeNfcPaymentTerminal` useEffect cleanup                               | `components/StripeNfcPaymentTerminal.tsx`   |
-| Void transaction                        | `PaymentService.voidTransaction` → `activeService.voidTransaction`         | `services/payment/PaymentService.ts`        |
-| Refund transaction                      | `PaymentService.refundTransaction` → `activeService.refundTransaction`     | `services/payment/PaymentService.ts`        |
-| Unsupported method guard                | `PaymentService` (optional method check + throw)                           | `services/payment/PaymentService.ts`        |
-| Order sync status badge                 | `OrderCard.getOrderStatusColor / getOrderStatusText`                       | `screens/order-history/OrderCard.tsx`       |
-| Sync error displayed on card            | `OrderCard` (syncError non-null branch)                                    | `screens/order-history/OrderCard.tsx`       |
-| Print receipt from order card           | `OrderCard` print button → `onPrintReceipt(order)`                         | `screens/order-history/OrderCard.tsx`       |
-| Resync from order card                  | `OrderCard` resync button → `onResync(order.id)`                           | `screens/order-history/OrderCard.tsx`       |
-| Resync disabled while syncing           | `OrderCard` (`isSyncing` → disabled + style)                               | `screens/order-history/OrderCard.tsx`       |
+| Requirement (summary)                   | Component / Hook / Service                                                 | Source File                                   |
+| --------------------------------------- | -------------------------------------------------------------------------- | --------------------------------------------- |
+| Provider selected / switched            | `PaymentService.setPaymentProvider` → `PaymentServiceFactory`              | `services/payment/PaymentService.ts`          |
+| Mock mode activated (Expo Go / env)     | `PaymentServiceFactory.getPaymentService` (mock check)                     | `services/payment/PaymentServiceFactory.ts`   |
+| SDK load fallback to mock               | `PaymentServiceFactory.getPaymentService` (catch branch per provider)      | `services/payment/PaymentServiceFactory.ts`   |
+| Stable payment callbacks in React       | `usePayment` (useMemo + useCallback)                                       | `hooks/usePayment.ts`                         |
+| Terminal auto-scan on mount             | `PaymentTerminalScreen` useEffect → `handleScan()`                         | `screens/PaymentTerminalScreen.tsx`           |
+| Terminal list rendered                  | `PaymentTerminalScreen` (availableTerminals.map)                           | `screens/PaymentTerminalScreen.tsx`           |
+| Terminal connect                        | `PaymentTerminalScreen.handleConnect` → `connectToTerminal()`              | `screens/PaymentTerminalScreen.tsx`           |
+| Terminal disconnect button              | `PaymentTerminalScreen.handleDisconnect` → `disconnect()`                  | `screens/PaymentTerminalScreen.tsx`           |
+| Auto-disconnect on unmount              | `PaymentTerminalScreen` useEffect cleanup → `disconnect()`                 | `screens/PaymentTerminalScreen.tsx`           |
+| Standard payment processed              | `PaymentTerminalScreen.handleProcessPayment` → `processPayment()`          | `screens/PaymentTerminalScreen.tsx`           |
+| Success → onPaymentComplete after delay | `PaymentTerminalScreen` (setTimeout 1500ms)                                | `screens/PaymentTerminalScreen.tsx`           |
+| Failure result card + retry             | `PaymentTerminalScreen` (result.success === false branch)                  | `screens/PaymentTerminalScreen.tsx`           |
+| Stripe NFC component rendered           | `PaymentTerminalScreen` (isStripeNfcActive branch)                         | `screens/PaymentTerminalScreen.tsx`           |
+| NFC payment states managed              | `StripeNfcPaymentTerminal.handlePayment` (paymentStatus transitions)       | `components/StripeNfcPaymentTerminal.tsx`     |
+| Tap animation started / stopped         | `StripeNfcPaymentTerminal` useEffect (paymentStatus === 'waiting_for_tap') | `components/StripeNfcPaymentTerminal.tsx`     |
+| NFC card declined state                 | `StripeNfcPaymentTerminal` (errorCode === 'card_declined' branch)          | `components/StripeNfcPaymentTerminal.tsx`     |
+| NFC connection error state              | `StripeNfcPaymentTerminal` (errorCode === 'connection_error' branch)       | `components/StripeNfcPaymentTerminal.tsx`     |
+| NFC auto-disconnect on unmount          | `StripeNfcPaymentTerminal` useEffect cleanup                               | `components/StripeNfcPaymentTerminal.tsx`     |
+| Void transaction                        | `PaymentService.voidTransaction` → `activeService.voidTransaction`         | `services/payment/PaymentService.ts`          |
+| Refund transaction                      | `PaymentService.refundTransaction` → `activeService.refundTransaction`     | `services/payment/PaymentService.ts`          |
+| Unsupported method guard                | `PaymentService` (optional method check + throw)                           | `services/payment/PaymentService.ts`          |
+| Unsupported provider guard              | `PaymentServiceFactory` (default case throw)                               | `services/payment/PaymentServiceFactory.ts`   |
+| Mock full lifecycle simulation          | `MockPaymentService`                                                       | `services/payment/mock/MockPaymentService.ts` |
+| Order sync status badge                 | `OrderCard.getOrderStatusColor / getOrderStatusText`                       | `screens/order-history/OrderCard.tsx`         |
+| Sync error displayed on card            | `OrderCard` (syncError non-null branch)                                    | `screens/order-history/OrderCard.tsx`         |
+| Print receipt from order card           | `OrderCard` print button → `onPrintReceipt(order)`                         | `screens/order-history/OrderCard.tsx`         |
+| Resync from order card                  | `OrderCard` resync button → `onResync(order.id)`                           | `screens/order-history/OrderCard.tsx`         |
+| Resync disabled while syncing           | `OrderCard` (`isSyncing` → disabled + style)                               | `screens/order-history/OrderCard.tsx`         |

@@ -104,13 +104,8 @@
     "testConnection": "Probar conexión",
     "connectionSuccess": "Prueba de conexión exitosa.",
     "connectionFailed": "Prueba de conexión fallida.",
-    "worldpay": {
-      "title": "Configuración de Worldpay",
-      "merchantId": "ID de comerciante",
-      "merchantIdRequired": "Por favor, introduce un ID de comerciante de Worldpay."
-    },
     "stripe": {
-      "title": "Configuración de Stripe Terminal (PED)",
+      "title": "Configuración de Stripe Terminal",
       "apiKey": "Clave API",
       "locationId": "ID de ubicación",
       "required": "Por favor, introduce la clave API y el ID de ubicación de Stripe."
@@ -128,6 +123,20 @@
       "locationId": "ID de ubicación",
       "accessToken": "Token de acceso",
       "applicationIdRequired": "Por favor, introduce un ID de aplicación de Square."
+    },
+    "adyen": {
+      "title": "Configuración de Adyen",
+      "apiKey": "Clave API",
+      "clientKey": "Clave de cliente",
+      "merchantAccount": "Cuenta de comerciante",
+      "required": "Por favor, introduce la clave API y la cuenta de comerciante de Adyen."
+    },
+    "tapPayments": {
+      "title": "Configuración de Tap Payments",
+      "apiKey": "Clave API",
+      "publishableKey": "Clave publicable",
+      "merchantId": "ID de comerciante",
+      "required": "Por favor, introduce la clave API y el ID de comerciante de Tap Payments."
     },
     "syncInventory": "Sincronizar inventario"
   },
@@ -295,10 +304,7 @@
       "connectionError": "Error al conectar con el proveedor de pago",
       "connectionTestFailed": "Prueba de conexión fallida. Verifique su configuración.",
       "loadingPayment": "Cargando configuración de pago...",
-      "worldpaySettings": "Configuración de Worldpay",
-      "merchantId": "ID de comerciante",
-      "siteReference": "Referencia del sitio",
-      "stripeSettings": "Configuración de Stripe Terminal (PED)",
+      "stripeSettings": "Configuración de Stripe Terminal",
       "stripeNfcSettings": "Configuración de Stripe NFC Tap to Pay",
       "apiCredentials": "Credenciales de API",
       "apiKey": "Clave de API",
@@ -319,6 +325,11 @@
       "squareSettings": "Configuración de Square",
       "applicationId": "ID de aplicación",
       "accessToken": "Token de acceso",
+      "adyenSettings": "Configuración de Adyen",
+      "merchantAccount": "Cuenta de comerciante",
+      "environment": "Entorno",
+      "tapPaymentsSettings": "Configuración de Tap Payments",
+      "merchantId": "ID de comerciante",
       "on": "Activado",
       "off": "Desactivado"
     },

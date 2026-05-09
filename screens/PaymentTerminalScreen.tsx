@@ -29,11 +29,11 @@ interface PaymentTerminalScreenProps {
 }
 
 const PROVIDER_LABELS: Record<PaymentProvider, string> = {
-  [PaymentProvider.WORLDPAY]: 'Worldpay',
+  [PaymentProvider.STRIPE_NFC]: 'Stripe NFC (Tap to Pay)',
   [PaymentProvider.STRIPE]: 'Stripe Terminal',
-  [PaymentProvider.STRIPE_NFC]: 'Stripe NFC',
   [PaymentProvider.SQUARE]: 'Square',
-  [PaymentProvider.ELECTRON_STRIPE]: 'Stripe (Desktop)',
+  [PaymentProvider.ADYEN]: 'Adyen',
+  [PaymentProvider.TAP_PAYMENTS]: 'Tap Payments',
 };
 
 const PaymentTerminalScreen: React.FC<PaymentTerminalScreenProps> = ({ navigation, route }) => {

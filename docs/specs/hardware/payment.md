@@ -2,26 +2,50 @@
 
 > **System**: RetailPOS – Payment Terminal
 > **Actor**: Cashier, System
-> **Date**: 2026-04-13
-> **Source**: `services/payment/PaymentServiceInterface.ts`, `services/payment/PaymentServiceFactory.ts`, `services/payment/PaymentService.ts`, `services/payment/StripeService.ts`, `services/payment/StripeNfcService.ts`, `services/payment/SquareService.ts`, `services/payment/WorldpayService.ts`, `services/payment/ElectronPaymentService.ts`, `hooks/usePayment.ts`
+> **Date**: 2026-05-09
+> **Source**: `services/payment/PaymentServiceInterface.ts`, `services/payment/PaymentServiceFactory.ts`, `services/payment/PaymentService.ts`, `services/payment/StripeService.ts`, `services/payment/StripeNfcService.ts`, `services/payment/SquareService.ts`, `services/payment/AdyenService.ts`, `services/payment/TapPaymentsService.ts`, `services/payment/mock/MockPaymentService.ts`, `hooks/usePayment.ts`
 
 ---
 
 ## Context
 
-The payment subsystem abstracts five provider implementations — `worldpay`, `stripe`, `stripe_nfc`, `square`, and `electron_stripe` — behind a common `PaymentServiceInterface`. A singleton `PaymentServiceFactory` selects the active provider at runtime based on the configured provider, environment variables, and platform detection.
+The payment subsystem abstracts tap-to-pay React Native SDK implementations behind a common `PaymentServiceInterface`. Only providers that ship a React Native SDK for contactless (tap-to-pay) payments on mobile and tablet are supported in this layer. Providers that require a physical PED or a desktop integration are handled by the Instore API and are outside the scope of this service.
 
-`PaymentService` acts as a unified delegate: it holds a reference to the currently active provider service and forwards all calls to it. The active provider can be swapped at runtime via `setPaymentProvider()`. Optional interface methods (`getTransactionStatus`, `voidTransaction`, `refundTransaction`) are not required to be implemented by every provider; callers must handle the `'not supported'` rejection.
+A singleton `PaymentServiceFactory` selects the active provider at runtime based on the configured `PaymentProvider`, environment variables, and whether the app is running in Expo Go. `PaymentService` acts as a unified delegate: it holds a reference to the currently active provider service and forwards all calls to it. The active provider can be swapped at runtime via `setPaymentProvider()`.
 
-Square and Electron services are lazy-loaded via `require()` to avoid bundling issues on platforms where they are not used.
+Optional interface methods (`getTransactionStatus`, `voidTransaction`, `refundTransaction`) are not required to be implemented by every provider; callers must handle the `'not supported'` rejection.
+
+Square, Adyen, and Tap Payments services are lazy-loaded via `require()` to avoid bundling their SDKs on platforms where they are not used.
+
+### Architecture Boundary
+
+This layer is **tap-to-pay only**. Providers without a React Native SDK must be integrated through the Instore API (`InstoreApiTransport`). There is no Electron payment path in this layer — desktop builds route payments through the Instore API.
+
+### Supported Providers
+
+| Provider     | Enum           | Real service         | Notes                               |
+| ------------ | -------------- | -------------------- | ----------------------------------- |
+| Stripe NFC   | `STRIPE_NFC`   | `StripeNfcService`   | Stripe Terminal SDK, NFC/tap-to-pay |
+| Stripe       | `STRIPE`       | `StripeService`      | Stripe Terminal SDK, reader-based   |
+| Square       | `SQUARE`       | `SquareService`      | Square In-Person Payments SDK       |
+| Adyen        | `ADYEN`        | `AdyenService`       | Adyen Terminal API React Native     |
+| Tap Payments | `TAP_PAYMENTS` | `TapPaymentsService` | Tap Payments React Native SDK       |
+
+### Mock Strategy
+
+A single `MockPaymentService` replaces all real provider implementations when:
+
+- The app is running in Expo Go (no native modules available), or
+- `USE_MOCK_PAYMENT=true` is set in the environment.
+
+`MockPaymentService` simulates the full provider lifecycle with realistic stub data so the UI can be exercised without real hardware.
 
 ### Provider Selection
 
-| Condition                   | Provider Selected                                  |
-| --------------------------- | -------------------------------------------------- |
-| `USE_MOCK_PAYMENT=true`     | Mock service (any provider)                        |
-| `isElectron()` and not mock | `ELECTRON_STRIPE`                                  |
-| Neither condition           | Configured `currentProvider` (default: `WORLDPAY`) |
+| Condition                          | Provider Selected                                    |
+| ---------------------------------- | ---------------------------------------------------- |
+| Expo Go or `USE_MOCK_PAYMENT=true` | `MockPaymentService` (all providers)                 |
+| Neither condition                  | Configured `currentProvider` (default: `STRIPE_NFC`) |
 
 ### PaymentRequest Fields
 
@@ -60,11 +84,13 @@ Square and Electron services are lazy-loaded via `require()` to avoid bundling i
 
 **1.3** `PaymentService` shall delegate all interface method calls to the currently active provider service without adding business logic.
 
-**1.4** The default provider shall be `WORLDPAY` when no provider has been explicitly configured and the environment is not Electron.
+**1.4** The default provider shall be `STRIPE_NFC` when no provider has been explicitly configured.
 
 **1.5** `processPayment(request)` shall require `amount` and `reference` to be present in the `PaymentRequest`; all other fields are optional.
 
 **1.6** Every `PaymentResponse` shall include `success` and `timestamp` fields regardless of outcome.
+
+**1.7** The system shall only accept `STRIPE_NFC`, `STRIPE`, `SQUARE`, `ADYEN`, and `TAP_PAYMENTS` as valid provider values. Any other value shall be rejected with `'Unsupported payment provider: <value>'`.
 
 ---
 
@@ -72,13 +98,11 @@ Square and Electron services are lazy-loaded via `require()` to avoid bundling i
 
 ### 2.1 Factory — Provider Selection
 
-**2.1.1** When `PaymentServiceFactory.getPaymentService()` is called with `USE_MOCK_PAYMENT=true`, the system shall return a mock payment service regardless of the configured provider or platform.
+**2.1.1** When `PaymentServiceFactory.getPaymentService()` is called in Expo Go or with `USE_MOCK_PAYMENT=true`, the system shall return `MockPaymentService.getInstance()` regardless of the configured provider.
 
-**2.1.2** When `PaymentServiceFactory.getPaymentService()` is called on Electron without `USE_MOCK_PAYMENT`, the system shall automatically select `ELECTRON_STRIPE` as the active provider.
+**2.1.2** When `PaymentServiceFactory.getPaymentService()` is called in a production build without `USE_MOCK_PAYMENT`, the system shall return the real SDK service for `currentProvider`.
 
-**2.1.3** When `PaymentServiceFactory.getPaymentService()` is called outside Electron without `USE_MOCK_PAYMENT`, the system shall return the service for `currentProvider`.
-
-**2.1.4** When `PaymentService.setPaymentProvider(provider)` is called, the system shall update `currentProvider` and immediately swap the active service to the implementation for the new provider.
+**2.1.3** When `PaymentService.setPaymentProvider(provider)` is called, the system shall update `currentProvider` and immediately swap the active service to the implementation for the new provider.
 
 ### 2.2 Terminal Lifecycle
 
@@ -88,7 +112,7 @@ Square and Electron services are lazy-loaded via `require()` to avoid bundling i
 
 **2.2.3** When `disconnect()` is called, the system shall terminate the active terminal connection and release all associated resources.
 
-**2.2.4** When `usePayment` hook unmounts, the system shall call `disconnect()` on the active payment service.
+**2.2.4** When the `usePayment` hook unmounts, the system shall call `disconnect()` on the active payment service.
 
 **2.2.5** When `setPaymentProvider()` swaps the active provider, the system shall call `disconnect()` on the previous provider before activating the new one.
 
@@ -114,19 +138,27 @@ Square and Electron services are lazy-loaded via `require()` to avoid bundling i
 
 **2.5.1** When `SquareService` is first instantiated, the system shall load the Square SDK via `require()` to avoid bundling the SDK on platforms where it is not used.
 
-**2.5.2** When the `require()` call for the Square SDK throws a load error, the system shall catch the error and fall back to the mock payment service for the remainder of the session.
+**2.5.2** When the `require()` call for the Square SDK throws a load error, the system shall catch the error, log a warning, and fall back to `MockPaymentService` for the remainder of the session.
 
-### 2.6 Electron Payment Service — Lazy Loading
+### 2.6 Adyen — Lazy Loading
 
-**2.6.1** When `ElectronPaymentService` is first instantiated, the system shall load the implementation via `require('./ElectronPaymentService')` to avoid bundling it in non-Electron builds.
+**2.6.1** When `AdyenService` is first instantiated, the system shall load the Adyen SDK via `require()` to avoid bundling the SDK on platforms where it is not used.
 
-### 2.7 Optional Methods
+**2.6.2** When the `require()` call for the Adyen SDK throws a load error, the system shall catch the error, log a warning, and fall back to `MockPaymentService` for the remainder of the session.
 
-**2.7.1** When `getTransactionStatus(transactionId)` is called on a provider that does not implement it, the system shall return a rejected promise with the message `'not supported'`.
+### 2.7 Tap Payments — Lazy Loading
 
-**2.7.2** When `voidTransaction(transactionId)` is called on a provider that does not implement it, the system shall return a rejected promise with the message `'not supported'`.
+**2.7.1** When `TapPaymentsService` is first instantiated, the system shall load the Tap Payments SDK via `require()` to avoid bundling the SDK on platforms where it is not used.
 
-**2.7.3** When `refundTransaction(transactionId, amount)` is called on a provider that does not implement it, the system shall return a rejected promise with the message `'not supported'`.
+**2.7.2** When the `require()` call for the Tap Payments SDK throws a load error, the system shall catch the error, log a warning, and fall back to `MockPaymentService` for the remainder of the session.
+
+### 2.8 Optional Methods
+
+**2.8.1** When `getTransactionStatus(transactionId)` is called on a provider that does not implement it, the system shall return a rejected promise with the message `'getTransactionStatus not supported by the current payment provider'`.
+
+**2.8.2** When `voidTransaction(transactionId)` is called on a provider that does not implement it, the system shall return a rejected promise with the message `'voidTransaction not supported by the current payment provider'`.
+
+**2.8.3** When `refundTransaction(transactionId, amount)` is called on a provider that does not implement it, the system shall return a rejected promise with the message `'refundTransaction not supported by the current payment provider'`.
 
 ---
 
@@ -134,9 +166,7 @@ Square and Electron services are lazy-loaded via `require()` to avoid bundling i
 
 **3.1** While `isTerminalConnected()` returns `false`, `processPayment()` shall not submit a transaction to the provider — it shall return a failure response immediately.
 
-**3.2** While `USE_MOCK_PAYMENT=true`, all provider selection logic is bypassed — the mock service handles every call regardless of `currentProvider` or platform.
-
-**3.3** While running on Electron without `USE_MOCK_PAYMENT`, `currentProvider` is always treated as `ELECTRON_STRIPE` — manual calls to `setPaymentProvider()` with other providers are overridden by the factory.
+**3.2** While in Expo Go or `USE_MOCK_PAYMENT=true`, all provider selection logic is bypassed — `MockPaymentService` handles every call regardless of `currentProvider`.
 
 ---
 
@@ -160,11 +190,13 @@ Square and Electron services are lazy-loaded via `require()` to avoid bundling i
 
 **5.3** If `setPaymentProvider()` is called with the same provider that is already active, the system shall perform no operation — no disconnect/reconnect cycle is triggered.
 
-**5.4** If the Square SDK `require()` fails and the mock fallback is activated, the system shall log the load error via the logger so it is visible in development builds.
+**5.4** If any SDK `require()` fails and the mock fallback is activated, the system shall log the load error via the logger so it is visible in development builds.
 
 **5.5** If `disconnect()` is called when no terminal is connected, the system shall silently do nothing — it shall not throw.
 
 **5.6** If `getAvailableTerminals()` is called while no terminal discovery is supported by the active provider, the system shall return an empty array.
+
+**5.7** If `setPaymentProvider()` is called with a value outside the supported set (`STRIPE_NFC`, `STRIPE`, `SQUARE`, `ADYEN`, `TAP_PAYMENTS`), the system shall throw `'Unsupported payment provider: <value>'` immediately without modifying `currentProvider`.
 
 ---
 
@@ -172,10 +204,10 @@ Square and Electron services are lazy-loaded via `require()` to avoid bundling i
 
 | Requirement (summary)                                      | Component / Service                       | Source File                                   |
 | ---------------------------------------------------------- | ----------------------------------------- | --------------------------------------------- |
-| Factory singleton, env + platform selection                | `PaymentServiceFactory.getPaymentService` | `services/payment/PaymentServiceFactory.ts`   |
-| `USE_MOCK_PAYMENT` bypasses all real providers             | `PaymentServiceFactory.getPaymentService` | `services/payment/PaymentServiceFactory.ts`   |
-| Electron auto-selects `ELECTRON_STRIPE`                    | `PaymentServiceFactory.getPaymentService` | `services/payment/PaymentServiceFactory.ts`   |
-| Default provider `WORLDPAY`                                | `PaymentServiceFactory` default config    | `services/payment/PaymentServiceFactory.ts`   |
+| Factory singleton, env + Expo Go selection                 | `PaymentServiceFactory.getPaymentService` | `services/payment/PaymentServiceFactory.ts`   |
+| `USE_MOCK_PAYMENT` / Expo Go bypasses real providers       | `PaymentServiceFactory.getPaymentService` | `services/payment/PaymentServiceFactory.ts`   |
+| Default provider `STRIPE_NFC`                              | `PaymentServiceFactory` default config    | `services/payment/PaymentServiceFactory.ts`   |
+| Unsupported provider guard                                 | `PaymentServiceFactory` (default throw)   | `services/payment/PaymentServiceFactory.ts`   |
 | `setPaymentProvider()` swaps active service                | `PaymentService.setPaymentProvider`       | `services/payment/PaymentService.ts`          |
 | Delegate pattern — all calls forwarded to active service   | `PaymentService` method implementations   | `services/payment/PaymentService.ts`          |
 | `PaymentServiceInterface` contract                         | `PaymentServiceInterface`                 | `services/payment/PaymentServiceInterface.ts` |
@@ -184,9 +216,11 @@ Square and Electron services are lazy-loaded via `require()` to avoid bundling i
 | `connectToTerminal` / `disconnect` / `isTerminalConnected` | Provider implementations                  | `services/payment/StripeService.ts` etc.      |
 | `getAvailableTerminals` for device discovery               | Provider implementations                  | `services/payment/StripeService.ts` etc.      |
 | Square lazy-load via `require()`                           | `SquareService` constructor               | `services/payment/SquareService.ts`           |
-| Square mock fallback on load error                         | `SquareService` constructor catch         | `services/payment/SquareService.ts`           |
-| Electron service lazy-load via `require()`                 | `ElectronPaymentService` loader           | `services/payment/ElectronPaymentService.ts`  |
+| Adyen lazy-load via `require()`                            | `AdyenService` constructor                | `services/payment/AdyenService.ts`            |
+| Tap Payments lazy-load via `require()`                     | `TapPaymentsService` constructor          | `services/payment/TapPaymentsService.ts`      |
+| SDK load fallback to `MockPaymentService`                  | Provider constructor catch blocks         | `services/payment/*.ts`                       |
 | Optional methods throw `'not supported'`                   | Provider base / individual providers      | `services/payment/PaymentServiceInterface.ts` |
 | `disconnect()` on unmount                                  | `usePayment` cleanup                      | `hooks/usePayment.ts`                         |
 | `disconnect()` on provider switch                          | `PaymentService.setPaymentProvider`       | `services/payment/PaymentService.ts`          |
 | Payment result feeds `CheckoutService.completePayment`     | `usePayment.processPayment`               | `hooks/usePayment.ts`                         |
+| Full lifecycle mock simulation                             | `MockPaymentService`                      | `services/payment/mock/MockPaymentService.ts` |

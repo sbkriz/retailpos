@@ -32,14 +32,14 @@ The service follows a factory pattern with automatic selection between real keyc
 
 The system defines a comprehensive enum of secret keys for all supported platforms and services:
 
-| Category                 | Examples                                                                           |
-| ------------------------ | ---------------------------------------------------------------------------------- |
-| Payment Providers        | `WORLDPAY_MERCHANT_ID`, `STRIPE_PUBLISHABLE_KEY`, `SQUARE_APPLICATION_ID`          |
-| E-commerce (Shopify)     | `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `SHOPIFY_STORE_URL`                       |
-| E-commerce (WooCommerce) | `WOOCOMMERCE_CONSUMER_KEY`, `WOOCOMMERCE_CONSUMER_SECRET`, `WOOCOMMERCE_STORE_URL` |
-| E-commerce (Magento)     | `MAGENTO_ACCESS_TOKEN`, `MAGENTO_STORE_URL`, `MAGENTO_API_VERSION`                 |
-| E-commerce (BigCommerce) | `BIGCOMMERCE_CLIENT_ID`, `BIGCOMMERCE_ACCESS_TOKEN`, `BIGCOMMERCE_STORE_HASH`      |
-| E-commerce (Others)      | Sylius, Wix, PrestaShop, Squarespace, CommerceFull                                 |
+| Category                 | Examples                                                                                                     |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| Payment Providers        | `STRIPE_PUBLISHABLE_KEY`, `STRIPE_API_KEY`, `SQUARE_APPLICATION_ID`, `ADYEN_API_KEY`, `TAP_PAYMENTS_API_KEY` |
+| E-commerce (Shopify)     | `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `SHOPIFY_STORE_URL`                                                 |
+| E-commerce (WooCommerce) | `WOOCOMMERCE_CONSUMER_KEY`, `WOOCOMMERCE_CONSUMER_SECRET`, `WOOCOMMERCE_STORE_URL`                           |
+| E-commerce (Magento)     | `MAGENTO_ACCESS_TOKEN`, `MAGENTO_STORE_URL`, `MAGENTO_API_VERSION`                                           |
+| E-commerce (BigCommerce) | `BIGCOMMERCE_CLIENT_ID`, `BIGCOMMERCE_ACCESS_TOKEN`, `BIGCOMMERCE_STORE_HASH`                                |
+| E-commerce (Others)      | Sylius, Wix, PrestaShop, Squarespace, CommerceFull                                                           |
 
 ### Key Defaults
 

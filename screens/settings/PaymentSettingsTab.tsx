@@ -8,134 +8,136 @@ import { useLogger } from '../../hooks/useLogger';
 import { auditLogService } from '../../services/audit/AuditLogService';
 import { useAuthContext } from '../../contexts/AuthProvider';
 
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
 type ProviderSettingKey<T extends keyof PaymentSettings> = keyof PaymentSettings[T];
+
+// Human-readable labels for each provider
+const PROVIDER_LABELS: Record<PaymentProvider, string> = {
+  [PaymentProvider.STRIPE_NFC]: 'Stripe NFC (Tap to Pay)',
+  [PaymentProvider.STRIPE]: 'Stripe Terminal',
+  [PaymentProvider.SQUARE]: 'Square',
+  [PaymentProvider.ADYEN]: 'Adyen',
+  [PaymentProvider.TAP_PAYMENTS]: 'Tap Payments',
+};
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 
 const PaymentSettingsTab = () => {
   const { t } = useTranslate();
   const { user } = useAuthContext();
   const { paymentSettings, handlePaymentSettingsChange, saveSettings, testConnection, error, saveStatus, isLoading, loadSettings } =
     usePaymentSettings();
-
   const logger = useLogger('PaymentSettingsTab');
-
-  const hasUnsavedChanges = saveStatus === 'unsaved';
   const isMounted = useRef(true);
 
-  // Load settings on mount
-  useEffect(() => {
-    const initialize = async () => {
-      try {
-        await loadSettings();
-      } catch (err) {
-        logger.error('Failed to load payment settings:', err);
-      }
-    };
+  const hasUnsavedChanges = saveStatus === 'unsaved';
 
-    initialize();
+  useEffect(() => {
+    loadSettings().catch(err => logger.error('Failed to load payment settings:', err));
     return () => {
       isMounted.current = false;
     };
   }, [loadSettings, logger]);
 
-  // Handle provider change
+  // ---------------------------------------------------------------------------
+  // Handlers
+  // ---------------------------------------------------------------------------
+
   const handleProviderChange = useCallback(
     (provider: PaymentProvider) => {
-      handlePaymentSettingsChange({
-        provider,
-        [provider]: paymentSettings[provider as keyof PaymentSettings] || {},
-      } as unknown as Partial<PaymentSettings>);
+      handlePaymentSettingsChange({ provider });
     },
-    [handlePaymentSettingsChange, paymentSettings]
+    [handlePaymentSettingsChange]
   );
 
-  // Handle provider setting changes
   const handleProviderSettingChange = useCallback(
     <T extends keyof PaymentSettings>(provider: T, field: ProviderSettingKey<T>, value: string | boolean) => {
-      const updatedSettings = {
-        ...paymentSettings,
+      handlePaymentSettingsChange({
         [provider]: {
           ...(paymentSettings[provider] as object),
           [field]: value,
         },
-      };
-      handlePaymentSettingsChange(updatedSettings);
+      } as Partial<PaymentSettings>);
     },
     [handlePaymentSettingsChange, paymentSettings]
   );
 
-  // Handle save
   const handleSave = useCallback(async () => {
-    // Validate API keys are non-empty (spec requirement: settings-tabs.md §4.4)
-    if (paymentSettings.provider === PaymentProvider.WORLDPAY) {
-      if (!paymentSettings.worldpay.merchantId || !paymentSettings.worldpay.siteReference) {
-        Alert.alert(
-          t('common.error'),
-          t('settings.payment.worldpayKeysRequired', { defaultValue: 'Merchant ID and Site Reference are required for Worldpay' })
-        );
-        return;
-      }
-    } else if (paymentSettings.provider === PaymentProvider.STRIPE) {
-      if (!paymentSettings.stripe.publishableKey || !paymentSettings.stripe.secretKey) {
-        Alert.alert(
-          t('common.error'),
-          t('settings.payment.stripeKeysRequired', { defaultValue: 'Publishable Key and Secret Key are required for Stripe' })
-        );
-        return;
-      }
-    } else if (paymentSettings.provider === PaymentProvider.STRIPE_NFC) {
-      if (!paymentSettings.stripe_nfc.apiKey) {
-        Alert.alert(t('common.error'), t('settings.payment.stripeNfcKeyRequired', { defaultValue: 'API Key is required for Stripe NFC' }));
-        return;
-      }
-    } else if (paymentSettings.provider === PaymentProvider.SQUARE) {
-      if (!paymentSettings.square.accessToken || !paymentSettings.square.applicationId) {
-        Alert.alert(
-          t('common.error'),
-          t('settings.payment.squareKeysRequired', { defaultValue: 'Access Token and Application ID are required for Square' })
-        );
-        return;
-      }
+    // Validate required fields per provider
+    const { provider, stripe_nfc, stripe, square, adyen, tap_payments } = paymentSettings;
+
+    if (provider === PaymentProvider.STRIPE_NFC && !stripe_nfc.apiKey) {
+      Alert.alert(t('common.error'), t('settings.payment.stripeNfcKeyRequired', { defaultValue: 'API Key is required for Stripe NFC' }));
+      return;
+    }
+    if (provider === PaymentProvider.STRIPE && (!stripe.publishableKey || !stripe.secretKey)) {
+      Alert.alert(
+        t('common.error'),
+        t('settings.payment.stripeKeysRequired', { defaultValue: 'Publishable Key and Secret Key are required for Stripe' })
+      );
+      return;
+    }
+    if (provider === PaymentProvider.SQUARE && (!square.accessToken || !square.applicationId)) {
+      Alert.alert(
+        t('common.error'),
+        t('settings.payment.squareKeysRequired', { defaultValue: 'Access Token and Application ID are required for Square' })
+      );
+      return;
+    }
+    if (provider === PaymentProvider.ADYEN && (!adyen.apiKey || !adyen.merchantAccount)) {
+      Alert.alert(
+        t('common.error'),
+        t('settings.payment.adyenKeysRequired', { defaultValue: 'API Key and Merchant Account are required for Adyen' })
+      );
+      return;
+    }
+    if (provider === PaymentProvider.TAP_PAYMENTS && (!tap_payments.apiKey || !tap_payments.merchantId)) {
+      Alert.alert(
+        t('common.error'),
+        t('settings.payment.tapPaymentsKeysRequired', { defaultValue: 'API Key and Merchant ID are required for Tap Payments' })
+      );
+      return;
     }
 
     try {
       await saveSettings(paymentSettings);
-
-      // Log settings change (spec: audit.md §2.1.8)
       await auditLogService.log('settings:changed', {
         userId: user?.id,
         userName: user?.username,
         details: 'Payment settings updated',
-        metadata: {
-          settingName: 'payment',
-          provider: paymentSettings.provider,
-        },
+        metadata: { settingName: 'payment', provider: paymentSettings.provider },
       });
     } catch (err) {
       logger.error('Failed to save payment settings:', err);
     }
   }, [saveSettings, paymentSettings, user, logger, t]);
 
-  // Handle cancel
   const handleCancel = useCallback(() => {
-    handlePaymentSettingsChange(paymentSettings);
-  }, [handlePaymentSettingsChange, paymentSettings]);
+    loadSettings().catch(err => logger.error('Failed to reload payment settings on cancel:', err));
+  }, [loadSettings, logger]);
 
-  // Test connection
   const testPaymentConnection = useCallback(async () => {
     try {
       const success = await testConnection(paymentSettings.provider);
-      if (success) {
-        Alert.alert(t('common.success'), t('settings.payment.connectionSuccess'));
-      } else {
-        Alert.alert(t('common.error'), t('settings.payment.connectionError'));
-      }
+      Alert.alert(
+        success ? t('common.success') : t('common.error'),
+        success ? t('settings.payment.connectionSuccess') : t('settings.payment.connectionError')
+      );
     } catch (err) {
       logger.error('Connection test failed:', err);
       Alert.alert(t('common.error'), t('settings.payment.connectionTestFailed'));
     }
   }, [testConnection, paymentSettings.provider, t, logger]);
 
-  // Render provider selection radio buttons
+  // ---------------------------------------------------------------------------
+  // Render helpers
+  // ---------------------------------------------------------------------------
+
   const renderProviderSelection = () => (
     <View style={styles.settingGroup}>
       <Text style={styles.settingLabel}>{t('settings.payment.provider')}</Text>
@@ -150,224 +152,100 @@ const PaymentSettingsTab = () => {
             <View style={[styles.radioButtonOuter, paymentSettings.provider === provider && styles.radioButtonOuterSelected]}>
               {paymentSettings.provider === provider && <View style={styles.radioButtonInner} />}
             </View>
-            <Text style={styles.radioButtonLabel}>{provider.charAt(0).toUpperCase() + provider.slice(1).toLowerCase()}</Text>
+            <Text style={styles.radioButtonLabel}>{PROVIDER_LABELS[provider]}</Text>
           </TouchableOpacity>
         ))}
       </View>
     </View>
   );
 
-  // Render Worldpay form
-  const renderWorldpayForm = () => {
-    if (paymentSettings.provider !== PaymentProvider.WORLDPAY) return null;
-
+  const renderStripeNfcForm = () => {
+    if (paymentSettings.provider !== PaymentProvider.STRIPE_NFC) return null;
+    const s = paymentSettings.stripe_nfc;
     return (
       <View style={styles.settingGroup}>
-        <Text style={styles.settingLabel}>{t('settings.payment.worldpaySettings')}</Text>
-        <View style={styles.inputGroup}>
-          <TextInput
-            style={styles.input}
-            value={paymentSettings.worldpay?.merchantId || ''}
-            onChangeText={value => handleProviderSettingChange('worldpay', 'merchantId', value)}
-            placeholder={t('settings.payment.merchantId')}
-            editable={!isLoading}
-          />
-        </View>
-        <View style={styles.inputGroup}>
-          <TextInput
-            style={styles.input}
-            value={paymentSettings.worldpay?.siteReference || ''}
-            onChangeText={value => handleProviderSettingChange('worldpay', 'siteReference', value)}
-            placeholder={t('settings.payment.siteReference')}
-            editable={!isLoading}
-          />
-        </View>
-      </View>
-    );
-  };
+        <Text style={styles.settingLabel}>{t('settings.payment.stripeNfcSettings')}</Text>
 
-  // Render Stripe PED form
-  const renderStripeForm = () => {
-    if (paymentSettings.provider !== PaymentProvider.STRIPE) return null;
-
-    return (
-      <View style={styles.settingGroup}>
-        <Text style={styles.settingLabel}>{t('settings.payment.stripeSettings')}</Text>
         <View style={styles.inputGroup}>
           <Text>{t('settings.payment.apiKey')}</Text>
           <TextInput
             style={styles.input}
-            placeholder={t('settings.payment.stripeApiKeyPlaceholder')}
-            value={paymentSettings.stripe?.apiKey || ''}
-            onChangeText={value => handleProviderSettingChange('stripe', 'apiKey', value)}
+            placeholder={t('settings.payment.stripeApiKeyNfcPlaceholder')}
+            value={s.apiKey}
+            onChangeText={v => handleProviderSettingChange('stripe_nfc', 'apiKey', v)}
             editable={!isLoading}
             secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
           />
         </View>
+
+        <View style={styles.inputGroup}>
+          <Text>{t('settings.payment.publishableKey')}</Text>
+          <TextInput
+            style={styles.input}
+            placeholder={t('settings.payment.publishableKeyPlaceholder')}
+            value={s.publishableKey ?? ''}
+            onChangeText={v => handleProviderSettingChange('stripe_nfc', 'publishableKey', v)}
+            editable={!isLoading}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+        </View>
+
         <View style={styles.inputGroup}>
           <Text>{t('settings.payment.locationId')}</Text>
           <TextInput
             style={styles.input}
             placeholder={t('settings.payment.stripeLocationPlaceholder')}
-            value={paymentSettings.stripe?.locationId || ''}
-            onChangeText={value => handleProviderSettingChange('stripe', 'locationId', value)}
+            value={s.merchantId}
+            onChangeText={v => handleProviderSettingChange('stripe_nfc', 'merchantId', v)}
             editable={!isLoading}
+            autoCapitalize="none"
+            autoCorrect={false}
           />
         </View>
-      </View>
-    );
-  };
 
-  // Render Stripe NFC Tap to Pay form
-  const renderStripeNfcForm = () => {
-    if (paymentSettings.provider !== PaymentProvider.STRIPE_NFC) return null;
-
-    return (
-      <View style={styles.settingGroup}>
-        <Text style={styles.settingLabel}>{t('settings.payment.stripeNfcSettings')}</Text>
-
-        {/* API Credentials Section */}
-        <View style={[styles.settingGroup, styles.sectionMargin]}>
-          <Text style={styles.settingLabel}>{t('settings.payment.apiCredentials')}</Text>
-          <View style={styles.inputGroup}>
-            <Text>{t('settings.payment.apiKey')}</Text>
-            <TextInput
-              style={styles.input}
-              placeholder={t('settings.payment.stripeApiKeyNfcPlaceholder')}
-              value={paymentSettings.stripe_nfc?.apiKey || ''}
-              onChangeText={value => handleProviderSettingChange('stripe_nfc', 'apiKey', value)}
-              editable={!isLoading}
-              secureTextEntry
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text>{t('settings.payment.publishableKey')}</Text>
-            <TextInput
-              style={styles.input}
-              placeholder={t('settings.payment.publishableKeyPlaceholder')}
-              value={paymentSettings.stripe_nfc?.publishableKey || ''}
-              onChangeText={value => handleProviderSettingChange('stripe_nfc', 'publishableKey', value)}
-              editable={!isLoading}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text>{t('settings.payment.locationId')}</Text>
-            <TextInput
-              style={styles.input}
-              placeholder={t('settings.payment.stripeLocationPlaceholder')}
-              value={paymentSettings.stripe_nfc?.merchantId || ''}
-              onChangeText={value => handleProviderSettingChange('stripe_nfc', 'merchantId', value)}
-              editable={!isLoading}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
+        <View style={styles.inputGroup}>
+          <Text>{t('settings.payment.backendUrl')}</Text>
+          <TextInput
+            style={styles.input}
+            placeholder={t('settings.payment.backendUrlPlaceholder')}
+            value={s.backendUrl}
+            onChangeText={v => handleProviderSettingChange('stripe_nfc', 'backendUrl', v)}
+            editable={!isLoading}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
         </View>
 
-        {/* Backend Configuration Section */}
-        <View style={[styles.settingGroup, styles.sectionMargin]}>
-          <Text style={styles.settingLabel}>{t('settings.payment.backendConfig')}</Text>
-          <View style={styles.inputGroup}>
-            <Text>{t('settings.payment.backendUrl')}</Text>
-            <TextInput
-              style={styles.input}
-              placeholder={t('settings.payment.backendUrlPlaceholder')}
-              value={paymentSettings.stripe_nfc?.backendUrl || ''}
-              onChangeText={value => handleProviderSettingChange('stripe_nfc', 'backendUrl', value)}
-              editable={!isLoading}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
-
-          <View style={styles.optionRow}>
-            <Text style={styles.label}>{t('settings.payment.useDirectApi')}</Text>
-            <TouchableOpacity
-              style={[
-                styles.toggleButton,
-                paymentSettings.stripe_nfc?.useDirectApi ? styles.toggleActive : styles.toggleInactive,
-                isLoading && styles.disabled,
-              ]}
-              onPress={() => handleProviderSettingChange('stripe_nfc', 'useDirectApi', !paymentSettings.stripe_nfc?.useDirectApi)}
-              disabled={isLoading}
-            >
-              <Text style={styles.toggleText}>
-                {paymentSettings.stripe_nfc?.useDirectApi ? t('settings.payment.on') : t('settings.payment.off')}
-              </Text>
-            </TouchableOpacity>
-          </View>
+        <View style={styles.optionRow}>
+          <Text style={styles.label}>{t('settings.payment.enableNfcReader')}</Text>
+          <TouchableOpacity
+            style={[styles.toggleButton, s.enableNfc ? styles.toggleActive : styles.toggleInactive, isLoading && styles.disabled]}
+            onPress={() => handleProviderSettingChange('stripe_nfc', 'enableNfc', !s.enableNfc)}
+            disabled={isLoading}
+          >
+            <Text style={styles.toggleText}>{s.enableNfc ? t('settings.payment.on') : t('settings.payment.off')}</Text>
+          </TouchableOpacity>
         </View>
 
-        {/* Reader Configuration Section */}
-        <View style={[styles.settingGroup, styles.sectionMargin]}>
-          <Text style={styles.settingLabel}>{t('settings.payment.readerConfig')}</Text>
-          <View style={styles.optionRow}>
-            <Text style={styles.label}>{t('settings.payment.enableNfcReader')}</Text>
-            <TouchableOpacity
-              style={[
-                styles.toggleButton,
-                paymentSettings.stripe_nfc?.enableNfc ? styles.toggleActive : styles.toggleInactive,
-                isLoading && styles.disabled,
-              ]}
-              onPress={() => handleProviderSettingChange('stripe_nfc', 'enableNfc', !paymentSettings.stripe_nfc?.enableNfc)}
-              disabled={isLoading}
-            >
-              <Text style={styles.toggleText}>
-                {paymentSettings.stripe_nfc?.enableNfc ? t('settings.payment.on') : t('settings.payment.off')}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.optionRow}>
-            <Text style={styles.label}>{t('settings.payment.useSimulatedReader')}</Text>
-            <TouchableOpacity
-              style={[
-                styles.toggleButton,
-                paymentSettings.stripe_nfc?.useSimulatedReader ? styles.toggleActive : styles.toggleInactive,
-                isLoading && styles.disabled,
-              ]}
-              onPress={() =>
-                handleProviderSettingChange('stripe_nfc', 'useSimulatedReader', !paymentSettings.stripe_nfc?.useSimulatedReader)
-              }
-              disabled={isLoading}
-            >
-              <Text style={styles.toggleText}>
-                {paymentSettings.stripe_nfc?.useSimulatedReader ? t('settings.payment.on') : t('settings.payment.off')}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text>{t('settings.payment.connectionTimeout')}</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="30"
-              value={paymentSettings.stripe_nfc?.connectionTimeout || '30'}
-              onChangeText={value => handleProviderSettingChange('stripe_nfc', 'connectionTimeout', value)}
-              editable={!isLoading}
-              keyboardType="numeric"
-            />
-          </View>
+        <View style={styles.optionRow}>
+          <Text style={styles.label}>{t('settings.payment.useSimulatedReader')}</Text>
+          <TouchableOpacity
+            style={[styles.toggleButton, s.useSimulatedReader ? styles.toggleActive : styles.toggleInactive, isLoading && styles.disabled]}
+            onPress={() => handleProviderSettingChange('stripe_nfc', 'useSimulatedReader', !s.useSimulatedReader)}
+            disabled={isLoading}
+          >
+            <Text style={styles.toggleText}>{s.useSimulatedReader ? t('settings.payment.on') : t('settings.payment.off')}</Text>
+          </TouchableOpacity>
         </View>
 
-        {/* Test Connection Button */}
         <TouchableOpacity
-          style={[styles.verticalButton, styles.testButton, isLoading && styles.buttonDisabled, styles.sectionMarginTop]}
+          style={[styles.verticalButton, styles.testButton, isLoading && styles.buttonDisabled, { marginTop: spacing.md }]}
           onPress={async () => {
-            try {
-              // Save settings first
-              await saveSettings(paymentSettings);
-              // Then test connection
-              await testPaymentConnection();
-            } catch {
-              Alert.alert(t('common.error'), t('settings.payment.connectionTestFailed'));
-            }
+            await saveSettings(paymentSettings);
+            await testPaymentConnection();
           }}
           disabled={isLoading}
         >
@@ -377,18 +255,50 @@ const PaymentSettingsTab = () => {
     );
   };
 
-  // Render Square form
+  const renderStripeForm = () => {
+    if (paymentSettings.provider !== PaymentProvider.STRIPE) return null;
+    const s = paymentSettings.stripe;
+    return (
+      <View style={styles.settingGroup}>
+        <Text style={styles.settingLabel}>{t('settings.payment.stripeSettings')}</Text>
+        <View style={styles.inputGroup}>
+          <Text>{t('settings.payment.apiKey')}</Text>
+          <TextInput
+            style={styles.input}
+            placeholder={t('settings.payment.stripeApiKeyPlaceholder')}
+            value={s.apiKey ?? ''}
+            onChangeText={v => handleProviderSettingChange('stripe', 'apiKey', v)}
+            editable={!isLoading}
+            secureTextEntry
+            autoCapitalize="none"
+          />
+        </View>
+        <View style={styles.inputGroup}>
+          <Text>{t('settings.payment.locationId')}</Text>
+          <TextInput
+            style={styles.input}
+            placeholder={t('settings.payment.stripeLocationPlaceholder')}
+            value={s.locationId ?? ''}
+            onChangeText={v => handleProviderSettingChange('stripe', 'locationId', v)}
+            editable={!isLoading}
+            autoCapitalize="none"
+          />
+        </View>
+      </View>
+    );
+  };
+
   const renderSquareForm = () => {
     if (paymentSettings.provider !== PaymentProvider.SQUARE) return null;
-
+    const s = paymentSettings.square;
     return (
       <View style={styles.settingGroup}>
         <Text style={styles.settingLabel}>{t('settings.payment.squareSettings')}</Text>
         <View style={styles.inputGroup}>
           <TextInput
             style={styles.input}
-            value={paymentSettings.square?.applicationId || ''}
-            onChangeText={value => handleProviderSettingChange('square', 'applicationId', value)}
+            value={s.applicationId}
+            onChangeText={v => handleProviderSettingChange('square', 'applicationId', v)}
             placeholder={t('settings.payment.applicationId')}
             editable={!isLoading}
           />
@@ -396,8 +306,8 @@ const PaymentSettingsTab = () => {
         <View style={styles.inputGroup}>
           <TextInput
             style={styles.input}
-            value={paymentSettings.square?.locationId || ''}
-            onChangeText={value => handleProviderSettingChange('square', 'locationId', value)}
+            value={s.locationId}
+            onChangeText={v => handleProviderSettingChange('square', 'locationId', v)}
             placeholder={t('settings.payment.locationId')}
             editable={!isLoading}
           />
@@ -405,8 +315,8 @@ const PaymentSettingsTab = () => {
         <View style={styles.inputGroup}>
           <TextInput
             style={styles.input}
-            value={paymentSettings.square?.accessToken || ''}
-            onChangeText={value => handleProviderSettingChange('square', 'accessToken', value)}
+            value={s.accessToken}
+            onChangeText={v => handleProviderSettingChange('square', 'accessToken', v)}
             placeholder={t('settings.payment.accessToken')}
             secureTextEntry
             editable={!isLoading}
@@ -416,30 +326,140 @@ const PaymentSettingsTab = () => {
     );
   };
 
-  // Render loading state
+  const renderAdyenForm = () => {
+    if (paymentSettings.provider !== PaymentProvider.ADYEN) return null;
+    const s = paymentSettings.adyen;
+    return (
+      <View style={styles.settingGroup}>
+        <Text style={styles.settingLabel}>{t('settings.payment.adyenSettings', { defaultValue: 'Adyen Settings' })}</Text>
+        <View style={styles.inputGroup}>
+          <Text>{t('settings.payment.apiKey')}</Text>
+          <TextInput
+            style={styles.input}
+            value={s.apiKey}
+            onChangeText={v => handleProviderSettingChange('adyen', 'apiKey', v)}
+            placeholder="AQE..."
+            secureTextEntry
+            editable={!isLoading}
+            autoCapitalize="none"
+          />
+        </View>
+        <View style={styles.inputGroup}>
+          <Text>{t('settings.payment.publishableKey', { defaultValue: 'Client Key' })}</Text>
+          <TextInput
+            style={styles.input}
+            value={s.clientKey}
+            onChangeText={v => handleProviderSettingChange('adyen', 'clientKey', v)}
+            placeholder="test_..."
+            editable={!isLoading}
+            autoCapitalize="none"
+          />
+        </View>
+        <View style={styles.inputGroup}>
+          <Text>{t('settings.payment.merchantAccount', { defaultValue: 'Merchant Account' })}</Text>
+          <TextInput
+            style={styles.input}
+            value={s.merchantAccount}
+            onChangeText={v => handleProviderSettingChange('adyen', 'merchantAccount', v)}
+            placeholder="YourMerchantAccount"
+            editable={!isLoading}
+            autoCapitalize="none"
+          />
+        </View>
+        <View style={styles.optionRow}>
+          <Text style={styles.label}>{t('settings.payment.environment', { defaultValue: 'Environment' })}</Text>
+          <View style={styles.radioGroup}>
+            {(['test', 'live'] as const).map(env => (
+              <TouchableOpacity
+                key={env}
+                style={[styles.radioButton, s.environment === env && styles.radioButtonSelected]}
+                onPress={() => handleProviderSettingChange('adyen', 'environment', env)}
+                disabled={isLoading}
+              >
+                <View style={[styles.radioButtonOuter, s.environment === env && styles.radioButtonOuterSelected]}>
+                  {s.environment === env && <View style={styles.radioButtonInner} />}
+                </View>
+                <Text style={styles.radioButtonLabel}>{env.charAt(0).toUpperCase() + env.slice(1)}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      </View>
+    );
+  };
+
+  const renderTapPaymentsForm = () => {
+    if (paymentSettings.provider !== PaymentProvider.TAP_PAYMENTS) return null;
+    const s = paymentSettings.tap_payments;
+    return (
+      <View style={styles.settingGroup}>
+        <Text style={styles.settingLabel}>{t('settings.payment.tapPaymentsSettings', { defaultValue: 'Tap Payments Settings' })}</Text>
+        <View style={styles.inputGroup}>
+          <Text>{t('settings.payment.apiKey')}</Text>
+          <TextInput
+            style={styles.input}
+            value={s.apiKey}
+            onChangeText={v => handleProviderSettingChange('tap_payments', 'apiKey', v)}
+            placeholder="sk_..."
+            secureTextEntry
+            editable={!isLoading}
+            autoCapitalize="none"
+          />
+        </View>
+        <View style={styles.inputGroup}>
+          <Text>{t('settings.payment.publishableKey')}</Text>
+          <TextInput
+            style={styles.input}
+            value={s.publishableKey}
+            onChangeText={v => handleProviderSettingChange('tap_payments', 'publishableKey', v)}
+            placeholder="pk_..."
+            editable={!isLoading}
+            autoCapitalize="none"
+          />
+        </View>
+        <View style={styles.inputGroup}>
+          <Text>{t('settings.payment.merchantId', { defaultValue: 'Merchant ID' })}</Text>
+          <TextInput
+            style={styles.input}
+            value={s.merchantId}
+            onChangeText={v => handleProviderSettingChange('tap_payments', 'merchantId', v)}
+            placeholder="merchant_..."
+            editable={!isLoading}
+            autoCapitalize="none"
+          />
+        </View>
+      </View>
+    );
+  };
+
+  // ---------------------------------------------------------------------------
+  // Loading state
+  // ---------------------------------------------------------------------------
+
   if (isLoading && !paymentSettings.provider) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#0a84ff" />
+        <ActivityIndicator size="large" color={lightColors.primary} />
         <Text style={styles.loadingText}>{t('settings.payment.loadingPayment')}</Text>
       </View>
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
+
   return (
     <ScrollView style={styles.container}>
       <Text style={styles.sectionTitle}>{t('settings.payment.title')}</Text>
 
-      {/* Provider Selection */}
       {renderProviderSelection()}
-
-      {/* Provider-specific forms */}
-      {renderWorldpayForm()}
-      {renderStripeForm()}
       {renderStripeNfcForm()}
+      {renderStripeForm()}
       {renderSquareForm()}
+      {renderAdyenForm()}
+      {renderTapPaymentsForm()}
 
-      {/* Sync Inventory Toggle */}
       <View style={styles.optionRow}>
         <Text style={styles.label}>{t('settings.payment.syncInventory')}</Text>
         <TouchableOpacity
@@ -448,13 +468,7 @@ const PaymentSettingsTab = () => {
             paymentSettings.syncInventory ? styles.toggleActive : styles.toggleInactive,
             isLoading && styles.disabled,
           ]}
-          onPress={() =>
-            !isLoading &&
-            handlePaymentSettingsChange({
-              ...paymentSettings,
-              syncInventory: !paymentSettings.syncInventory,
-            })
-          }
+          onPress={() => !isLoading && handlePaymentSettingsChange({ syncInventory: !paymentSettings.syncInventory })}
           disabled={isLoading}
         >
           <Text style={styles.toggleText}>{paymentSettings.syncInventory ? 'ON' : 'OFF'}</Text>
@@ -493,7 +507,6 @@ const PaymentSettingsTab = () => {
         </View>
       </View>
 
-      {/* Status messages */}
       {(error || saveStatus === 'saved') && (
         <View style={styles.statusContainer}>
           {error ? (
@@ -507,12 +520,12 @@ const PaymentSettingsTab = () => {
   );
 };
 
+// ---------------------------------------------------------------------------
+// Styles
+// ---------------------------------------------------------------------------
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: spacing.md,
-    backgroundColor: lightColors.background,
-  },
+  container: { flex: 1, padding: spacing.md, backgroundColor: lightColors.background },
   sectionTitle: {
     fontSize: typography.fontSize.xl,
     fontWeight: typography.fontWeight.semiBold as '600',
@@ -532,48 +545,30 @@ const styles = StyleSheet.create({
     color: lightColors.textPrimary,
     marginBottom: spacing.md,
   },
-  radioGroup: {
-    flexDirection: 'row' as const,
-    flexWrap: 'wrap' as const,
-    marginBottom: spacing.xs,
-  },
+  radioGroup: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: spacing.xs },
   radioButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
+    flexDirection: 'row',
+    alignItems: 'center',
     marginRight: spacing.lg,
     marginBottom: spacing.sm,
     padding: spacing.xs,
     borderRadius: borderRadius.sm,
   },
-  radioButtonSelected: {
-    backgroundColor: `${lightColors.primary}20`,
-  },
+  radioButtonSelected: { backgroundColor: `${lightColors.primary}20` },
   radioButtonOuter: {
     width: 22,
     height: 22,
     borderRadius: 12,
     borderWidth: 2,
     borderColor: lightColors.textSecondary,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginRight: spacing.sm,
   },
-  radioButtonOuterSelected: {
-    borderColor: lightColors.primary,
-  },
-  radioButtonInner: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: lightColors.primary,
-  },
-  radioButtonLabel: {
-    fontSize: typography.fontSize.md,
-    color: lightColors.textPrimary,
-  },
-  inputGroup: {
-    marginBottom: spacing.md,
-  },
+  radioButtonOuterSelected: { borderColor: lightColors.primary },
+  radioButtonInner: { width: 12, height: 12, borderRadius: 6, backgroundColor: lightColors.primary },
+  radioButtonLabel: { fontSize: typography.fontSize.md, color: lightColors.textPrimary },
+  inputGroup: { marginBottom: spacing.md },
   input: {
     borderWidth: 1,
     borderColor: lightColors.border,
@@ -583,63 +578,35 @@ const styles = StyleSheet.create({
     backgroundColor: lightColors.surface,
     color: lightColors.textPrimary,
   },
-  // Toggle button styles
   toggleButton: {
     width: 60,
     height: 30,
     borderRadius: borderRadius.round,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    flexDirection: 'row' as const,
+    justifyContent: 'center',
+    alignItems: 'center',
     paddingHorizontal: spacing.xs,
   },
-  toggleActive: {
-    backgroundColor: lightColors.primary,
-  },
-  toggleInactive: {
-    backgroundColor: lightColors.divider,
-  },
-  toggleText: {
-    color: lightColors.textOnPrimary,
-    fontWeight: typography.fontWeight.bold as '700',
-    fontSize: typography.fontSize.xs,
-  },
-  disabled: {
-    opacity: 0.5,
-  },
+  toggleActive: { backgroundColor: lightColors.primary },
+  toggleInactive: { backgroundColor: lightColors.divider },
+  toggleText: { color: lightColors.textOnPrimary, fontWeight: typography.fontWeight.bold as '700', fontSize: typography.fontSize.xs },
+  disabled: { opacity: 0.5 },
   optionRow: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'center' as const,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: spacing.md,
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.md,
   },
-  label: {
-    fontSize: typography.fontSize.md,
-    color: lightColors.textPrimary,
-    flex: 1,
-    marginRight: spacing.md,
-  },
-  verticalButtonGroup: {
-    width: '100%',
-    paddingHorizontal: spacing.md,
-    marginTop: spacing.md,
-    marginBottom: spacing.xs,
-    gap: spacing.sm,
-  },
-  horizontalButtonGroup: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    width: '100%',
-    gap: spacing.sm,
-  },
+  label: { fontSize: typography.fontSize.md, color: lightColors.textPrimary, flex: 1, marginRight: spacing.md },
+  verticalButtonGroup: { width: '100%', paddingHorizontal: spacing.md, marginTop: spacing.md, marginBottom: spacing.xs, gap: spacing.sm },
+  horizontalButtonGroup: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', gap: spacing.sm },
   verticalButton: {
     width: '100%',
     paddingVertical: spacing.sm,
     borderRadius: borderRadius.md,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
+    alignItems: 'center',
+    justifyContent: 'center',
     height: 48,
     ...elevation.low,
   },
@@ -647,8 +614,8 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: spacing.sm,
     borderRadius: borderRadius.md,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
+    alignItems: 'center',
+    justifyContent: 'center',
     height: 48,
     ...elevation.low,
   },
@@ -663,53 +630,15 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     borderLeftColor: lightColors.primary,
   },
-  saveButton: {
-    backgroundColor: lightColors.primary,
-  },
-  testButton: {
-    backgroundColor: lightColors.success,
-  },
-  cancelButton: {
-    backgroundColor: lightColors.textSecondary,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
-  buttonText: {
-    color: lightColors.textOnPrimary,
-    fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.semiBold as '600',
-  },
-  errorText: {
-    color: lightColors.error,
-    fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.medium as '500',
-    textAlign: 'left' as const,
-  },
-  successText: {
-    color: lightColors.success,
-    fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.medium as '500',
-    textAlign: 'left' as const,
-  },
-  loadingText: {
-    marginTop: spacing.md,
-    color: lightColors.textSecondary,
-    fontSize: typography.fontSize.md,
-    textAlign: 'center' as const,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    padding: spacing.lg,
-  },
-  sectionMargin: {
-    marginBottom: 20,
-  },
-  sectionMarginTop: {
-    marginTop: 20,
-  },
+  saveButton: { backgroundColor: lightColors.primary },
+  testButton: { backgroundColor: lightColors.success },
+  cancelButton: { backgroundColor: lightColors.textSecondary },
+  buttonDisabled: { opacity: 0.5 },
+  buttonText: { color: lightColors.textOnPrimary, fontSize: typography.fontSize.md, fontWeight: typography.fontWeight.semiBold as '600' },
+  errorText: { color: lightColors.error, fontSize: typography.fontSize.md, fontWeight: typography.fontWeight.medium as '500' },
+  successText: { color: lightColors.success, fontSize: typography.fontSize.md, fontWeight: typography.fontWeight.medium as '500' },
+  loadingText: { marginTop: spacing.md, color: lightColors.textSecondary, fontSize: typography.fontSize.md, textAlign: 'center' },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.lg },
 });
 
 export default PaymentSettingsTab;

@@ -25,7 +25,7 @@ Website: [retailpos.org](https://retailpos.org)
 - **Notifications** — Real-time alerts for sync events and returns
 - **Audit Logging** — Append-only event log for orders, payments, refunds, and auth
 - **Hardware Integration** — Receipt printers (ESC/POS), barcode scanners (camera/BT/USB/QR), payment terminals, cash drawers, kitchen display systems (KDS), customer-facing display
-- **Payment Providers** — Worldpay, Stripe, Stripe NFC, Square, Electron Stripe
+- **Payment Providers** — Stripe NFC (tap-to-pay), Stripe Terminal, Square, Adyen, Tap Payments (React Native SDK providers only; non-SDK providers via Instore API)
 - **Authentication** — PIN, biometric, password, magstripe, RFID/NFC, platform auth
 - **Role-Based Access** — Admin, Manager, Cashier with least-privilege defaults
 - **Cross-Platform** — iOS, Android, Web, Desktop (Electron)
@@ -282,15 +282,15 @@ The `docs/steering/` directory contains the **single source of truth** for devel
 
 ### Hardware Specs
 
-| Spec                                                        | Purpose                                     |
-| ----------------------------------------------------------- | ------------------------------------------- |
-| [Scanner](docs/specs/hardware/scanner.md)                   | Camera, BT, USB, QR hardware                |
-| [Cash Drawer](docs/specs/hardware/cash-drawer.md)           | ESC/POS, Electron IPC, no-op                |
-| [Printer](docs/specs/hardware/printer.md)                   | Thermal receipt + daily reports             |
-| [Payment Terminal](docs/specs/hardware/payment.md)          | Worldpay, Stripe, Square, Electron          |
-| [Authentication](docs/specs/hardware/auth.md)               | PIN, biometric, magstripe, RFID/NFC         |
-| [KDS](docs/specs/hardware/kds.md)                           | Kitchen display — HTTP, WebSocket, Electron |
-| [Customer Display](docs/specs/hardware/customer-display.md) | Customer-facing display — WebSocket, serial |
+| Spec                                                        | Purpose                                         |
+| ----------------------------------------------------------- | ----------------------------------------------- |
+| [Scanner](docs/specs/hardware/scanner.md)                   | Camera, BT, USB, QR hardware                    |
+| [Cash Drawer](docs/specs/hardware/cash-drawer.md)           | ESC/POS, Electron IPC, no-op                    |
+| [Printer](docs/specs/hardware/printer.md)                   | Thermal receipt + daily reports                 |
+| [Payment Terminal](docs/specs/hardware/payment.md)          | Stripe NFC, Stripe, Square, Adyen, Tap Payments |
+| [Authentication](docs/specs/hardware/auth.md)               | PIN, biometric, magstripe, RFID/NFC             |
+| [KDS](docs/specs/hardware/kds.md)                           | Kitchen display — HTTP, WebSocket, Electron     |
+| [Customer Display](docs/specs/hardware/customer-display.md) | Customer-facing display — WebSocket, serial     |
 
 ---
 

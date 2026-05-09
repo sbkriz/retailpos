@@ -110,12 +110,15 @@ export class MemorySecretsService implements SecretsServiceInterface {
    * Adds some default mock secrets for testing
    */
   private async addDefaultMockSecrets(): Promise<void> {
-    // Add default mock secrets for payment services
-    await this.storeSecret('WORLDPAY_MERCHANT_ID', 'mock-merchant-123');
-    await this.storeSecret('WORLDPAY_SITE_REFERENCE', 'mock-site-ref-456');
-    await this.storeSecret('WORLDPAY_INSTALLATION_ID', 'mock-install-789');
+    // Payment provider mock secrets — tap-to-pay SDK providers only
     await this.storeSecret('STRIPE_PUBLISHABLE_KEY', 'pk_test_mock123456789');
+    await this.storeSecret('STRIPE_API_KEY', 'sk_test_mock123456789');
     await this.storeSecret('SQUARE_APPLICATION_ID', 'sandbox-sq0idb-mock-123456');
+    await this.storeSecret('SQUARE_ACCESS_TOKEN', 'EAAAEmock_square_access_token');
+    await this.storeSecret('ADYEN_API_KEY', 'AQEmock_adyen_api_key_test');
+    await this.storeSecret('ADYEN_CLIENT_KEY', 'test_mock_adyen_client_key');
+    await this.storeSecret('TAP_PAYMENTS_API_KEY', 'sk_test_mock_tap_payments_key');
+    await this.storeSecret('TAP_PAYMENTS_PUBLISHABLE_KEY', 'pk_test_mock_tap_payments_key');
 
     // Add default mock secrets for Shopify
     await this.storeSecret('SHOPIFY_API_KEY', 'mock-shopify-api-key');

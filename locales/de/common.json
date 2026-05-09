@@ -104,11 +104,6 @@
     "testConnection": "Verbindung testen",
     "connectionSuccess": "Verbindungstest erfolgreich.",
     "connectionFailed": "Verbindungstest fehlgeschlagen.",
-    "worldpay": {
-      "title": "Worldpay-Einstellungen",
-      "merchantId": "Händler-ID",
-      "merchantIdRequired": "Bitte geben Sie eine Worldpay Händler-ID ein."
-    },
     "stripe": {
       "title": "Stripe Terminal (PED) Einstellungen",
       "apiKey": "API-Schlüssel",
@@ -128,6 +123,20 @@
       "locationId": "Standort-ID",
       "accessToken": "Zugriffstoken",
       "applicationIdRequired": "Bitte geben Sie eine Square Anwendungs-ID ein."
+    },
+    "adyen": {
+      "title": "Adyen-Einstellungen",
+      "apiKey": "API-Schlüssel",
+      "clientKey": "Client-Schlüssel",
+      "merchantAccount": "Händlerkonto",
+      "required": "Bitte geben Sie sowohl den Adyen API-Schlüssel als auch das Händlerkonto ein."
+    },
+    "tapPayments": {
+      "title": "Tap Payments Einstellungen",
+      "apiKey": "API-Schlüssel",
+      "publishableKey": "Veröffentlichbarer Schlüssel",
+      "merchantId": "Händler-ID",
+      "required": "Bitte geben Sie sowohl den Tap Payments API-Schlüssel als auch die Händler-ID ein."
     },
     "syncInventory": "Inventar synchronisieren"
   },
@@ -295,10 +304,7 @@
       "connectionError": "Verbindung zum Zahlungsanbieter fehlgeschlagen",
       "connectionTestFailed": "Verbindungstest fehlgeschlagen. Bitte überprüfen Sie Ihre Einstellungen.",
       "loadingPayment": "Zahlungseinstellungen werden geladen...",
-      "worldpaySettings": "Worldpay-Einstellungen",
-      "merchantId": "Händler-ID",
-      "siteReference": "Website-Referenz",
-      "stripeSettings": "Stripe Terminal (PED) Einstellungen",
+      "stripeSettings": "Stripe Terminal Einstellungen",
       "stripeNfcSettings": "Stripe NFC Tap to Pay Einstellungen",
       "apiCredentials": "API-Zugangsdaten",
       "apiKey": "API-Schlüssel",
@@ -319,6 +325,11 @@
       "squareSettings": "Square-Einstellungen",
       "applicationId": "Anwendungs-ID",
       "accessToken": "Zugriffstoken",
+      "adyenSettings": "Adyen-Einstellungen",
+      "merchantAccount": "Händlerkonto",
+      "environment": "Umgebung",
+      "tapPaymentsSettings": "Tap Payments Einstellungen",
+      "merchantId": "Händler-ID",
       "on": "Ein",
       "off": "Aus"
     },

@@ -185,12 +185,12 @@ Three fixed, immutable roles. Role rank: `admin (3) > manager (2) > cashier (1)`
 
 All hardware peripherals use the same interface → factory → implementation pattern:
 
-| Peripheral  | Mobile / Tablet                  | Electron Desktop         |
-| ----------- | -------------------------------- | ------------------------ |
-| Printer     | `UnifiedPrinterService`          | `ElectronPrinterService` |
-| Scanner     | Camera / BT / USB HID keydown    | `ElectronScannerService` |
-| Payment     | Stripe / NFC / Square / Worldpay | `ElectronPaymentService` |
-| Cash Drawer | `PrinterDrawerDriver` or NoOp    | `ElectronDrawerDriver`   |
+| Peripheral  | Mobile / Tablet                                     | Electron Desktop                              |
+| ----------- | --------------------------------------------------- | --------------------------------------------- |
+| Printer     | `UnifiedPrinterService`                             | `ElectronPrinterService`                      |
+| Scanner     | Camera / BT / USB HID keydown                       | `ElectronScannerService`                      |
+| Payment     | Stripe NFC / Stripe / Square / Adyen / Tap Payments | Instore API (no direct Electron payment path) |
+| Cash Drawer | `PrinterDrawerDriver` or NoOp                       | `ElectronDrawerDriver`                        |
 
 PED (PIN Entry Device) integration must go through the Instore API — never as a direct `PaymentProvider` in the POS client (ADR-015).
 
@@ -238,7 +238,7 @@ yarn test / lint / lint:fix / format    # quality gates
 - **Credentials** — stored via `SecretsService` (`react-native-keychain` in production; in-memory mock in dev)
 - **Environment** — `.env` is gitignored; never commit secrets
 - **Auth** — pluggable multi-method; PIN is always the fallback (ADR-008)
-- **Payments** — delegated to PCI-compliant SDKs (Stripe, Square, Worldpay)
+- **Payments** — delegated to PCI-compliant SDKs (Stripe, Square, Adyen, Tap Payments); non-SDK providers go through the Instore API
 - **Known gap** — PINs stored as plaintext in `users.pin`; must be hashed before production
 
 ---

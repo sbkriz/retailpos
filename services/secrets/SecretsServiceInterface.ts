@@ -44,12 +44,15 @@ export interface SecretsServiceInterface {
  * Common enum for secret keys used throughout the application
  */
 export enum SecretKeys {
-  // Payment provider secrets
-  WORLDPAY_MERCHANT_ID = 'WORLDPAY_MERCHANT_ID',
-  WORLDPAY_SITE_REFERENCE = 'WORLDPAY_SITE_REFERENCE',
-  WORLDPAY_INSTALLATION_ID = 'WORLDPAY_INSTALLATION_ID',
+  // Payment provider secrets — tap-to-pay SDK providers only
   STRIPE_PUBLISHABLE_KEY = 'STRIPE_PUBLISHABLE_KEY',
+  STRIPE_API_KEY = 'STRIPE_API_KEY',
   SQUARE_APPLICATION_ID = 'SQUARE_APPLICATION_ID',
+  SQUARE_ACCESS_TOKEN = 'SQUARE_ACCESS_TOKEN',
+  ADYEN_API_KEY = 'ADYEN_API_KEY',
+  ADYEN_CLIENT_KEY = 'ADYEN_CLIENT_KEY',
+  TAP_PAYMENTS_API_KEY = 'TAP_PAYMENTS_API_KEY',
+  TAP_PAYMENTS_PUBLISHABLE_KEY = 'TAP_PAYMENTS_PUBLISHABLE_KEY',
 
   // E-commerce platform secrets
   // Shopify

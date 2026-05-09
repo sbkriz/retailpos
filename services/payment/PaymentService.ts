@@ -3,32 +3,51 @@ import { PaymentProvider, PaymentServiceFactory } from './PaymentServiceFactory'
 import { LoggerFactory } from '../logger/LoggerFactory';
 
 /**
- * Unified payment service that combines service functionality with provider switching
+ * Singleton facade over the active PaymentServiceInterface implementation.
+ *
+ * All method calls are delegated to the provider returned by
+ * PaymentServiceFactory.getPaymentService(). The active provider can be
+ * swapped at runtime via setPaymentProvider(); the swap is atomic — the next
+ * call to any method will use the new provider.
  */
 class PaymentService implements PaymentServiceInterface {
-  private serviceFactory: PaymentServiceFactory;
+  private readonly serviceFactory: PaymentServiceFactory;
   private activeService: PaymentServiceInterface;
-  private logger = LoggerFactory.getInstance().createLogger('PaymentService');
+  private readonly logger = LoggerFactory.getInstance().createLogger('PaymentService');
 
   constructor() {
-    // Use the factory to get the appropriate service implementation
     this.serviceFactory = PaymentServiceFactory.getInstance();
     this.activeService = this.serviceFactory.getPaymentService();
   }
 
-  // Method to switch payment providers
+  // ---------------------------------------------------------------------------
+  // Provider management
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Switches the active payment provider.
+   * Disconnects from the current provider before activating the new one.
+   *
+   * @throws {Error} 'Unsupported payment provider: <value>' for unknown values.
+   */
   setPaymentProvider(provider: PaymentProvider): void {
+    // Disconnect from the current provider before switching.
+    if (this.activeService.isTerminalConnected()) {
+      this.activeService.disconnect();
+    }
     this.serviceFactory.setPaymentProvider(provider);
     this.activeService = this.serviceFactory.getPaymentService();
-    this.logger.info(`Provider set to: ${provider}`);
+    this.logger.info(`Provider switched to: ${provider}`);
   }
 
-  // Get current provider
   getCurrentProvider(): PaymentProvider {
     return this.serviceFactory.getCurrentProvider();
   }
 
-  // PaymentServiceInterface implementation - delegate to active service
+  // ---------------------------------------------------------------------------
+  // PaymentServiceInterface — delegated to active provider
+  // ---------------------------------------------------------------------------
+
   async connectToTerminal(deviceId: string): Promise<boolean> {
     return this.activeService.connectToTerminal(deviceId);
   }
@@ -38,12 +57,10 @@ class PaymentService implements PaymentServiceInterface {
   }
 
   disconnect(): void {
-    // Handle both sync and async disconnect methods
     const result = this.activeService.disconnect();
     if (result instanceof Promise) {
-      // If it's async, handle it but don't wait
       result.catch(error => {
-        this.logger.error('Error during disconnect:', error);
+        this.logger.error({ message: 'Error during disconnect' }, error instanceof Error ? error : new Error(String(error)));
       });
     }
   }
@@ -60,7 +77,10 @@ class PaymentService implements PaymentServiceInterface {
     return this.activeService.getAvailableTerminals();
   }
 
-  // Optional methods - check if they exist on the active service first
+  // ---------------------------------------------------------------------------
+  // Optional methods — guarded delegation
+  // ---------------------------------------------------------------------------
+
   async getTransactionStatus(transactionId: string): Promise<PaymentResponse> {
     if (this.activeService.getTransactionStatus) {
       return this.activeService.getTransactionStatus(transactionId);
@@ -83,6 +103,6 @@ class PaymentService implements PaymentServiceInterface {
   }
 }
 
-// Export a singleton instance
+// Export a singleton instance consumed by usePayment and other callers.
 const paymentService = new PaymentService();
 export default paymentService;

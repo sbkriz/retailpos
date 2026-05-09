@@ -104,13 +104,8 @@
     "testConnection": "Test Connection",
     "connectionSuccess": "Connection test succeeded.",
     "connectionFailed": "Connection test failed.",
-    "worldpay": {
-      "title": "Worldpay Settings",
-      "merchantId": "Merchant ID",
-      "merchantIdRequired": "Please enter a Worldpay Merchant ID."
-    },
     "stripe": {
-      "title": "Stripe Terminal (PED) Settings",
+      "title": "Stripe Terminal Settings",
       "apiKey": "API Key",
       "locationId": "Location ID",
       "required": "Please enter both Stripe API Key and Location ID."
@@ -128,6 +123,20 @@
       "locationId": "Location ID",
       "accessToken": "Access Token",
       "applicationIdRequired": "Please enter a Square Application ID."
+    },
+    "adyen": {
+      "title": "Adyen Settings",
+      "apiKey": "API Key",
+      "clientKey": "Client Key",
+      "merchantAccount": "Merchant Account",
+      "required": "Please enter both Adyen API Key and Merchant Account."
+    },
+    "tapPayments": {
+      "title": "Tap Payments Settings",
+      "apiKey": "API Key",
+      "publishableKey": "Publishable Key",
+      "merchantId": "Merchant ID",
+      "required": "Please enter both Tap Payments API Key and Merchant ID."
     },
     "syncInventory": "Sync Inventory"
   },
@@ -295,10 +304,7 @@
       "connectionError": "Failed to connect to payment provider",
       "connectionTestFailed": "Connection test failed. Please check your settings.",
       "loadingPayment": "Loading payment settings...",
-      "worldpaySettings": "Worldpay Settings",
-      "merchantId": "Merchant ID",
-      "siteReference": "Site Reference",
-      "stripeSettings": "Stripe Terminal (PED) Settings",
+      "stripeSettings": "Stripe Terminal Settings",
       "stripeNfcSettings": "Stripe NFC Tap to Pay Settings",
       "apiCredentials": "API Credentials",
       "apiKey": "API Key",
@@ -319,6 +325,11 @@
       "squareSettings": "Square Settings",
       "applicationId": "Application ID",
       "accessToken": "Access Token",
+      "adyenSettings": "Adyen Settings",
+      "merchantAccount": "Merchant Account",
+      "environment": "Environment",
+      "tapPaymentsSettings": "Tap Payments Settings",
+      "merchantId": "Merchant ID",
       "on": "On",
       "off": "Off"
     },

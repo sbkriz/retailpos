@@ -2,7 +2,7 @@
 
 > **System**: RetailPOS – Settings Tab Content
 > **Actor**: Manager, Admin
-> **Date**: 2026-04-13
+> **Date**: 2026-05-09
 > **Source**: `screens/settings/GenericSettingsTab.tsx`, `screens/settings/POSConfigSettingsTab.tsx`, `screens/settings/AuthMethodSettingsTab.tsx`, `screens/settings/PaymentSettingsTab.tsx`, `screens/settings/EcommerceSettingsTab.tsx`, `screens/settings/OfflineManagementTab.tsx`, `screens/settings/LocalApiSettingsTab.tsx`, `screens/settings/PrinterSettingsTab.tsx`, `screens/settings/ScannerSettingsTab.tsx`, `screens/settings/ReceiptSettingsTab.tsx`, `screens/settings/ThemeSettingsTab.tsx`
 
 ---
@@ -93,11 +93,13 @@ Cross-references to other specs:
 
 **4.3** The system shall render the provider-specific credential form only for the selected provider:
 
-- `WORLDPAY` → merchant ID, site reference
+- `STRIPE_NFC` → API key (secure), publishable key, location ID, backend URL, direct API toggle, NFC enable toggle, simulated reader toggle, connection timeout; includes a "Test Terminal Connection" button
 - `STRIPE` → API key (secure), location ID
-- `STRIPE_NFC` → API key, publishable key, location ID, backend URL, direct API toggle, NFC enable toggle, simulated reader toggle, connection timeout
 - `SQUARE` → application ID, location ID, access token (secure)
-- `ELECTRON_STRIPE` → no additional form (auto-selected on Electron)
+- `ADYEN` → API key (secure), client key, merchant account, environment selector (test / live)
+- `TAP_PAYMENTS` → API key (secure), publishable key, merchant ID
+
+> **Note**: Non-SDK provider must be configured through the Instore API layer. There is no Electron-specific payment form.
 
 **4.4** When the user taps "Test Connection", the system shall call `testConnection(provider)` and show a success or error alert.
 

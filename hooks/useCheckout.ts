@@ -45,7 +45,7 @@ export function useCheckout({ platform, onSuccess }: UseCheckoutOptions = {}) {
   const { basketItems, total, subtotal, tax, itemCount, basket } = useBasketState();
   const { currentOrder, startCheckout, markPaymentProcessing, completePayment, cancelOrder, cancelDraftOrder } = useCheckoutContext();
 
-  const { processPayment, isTerminalConnected } = usePayment();
+  const { processPayment, isTerminalConnected, getPaymentMode, getCurrentProvider } = usePayment();
   const { requestApproval } = useManagerApproval();
 
   const [isProcessing, setIsProcessing] = useState(false);
@@ -471,6 +471,9 @@ export function useCheckout({ platform, onSuccess }: UseCheckoutOptions = {}) {
     itemCount,
     // Terminal
     terminalConnected: isTerminalConnected(),
+    // Payment mode — drives which options CheckoutModal shows
+    paymentMode: getPaymentMode(),
+    activeProvider: getCurrentProvider(),
     // Actions
     handleStartCheckout,
     handleCancelCheckout,

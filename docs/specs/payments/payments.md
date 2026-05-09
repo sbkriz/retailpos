@@ -68,6 +68,8 @@ All providers share the same `PaymentRequest` / `PaymentResponse` contract. A si
 
 **1.6** The system shall throw `'<method> not supported by the current payment provider'` when an optional method (`getTransactionStatus`, `voidTransaction`, `refundTransaction`) is called on a provider that does not implement it.
 
+**1.7** The system shall expose `getPaymentMode()` from `usePayment`, returning `'tap_to_pay'` when running on mobile/tablet with an active tap-to-pay SDK provider, or `'cash_only'` in all other cases (desktop, web, no provider configured).
+
 ---
 
 ## 2. Event-Driven Requirements
@@ -337,6 +339,7 @@ PaymentServiceFactory.getPaymentService()
 | Mock mode activated (Expo Go / env)     | `PaymentServiceFactory.getPaymentService` (mock check)                     | `services/payment/PaymentServiceFactory.ts`   |
 | SDK load fallback to mock               | `PaymentServiceFactory.getPaymentService` (catch branch per provider)      | `services/payment/PaymentServiceFactory.ts`   |
 | Stable payment callbacks in React       | `usePayment` (useMemo + useCallback)                                       | `hooks/usePayment.ts`                         |
+| Payment mode resolved for checkout UI   | `usePayment.getPaymentMode()` (device + provider check)                    | `hooks/usePayment.ts`                         |
 | Terminal auto-scan on mount             | `PaymentTerminalScreen` useEffect → `handleScan()`                         | `screens/PaymentTerminalScreen.tsx`           |
 | Terminal list rendered                  | `PaymentTerminalScreen` (availableTerminals.map)                           | `screens/PaymentTerminalScreen.tsx`           |
 | Terminal connect                        | `PaymentTerminalScreen.handleConnect` → `connectToTerminal()`              | `screens/PaymentTerminalScreen.tsx`           |

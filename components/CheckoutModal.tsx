@@ -7,6 +7,8 @@ import PinKeypad from './PinKeypad';
 import { useCurrency } from '../hooks/useCurrency';
 import { useTranslate } from '../hooks/useTranslate';
 import type { PaymentLine as OrderPaymentLine } from '../services/order/order';
+import type { PaymentMode } from '../hooks/usePayment';
+import { PaymentProvider } from '../services/payment/PaymentServiceFactory';
 
 export type PaymentMethod = 'cash' | 'card' | 'terminal' | 'store_credit' | 'loyalty';
 
@@ -27,6 +29,13 @@ interface CheckoutModalProps {
   onCancel: () => void;
   isProcessing?: boolean;
   terminalConnected?: boolean;
+  /**
+   * Payment mode derived from the active provider and device type.
+   * Drives which payment options are shown.
+   */
+  paymentMode?: PaymentMode;
+  /** The currently active payment provider — used for labelling the terminal option. */
+  activeProvider?: PaymentProvider;
   /** Collected payment lines so far (split tender) */
   paymentLines?: OrderPaymentLine[];
   onAddPaymentLine?: (line: Omit<OrderPaymentLine, 'id' | 'processedAt'>) => void;
@@ -46,11 +55,67 @@ interface CheckoutModalProps {
 
 type ModalStep = 'method' | 'cash_tender' | 'split_tender';
 
-const PAYMENT_METHOD_KEYS: { id: PaymentMethod; labelKey: string; icon: string; descriptionKey: string }[] = [
-  { id: 'cash', labelKey: 'checkout.cash', icon: '💵', descriptionKey: 'checkout.cashDescription' },
-  { id: 'card', labelKey: 'checkout.card', icon: '💳', descriptionKey: 'checkout.cardDescription' },
-  { id: 'terminal', labelKey: 'checkout.terminal', icon: '📱', descriptionKey: 'checkout.terminalDescription' },
-];
+// ---------------------------------------------------------------------------
+// Provider → human-readable label + icon
+// ---------------------------------------------------------------------------
+
+const PROVIDER_LABEL: Record<PaymentProvider, string> = {
+  [PaymentProvider.STRIPE_NFC]: 'Stripe NFC',
+  [PaymentProvider.STRIPE]: 'Stripe Terminal',
+  [PaymentProvider.SQUARE]: 'Square',
+  [PaymentProvider.ADYEN]: 'Adyen',
+  [PaymentProvider.TAP_PAYMENTS]: 'Tap Payments',
+};
+
+const PROVIDER_ICON: Record<PaymentProvider, string> = {
+  [PaymentProvider.STRIPE_NFC]: '📲',
+  [PaymentProvider.STRIPE]: '💳',
+  [PaymentProvider.SQUARE]: '🟦',
+  [PaymentProvider.ADYEN]: '💳',
+  [PaymentProvider.TAP_PAYMENTS]: '📲',
+};
+
+// ---------------------------------------------------------------------------
+// Build the available payment method list for the current context
+// ---------------------------------------------------------------------------
+
+interface MethodEntry {
+  id: PaymentMethod;
+  label: string;
+  icon: string;
+  description: string;
+}
+
+function buildMethodList(paymentMode: PaymentMode, activeProvider: PaymentProvider | undefined, terminalConnected: boolean): MethodEntry[] {
+  const methods: MethodEntry[] = [];
+
+  // Cash is always available on every device.
+  methods.push({
+    id: 'cash',
+    label: 'Cash',
+    icon: '💵',
+    description: 'Accept physical cash and calculate change',
+  });
+
+  // Tap-to-pay is only available on mobile/tablet with an SDK provider.
+  if (paymentMode === 'tap_to_pay' && activeProvider) {
+    const providerLabel = PROVIDER_LABEL[activeProvider] ?? activeProvider;
+    const providerIcon = PROVIDER_ICON[activeProvider] ?? '📱';
+    const isNfc = activeProvider === PaymentProvider.STRIPE_NFC || activeProvider === PaymentProvider.TAP_PAYMENTS;
+    methods.push({
+      id: 'terminal',
+      label: isNfc ? `Tap to Pay (${providerLabel})` : `Card Terminal (${providerLabel})`,
+      icon: providerIcon,
+      description: terminalConnected
+        ? isNfc
+          ? 'Customer taps card or device to pay'
+          : 'Customer presents card to the reader'
+        : 'Terminal not connected — tap to connect',
+    });
+  }
+
+  return methods;
+}
 
 export const CheckoutModal: React.FC<CheckoutModalProps> = props => {
   const currency = useCurrency();
@@ -66,6 +131,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = props => {
     onCancel,
     isProcessing = false,
     terminalConnected = false,
+    paymentMode = 'cash_only',
+    activeProvider,
     paymentLines = [],
     onAddPaymentLine,
     onRemovePaymentLine,
@@ -77,6 +144,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = props => {
     loyaltyPoints = 0,
     storeCreditDollars = 0,
   } = props;
+
+  // Build the available method list for this device + provider combination.
+  const availableMethods = buildMethodList(paymentMode, activeProvider, terminalConnected);
 
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>('cash');
   const [step, setStep] = useState<ModalStep>(splitMode ? 'split_tender' : 'method');
@@ -258,7 +328,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = props => {
                 <View style={styles.splitAddSection}>
                   <Text style={styles.sectionTitle}>Add Payment</Text>
                   <View style={styles.splitMethodRow}>
-                    {(['cash', 'card', 'terminal'] as PaymentMethod[]).map(m => (
+                    {(['cash', ...(paymentMode === 'tap_to_pay' ? ['terminal'] : [])] as PaymentMethod[]).map(m => (
                       <TouchableOpacity
                         key={m}
                         style={[styles.splitMethodButton, splitMethod === m && styles.splitMethodButtonSelected]}
@@ -515,11 +585,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = props => {
             {/* Payment Method Selection */}
             <Text style={styles.sectionTitle}>{t('checkout.paymentMethod')}</Text>
             <View style={styles.paymentMethods}>
-              {PAYMENT_METHOD_KEYS.map(method => {
+              {availableMethods.map(method => {
                 const isSelected = selectedMethod === method.id;
                 const isDisabled = method.id === 'terminal' && !terminalConnected;
-                const label = t(method.labelKey);
-                const description = t(method.descriptionKey);
 
                 return (
                   <TouchableOpacity
@@ -528,15 +596,15 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = props => {
                     onPress={() => !isDisabled && setSelectedMethod(method.id)}
                     disabled={isDisabled}
                     activeOpacity={0.7}
-                    accessibilityLabel={t('checkout.payWith', { method: label })}
+                    accessibilityLabel={`Pay with ${method.label}`}
                     accessibilityRole="radio"
                     accessibilityState={{ selected: isSelected, disabled: isDisabled }}
-                    accessibilityHint={isDisabled ? t('checkout.terminalNotConnected') : description}
+                    accessibilityHint={method.description}
                   >
                     <Text style={styles.paymentIcon}>{method.icon}</Text>
                     <View style={styles.paymentInfo}>
-                      <Text style={[styles.paymentLabel, isSelected && styles.paymentLabelSelected]}>{label}</Text>
-                      <Text style={styles.paymentDescription}>{isDisabled ? t('checkout.terminalNotConnected') : description}</Text>
+                      <Text style={[styles.paymentLabel, isSelected && styles.paymentLabelSelected]}>{method.label}</Text>
+                      <Text style={styles.paymentDescription}>{method.description}</Text>
                     </View>
                     {isSelected && <Text style={styles.checkIcon}>✓</Text>}
                   </TouchableOpacity>

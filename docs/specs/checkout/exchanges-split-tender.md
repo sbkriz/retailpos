@@ -14,7 +14,7 @@
 The POS supports single-tender checkout (one payment method per order) and refunds (monetary reversal of a paid order). Two gaps exist:
 
 1. **True exchanges** — returning item A and immediately purchasing item B in a single transaction, settling only the net difference.
-2. **Split tender** — paying a single order with more than one payment method (e.g. £30 cash + £20 card).
+2. **Split tender** — paying a single order with more than one payment method (e.g. £30 cash + £20 via terminal).
 
 ### Architectural Changes Required
 
@@ -29,9 +29,9 @@ The POS supports single-tender checkout (one payment method per order) and refun
 ```ts
 interface PaymentLine {
   id: string; // UUID
-  method: PaymentMethod; // 'cash' | 'card' | 'store_credit' | 'loyalty' | 'gift_card' | 'other'
+  method: PaymentMethod; // 'cash' | 'terminal' | 'store_credit' | 'loyalty' | 'gift_card' | 'other'
   amount: number; // positive = payment, negative = refund/credit
-  transactionId?: string; // card terminal transaction ID
+  transactionId?: string; // terminal transaction ID (tap-to-pay providers only)
   cardBrand?: string;
   last4?: string;
   processedAt: number; // Unix ms
@@ -92,7 +92,7 @@ interface ExchangeSession {
 
 **2.1.2** When the cashier selects a payment method and enters an amount in split tender mode, the system shall validate that `amount > 0` and `amount ≤ remainingDue` before adding the payment line.
 
-**2.1.3** When the cashier adds a card payment line in split tender mode, the system shall navigate to `PaymentTerminalScreen` with `amount` set to the split amount. On `onPaymentComplete`, the system shall add the returned `PaymentLine` (with `transactionId`, `cardBrand`, `last4`) to the session.
+**2.1.3** When the cashier adds a terminal payment line in split tender mode and `paymentMode === 'tap_to_pay'`, the system shall navigate to `PaymentTerminalScreen` with `amount` set to the split amount. On `onPaymentComplete`, the system shall add the returned `PaymentLine` (with `transactionId`, `cardBrand`, `last4`) to the session. The terminal option is not shown when `paymentMode === 'cash_only'` (desktop or no SDK provider active).
 
 **2.1.4** When the cashier adds a cash payment line in split tender mode, the system shall prompt for the tendered amount, calculate change (`tendered − amount`), display the change due, and add the payment line with `method: 'cash'` and `amount` equal to the split amount (not the tendered amount).
 
@@ -108,7 +108,7 @@ interface ExchangeSession {
 
 ### 2.2 Split Tender — Receipt
 
-**2.2.1** When a receipt is printed for a split tender order, the system shall list each `PaymentLine` with method, amount, and (for card) `cardBrand ···· last4`.
+**2.2.1** When a receipt is printed for a split tender order, the system shall list each `PaymentLine` with method, amount, and (for terminal payments) `cardBrand ···· last4`.
 
 **2.2.2** When a cash payment line is present, the system shall print the tendered amount and change due on the receipt.
 
@@ -158,7 +158,7 @@ interface ExchangeSession {
 
 **3.1** While `remainingDue > 0` in split tender mode, the "Complete Sale" button shall be disabled.
 
-**3.2** While a card payment is being processed in split tender mode (terminal screen active), the split tender session shall be preserved — the cashier returns to the split tender screen on completion or cancellation.
+**3.2** While a terminal payment is being processed in split tender mode (terminal screen active), the split tender session shall be preserved — the cashier returns to the split tender screen on completion or cancellation.
 
 **3.3** While `ExchangeSession.netDue > 0`, the "Complete Exchange" button shall be disabled until settlement equals `netDue`.
 
@@ -172,7 +172,7 @@ interface ExchangeSession {
 
 **4.1** Where `PaymentLine.method === 'gift_card'`, the system shall call `GiftCardService.redeem(code, amount)` and add the resulting payment line — gift card redemption is a valid split tender method.
 
-**4.2** Where the platform supports partial refunds to the original card (e.g. Shopify), the exchange refund leg may use `method: 'card'` with the original `transactionId` as the refund target.
+**4.2** Where the platform supports partial refunds to the original payment instrument (e.g. Shopify), the exchange refund leg may use `method: 'terminal'` with the original `transactionId` as the refund target — this is a platform-level refund, not a new POS payment.
 
 **4.3** Where `loyalty.enabled` is `true` and the exchange results in a net refund, the system shall reverse any loyalty points earned on the original order proportionally to the returned items.
 
@@ -180,9 +180,9 @@ interface ExchangeSession {
 
 ## 5. Unwanted Behaviour / Edge Cases
 
-**5.1** If a card terminal charge succeeds but `CheckoutService.completePayment()` subsequently fails, the system shall record the orphaned `PaymentLine` to a `failed_payments` log and alert the manager — the terminal charge is not automatically reversed.
+**5.1** If a terminal charge succeeds but `CheckoutService.completePayment()` subsequently fails, the system shall record the orphaned `PaymentLine` to a `failed_payments` log and alert the manager — the terminal charge is not automatically reversed.
 
-**5.2** If the cashier navigates away from the split tender screen mid-session, the system shall prompt "Abandon payment session?" — if confirmed, any completed card charges in the session shall be voided via `PaymentService.voidTransaction()` where supported.
+**5.2** If the cashier navigates away from the split tender screen mid-session, the system shall prompt "Abandon payment session?" — if confirmed, any completed terminal charges in the session shall be voided via `PaymentService.voidTransaction()` where supported.
 
 **5.3** If `voidTransaction()` is not supported by the active payment provider, the system shall display a warning listing the transaction IDs that require manual reversal.
 
@@ -223,23 +223,23 @@ No new capability keys are required for this feature.
 
 ## 8. Component Traceability
 
-| Requirement (summary)                      | Component / Service                                             | Source File (target)                                         |
-| ------------------------------------------ | --------------------------------------------------------------- | ------------------------------------------------------------ |
-| `PaymentLine[]` on `LocalOrder`            | `LocalOrder` type + `OrderRepository` schema                    | `services/order/order.ts`, `repositories/OrderRepository.ts` |
-| `payments_json` column in `orders` table   | `OfflineOrderRepository` schema migration                       | `repositories/OfflineOrderRepository.ts`                     |
-| Split tender mode in checkout modal        | `CheckoutModal` split tender branch                             | `components/CheckoutModal.tsx`                               |
-| Add card payment line → terminal screen    | `CheckoutModal` → `PaymentTerminalScreen` with split amount     | `screens/PaymentTerminalScreen.tsx`                          |
-| Add cash payment line + change calculation | `CheckoutModal` cash tender handler                             | `components/CheckoutModal.tsx`                               |
-| `completePayment(orderId, payments)`       | `CheckoutService.completePayment`                               | `services/checkout/CheckoutService.ts`                       |
-| Payment total validation                   | `CheckoutService.completePayment` sum check                     | `services/checkout/CheckoutService.ts`                       |
-| Split tender receipt lines                 | `ReceiptPreview` + `PrinterService` payment section             | `components/ReceiptPreview.tsx`                              |
-| Exchange screen — return item selection    | `ExchangeScreen` step 1                                         | `screens/ExchangeScreen.tsx`                                 |
-| Exchange screen — add new items            | `ExchangeScreen` step 2 (product catalogue)                     | `screens/ExchangeScreen.tsx`                                 |
-| Exchange session net due calculation       | `ExchangeScreen` state                                          | `screens/ExchangeScreen.tsx`                                 |
-| Exchange confirmation — atomic commit      | `ExchangeService.confirmExchange`                               | `services/exchange/ExchangeService.ts`                       |
-| Exchange rollback on failure               | `ExchangeService.confirmExchange` catch + rollback              | `services/exchange/ExchangeService.ts`                       |
-| Exchange audit log                         | `ExchangeService` → `auditLogService.log('exchange:completed')` | `services/exchange/ExchangeService.ts`                       |
-| Exchange receipt                           | `PrinterService.printExchangeReceipt`                           | `services/printer/PrinterService.ts`                         |
-| Order History → Exchange entry point       | `OrderCard` "Exchange" button → `ExchangeScreen`                | `screens/order-history/OrderCard.tsx`                        |
-| More menu — Exchange item                  | `MoreMenuComposer` Exchange entry                               | `services/navigation/MoreMenuComposer.ts`                    |
-| Platform sync — split tender mapping       | `OrderSyncService.syncOrderToPlatform` payments mapping         | `services/sync/OrderSyncService.ts`                          |
+| Requirement (summary)                       | Component / Service                                                                | Source File (target)                                         |
+| ------------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `PaymentLine[]` on `LocalOrder`             | `LocalOrder` type + `OrderRepository` schema                                       | `services/order/order.ts`, `repositories/OrderRepository.ts` |
+| `payments_json` column in `orders` table    | `OfflineOrderRepository` schema migration                                          | `repositories/OfflineOrderRepository.ts`                     |
+| Split tender mode in checkout modal         | `CheckoutModal` split tender branch                                                | `components/CheckoutModal.tsx`                               |
+| Add terminal payment line → terminal screen | `CheckoutModal` → `PaymentTerminalScreen` with split amount (tap_to_pay mode only) | `screens/PaymentTerminalScreen.tsx`                          |
+| Add cash payment line + change calculation  | `CheckoutModal` cash tender handler                                                | `components/CheckoutModal.tsx`                               |
+| `completePayment(orderId, payments)`        | `CheckoutService.completePayment`                                                  | `services/checkout/CheckoutService.ts`                       |
+| Payment total validation                    | `CheckoutService.completePayment` sum check                                        | `services/checkout/CheckoutService.ts`                       |
+| Split tender receipt lines                  | `ReceiptPreview` + `PrinterService` payment section                                | `components/ReceiptPreview.tsx`                              |
+| Exchange screen — return item selection     | `ExchangeScreen` step 1                                                            | `screens/ExchangeScreen.tsx`                                 |
+| Exchange screen — add new items             | `ExchangeScreen` step 2 (product catalogue)                                        | `screens/ExchangeScreen.tsx`                                 |
+| Exchange session net due calculation        | `ExchangeScreen` state                                                             | `screens/ExchangeScreen.tsx`                                 |
+| Exchange confirmation — atomic commit       | `ExchangeService.confirmExchange`                                                  | `services/exchange/ExchangeService.ts`                       |
+| Exchange rollback on failure                | `ExchangeService.confirmExchange` catch + rollback                                 | `services/exchange/ExchangeService.ts`                       |
+| Exchange audit log                          | `ExchangeService` → `auditLogService.log('exchange:completed')`                    | `services/exchange/ExchangeService.ts`                       |
+| Exchange receipt                            | `PrinterService.printExchangeReceipt`                                              | `services/printer/PrinterService.ts`                         |
+| Order History → Exchange entry point        | `OrderCard` "Exchange" button → `ExchangeScreen`                                   | `screens/order-history/OrderCard.tsx`                        |
+| More menu — Exchange item                   | `MoreMenuComposer` Exchange entry                                                  | `services/navigation/MoreMenuComposer.ts`                    |
+| Platform sync — split tender mapping        | `OrderSyncService.syncOrderToPlatform` payments mapping                            | `services/sync/OrderSyncService.ts`                          |

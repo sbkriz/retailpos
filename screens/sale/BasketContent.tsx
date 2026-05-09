@@ -63,6 +63,8 @@ export const BasketContent: React.FC<BasketContentProps> = ({ platform, onChecko
     tax,
     itemCount,
     terminalConnected,
+    paymentMode,
+    activeProvider,
     handleStartCheckout,
     handleCancelCheckout,
     handlePayment,
@@ -391,6 +393,8 @@ export const BasketContent: React.FC<BasketContentProps> = ({ platform, onChecko
         onCancel={handleCancelCheckout}
         isProcessing={isProcessing}
         terminalConnected={terminalConnected}
+        paymentMode={paymentMode}
+        activeProvider={activeProvider}
         splitMode={splitMode}
         paymentLines={paymentLines}
         onAddPaymentLine={addPaymentLine}

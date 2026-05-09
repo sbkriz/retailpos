@@ -2,6 +2,23 @@ import { useCallback, useMemo } from 'react';
 import { PaymentRequest, PaymentResponse } from '../services/payment/PaymentServiceInterface';
 import { PaymentProvider } from '../services/payment/PaymentServiceFactory';
 import paymentService from '../services/payment/PaymentService';
+import { isElectron, isMobile } from '../utils/electron';
+
+/** The two payment modes the checkout UI needs to know about. */
+export type PaymentMode =
+  /** A tap-to-pay SDK provider is active and the device supports it. */
+  | 'tap_to_pay'
+  /** No SDK provider available on this device — cash only. */
+  | 'cash_only';
+
+/** Tap-to-pay providers that have a React Native SDK. */
+const TAP_TO_PAY_PROVIDERS = new Set<PaymentProvider>([
+  PaymentProvider.STRIPE_NFC,
+  PaymentProvider.STRIPE,
+  PaymentProvider.SQUARE,
+  PaymentProvider.ADYEN,
+  PaymentProvider.TAP_PAYMENTS,
+]);
 
 /**
  * Custom hook for payment processing functionality
@@ -26,6 +43,23 @@ export const usePayment = () => {
 
   const getCurrentProvider = useCallback(() => paymentService.getCurrentProvider(), []);
 
+  /**
+   * Returns the payment mode for the current device and active provider.
+   *
+   * - Desktop (Electron): always `cash_only` — no React Native payment SDKs.
+   * - Mobile/tablet with a tap-to-pay provider: `tap_to_pay`.
+   * - Anything else: `cash_only`.
+   */
+  const getPaymentMode = useCallback((): PaymentMode => {
+    // Desktop has no tap-to-pay SDK support.
+    if (isElectron()) return 'cash_only';
+    // Web (non-Electron) also has no SDK support.
+    if (!isMobile()) return 'cash_only';
+    // Mobile/tablet: check whether the active provider is a tap-to-pay SDK.
+    const provider = paymentService.getCurrentProvider();
+    return TAP_TO_PAY_PROVIDERS.has(provider) ? 'tap_to_pay' : 'cash_only';
+  }, []);
+
   return useMemo(
     () => ({
       connectToTerminal,
@@ -36,6 +70,7 @@ export const usePayment = () => {
       getAvailableTerminals,
       setPaymentProvider,
       getCurrentProvider,
+      getPaymentMode,
     }),
     [
       connectToTerminal,
@@ -46,6 +81,7 @@ export const usePayment = () => {
       getAvailableTerminals,
       setPaymentProvider,
       getCurrentProvider,
+      getPaymentMode,
     ]
   );
 };

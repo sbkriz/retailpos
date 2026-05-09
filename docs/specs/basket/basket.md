@@ -11,7 +11,7 @@
 
 The basket is the in-progress order before payment. It is persisted to SQLite via `BasketRepository` so it survives app restarts. `BasketService` owns cart CRUD only — checkout, payment, and sync are handled by `CheckoutService` and `OrderSyncService` respectively.
 
-`BasketProvider` wraps the entire app and exposes the basket state and all cart operations to UI components. Two UI surfaces consume it: `BasketContent` (desktop sidebar / tablet inline) and `Basket` (mobile swipeable panel). Both share the same context but differ in UX — `Basket` uses `Alert` dialogs and integrates `usePayment` for card/terminal flows; `BasketContent` uses inline error handling and a simpler payment path.
+`BasketProvider` wraps the entire app and exposes the basket state and all cart operations to UI components. Two UI surfaces consume it: `BasketContent` (desktop sidebar / tablet inline) and `Basket` (mobile swipeable panel). Both share the same context but differ in UX — `Basket` uses `Alert` dialogs and integrates `usePayment` for terminal flows; `BasketContent` uses inline error handling and a simpler payment path.
 
 All monetary arithmetic uses `utils/money.ts` (integer-cent internally) to avoid floating-point errors. Tax rates stored on `BasketItem` at add-to-cart time are used for local basket totals display. The checkout mode depends on the platform's `basketMode` capability:
 
@@ -174,7 +174,7 @@ The correct sellable unit by platform:
 
 **2.9.2** When the selected payment method is `'cash'`, both `BasketContent` and `Basket` shall call `completePayment(orderId, 'cash')` directly without going through `usePayment`.
 
-**2.9.3** When the selected payment method is `'card'` or `'terminal'`, both `BasketContent` and `Basket` shall call `processPayment()` via `usePayment` before calling `completePayment()`. If `processPayment()` fails, the system shall call `cancelOrder(orderId)` and close the modal so the cashier can restart with a different method.
+**2.9.3** When the selected payment method is `'terminal'`, both `BasketContent` and `Basket` shall call `processPayment()` via `usePayment` before calling `completePayment()`. This option is only presented when `paymentMode === 'tap_to_pay'` (mobile/tablet with an active SDK provider). If `processPayment()` fails, the system shall call `cancelOrder(orderId)` and close the modal so the cashier can restart with a different method.
 
 **2.9.4** When `completePayment()` returns `success: true`, the system shall call `basketService.clearBasket()`, log `order:paid`, and return `{ success: true, orderId, openDrawer }`.
 
@@ -240,7 +240,7 @@ The correct sellable unit by platform:
 
 **4.1** Where `posConfig.values.drawerOpenOnCash` is `true` and the payment method is `'cash'`, the system shall set `openDrawer: true` in the `CheckoutResult` and the UI shall call `cashDrawerServiceFactory.getService().open()`.
 
-**4.2** Where `isTerminalConnected()` returns `true` in `Basket`, the system shall pass `terminalConnected={true}` to `CheckoutModal`, enabling the terminal payment option.
+**4.2** Where `paymentMode === 'tap_to_pay'` and `isTerminalConnected()` returns `true` in `Basket`, the system shall pass `terminalConnected={true}` to `CheckoutModal`, enabling the terminal payment option.
 
 **4.3** Where `onPrintReceipt` is provided to `Basket`, the system shall call it with the completed `orderId` after successful payment.
 
@@ -354,7 +354,7 @@ Cashier taps "Complete Order"
 
 Cashier selects payment method (useCheckout.handlePayment)
   → markPaymentProcessing(orderId) → status: processing
-  → [card/terminal] processPayment() via usePayment
+  → [terminal — only on mobile/tablet with tap_to_pay mode] processPayment() via usePayment
       → [failure] cancelOrder(orderId) → modal closes, basket intact, cashier retries
   → completePayment(orderId, paymentMethod, transactionId?)
       → OrderRepository.updatePayment()
@@ -414,14 +414,15 @@ Cashier cancels / returns to basket (useCheckout.handleCancelCheckout)
 | Order created from basket snapshot (draft or pending)  | `CheckoutService.startCheckout` → `createDraftOrder()` (online) or basket totals (offline)      | `services/checkout/CheckoutService.ts`                        |
 | Platform draft order created                           | `CheckoutService.startCheckout` → `OrderServiceFactory.getService(platform).createDraftOrder()` | `services/checkout/CheckoutService.ts`                        |
 | Platform draft cancelled on return to basket           | `useCheckout.handleCancelCheckout` → `cancelDraftOrder()`                                       | `hooks/useCheckout.ts`                                        |
-| Card/terminal payment failure → cancelOrder + retry    | `useCheckout.handlePayment` (failure branch → `cancelOrder`)                                    | `hooks/useCheckout.ts`                                        |
+| Terminal payment failure → cancelOrder + retry         | `useCheckout.handlePayment` (failure branch → `cancelOrder`)                                    | `hooks/useCheckout.ts`                                        |
 | Order items persisted                                  | `CheckoutService.startCheckout` → `OrderItemRepository.createMany`                              | `services/checkout/CheckoutService.ts`                        |
 | Order creation audited                                 | `CheckoutService.startCheckout` → `auditLogService.log('order:created')`                        | `services/checkout/CheckoutService.ts`                        |
 | Order status → processing                              | `CheckoutService.markPaymentProcessing` → `OrderRepository.updateStatus`                        | `services/checkout/CheckoutService.ts`                        |
 | Payment completed + basket cleared                     | `CheckoutService.completePayment` → `basketService.clearBasket`                                 | `services/checkout/CheckoutService.ts`                        |
 | Payment audited                                        | `CheckoutService.completePayment` → `auditLogService.log('order:paid')`                         | `services/checkout/CheckoutService.ts`                        |
 | Cash drawer opened on cash payment                     | `useCheckout.handlePayment` → `cashDrawerServiceFactory.getService().open()`                    | `hooks/useCheckout.ts`                                        |
-| Card/terminal payment via usePayment (both surfaces)   | `useCheckout.handlePayment` → `processPayment()`                                                | `hooks/useCheckout.ts`, `hooks/usePayment.ts`                 |
+| Terminal payment via usePayment (both surfaces)        | `useCheckout.handlePayment` → `processPayment()`                                                | `hooks/useCheckout.ts`, `hooks/usePayment.ts`                 |
+| Payment mode resolved (device + provider)              | `usePayment.getPaymentMode()` → `useCheckout` → `CheckoutModal`                                 | `hooks/usePayment.ts`, `hooks/useCheckout.ts`                 |
 | Order cancelled                                        | `CheckoutService.cancelOrder` → `OrderRepository.updateStatus`                                  | `services/checkout/CheckoutService.ts`                        |
 | Cancellation audited                                   | `CheckoutService.cancelOrder` → `auditLogService.log('order:cancelled')`                        | `services/checkout/CheckoutService.ts`                        |
 | Basket cleared (row preserved, items reset)            | `BasketRepository.clearBasket` (UPDATE not DELETE)                                              | `repositories/BasketRepository.ts`                            |

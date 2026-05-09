@@ -201,21 +201,25 @@ pending → synced
 
 ### 2.6 CheckoutModal — Method Selection Step
 
-**2.6.1** When `CheckoutModal` opens with `step: 'method'`, the system shall display the order summary (ref, item count, subtotal, tax, total) and the payment method list (cash, card, terminal).
+**2.6.1** When `CheckoutModal` opens with `step: 'method'`, the system shall display the order summary (ref, item count, subtotal, tax, total) and the payment method list built from `paymentMode` and `activeProvider`.
 
-**2.6.2** When the cashier selects `'terminal'` and `terminalConnected` is `false`, the system shall render the terminal option as disabled with label `'Terminal not connected'` and prevent selection.
+**2.6.2** When `paymentMode === 'cash_only'` (desktop / Electron, web, or no SDK provider active), the system shall render only the `cash` option — no terminal or card option is shown.
 
-**2.6.3** When the cashier taps "Pay" with `selectedMethod !== 'cash'`, the system shall call `onSelectPayment({ method: selectedMethod })` immediately.
+**2.6.3** When `paymentMode === 'tap_to_pay'`, the system shall render `cash` and a provider-labelled terminal option (e.g. "Tap to Pay (Stripe NFC)" or "Card Terminal (Square)"). The terminal option label and icon reflect the active `PaymentProvider`.
 
-**2.6.4** When the cashier taps "Pay" with `selectedMethod === 'cash'`, the system shall transition to `step: 'cash_tender'` without calling `onSelectPayment`.
+**2.6.4** When `paymentMode === 'tap_to_pay'` and `terminalConnected` is `false`, the system shall render the terminal option as enabled but with description `'Terminal not connected — tap to connect'`, allowing the cashier to select it and proceed to the terminal connection flow.
 
-**2.6.5** When the cashier taps the close button, the system shall reset `step` to `'method'`, clear `tenderedStr`, and call `onCancel()`.
+**2.6.5** When the cashier taps "Pay" with `selectedMethod !== 'cash'`, the system shall call `onSelectPayment({ method: selectedMethod })` immediately.
 
-**2.6.6** When `CheckoutModal` opens, `selectedMethod` shall default to `'cash'` so the cashier can confirm immediately without an extra tap for the most common payment type.
+**2.6.6** When the cashier taps "Pay" with `selectedMethod === 'cash'`, the system shall transition to `step: 'cash_tender'` without calling `onSelectPayment`.
+
+**2.6.7** When the cashier taps the close button, the system shall reset `step` to `'method'`, clear `tenderedStr`, and call `onCancel()`.
+
+**2.6.8** When `CheckoutModal` opens, `selectedMethod` shall default to `'cash'` so the cashier can confirm immediately without an extra tap for the most common payment type.
 
 ### 2.7 Payment Method Change Mid-Checkout
 
-The cashier may select a payment method, begin processing, and then need to switch — for example the customer offers cash after card was selected, or a card is declined and they want to pay cash instead.
+The cashier may select a payment method, begin processing, and then need to switch — for example the customer offers cash after a terminal payment is declined, or the terminal is unavailable.
 
 **2.7.1** When the cashier taps the back/cancel button inside `CheckoutModal` after `markPaymentProcessing()` has been called but before `completePayment()` succeeds, the system shall call `cancelOrder(orderId)` to reset the order status to `cancelled` and close the modal.
 
@@ -225,7 +229,7 @@ The cashier may select a payment method, begin processing, and then need to swit
 
 **2.7.4** When the cashier selects a different method on the `method` step before tapping "Pay", the system shall update `selectedMethod` in local state — no API calls are made until "Pay" is tapped.
 
-**2.7.5** When a card or terminal payment fails with `success: false` and the cashier wants to pay by cash instead, the system shall allow the cashier to cancel the current order (per 2.7.1–2.7.2) and restart checkout — the basket is preserved throughout.
+**2.7.5** When a terminal payment fails with `success: false` and the cashier wants to pay by cash instead, the system shall allow the cashier to cancel the current order (per 2.7.1–2.7.2) and restart checkout — the basket is preserved throughout.
 
 ### 2.8 CheckoutModal — Cash Tendering Step
 
@@ -255,7 +259,7 @@ The cashier may select a payment method, begin processing, and then need to swit
 
 **2.9.3** When `completePayment()` returns `success: true` and `openDrawer === true`, both `BasketContent` and `Basket` shall call `cashDrawerServiceFactory.getService().open()` as a fire-and-forget operation.
 
-**2.9.4** When `completePayment()` returns `success: true`, `useCheckout` shall attempt to auto-print a receipt if `PrinterServiceFactory.isConnectedToPrinter()` is `true` and `printerSettings.printReceipts` is not `false`. Receipt printing is fire-and-forget — it shall never block or fail the payment success path. This applies to both cash and card/terminal payments.
+**2.9.4** When `completePayment()` returns `success: true`, `useCheckout` shall attempt to auto-print a receipt if `PrinterServiceFactory.isConnectedToPrinter()` is `true` and `printerSettings.printReceipts` is not `false`. Receipt printing is fire-and-forget — it shall never block or fail the payment success path. This applies to both cash and terminal payments.
 
 **2.9.5** When `completePayment()` returns `success: true`, `BasketProvider` shall call `refreshBasket()` and `refreshUnsyncedCount()` to update the UI.
 
@@ -325,7 +329,7 @@ The cashier may select a payment method, begin processing, and then need to swit
 
 **5.3.2** If `basketService.clearBasket()` throws after `updatePayment()` succeeds, then the order is already marked `paid` in SQLite — the system shall log the error but still return `{ success: true, orderId }` to avoid double-charging.
 
-**5.3.3** If `processPayment()` (card/terminal via `usePayment`) returns `success: false` in `Basket`, then the system shall show an `Alert.alert` with the error and shall not call `completePayment()`.
+**5.3.3** If `processPayment()` (terminal via `usePayment`) returns `success: false` in `Basket`, then the system shall show an `Alert.alert` with the error and shall not call `completePayment()`.
 
 ### 5.4 Cancel Edge Cases
 
@@ -424,8 +428,8 @@ Cashier taps "Complete Order"
   → selectedMethod updated in local state only
   → taps "Pay" with the new method → normal flow continues
 
-  [after tapping "Pay" on card/terminal — markPaymentProcessing already called]
-  → card declined OR cashier taps cancel
+  [after tapping "Pay" on terminal — markPaymentProcessing already called]
+  → terminal declined OR cashier taps cancel
   → cancelOrder(orderId)                             ← status: cancelled
   → currentOrder = null, basket intact
   → cashier taps "Complete Order" again
@@ -448,11 +452,11 @@ Cashier taps "Complete Order"
 Cashier selects payment method
   → CheckoutModal step: 'method'
   → [cash] → step: 'cash_tender' → enter amount → confirm
-  → [card/terminal] → onSelectPayment({ method }) immediately
+  → [terminal — tap_to_pay mode only] → onSelectPayment({ method }) immediately
 
 BasketProvider.handlePayment(selection)
   → markPaymentProcessing(orderId)                   ← status: processing
-  → [card/terminal] processPayment() via usePayment
+  → [terminal] processPayment() via usePayment
   → completePayment(orderId, method, transactionId?)
       → OrderRepository.updatePayment()              ← status: paid, paid_at set
       → [online] platform order updated to paid/processing via OrderSyncService
@@ -497,50 +501,54 @@ BasketProvider.handlePayment(selection)
 
 ## 8. Component Traceability
 
-| Requirement (summary)                                  | Component / Hook / Service                                                                                              | Source File                                                                     |
-| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| Checkout initiated from desktop basket                 | `BasketContent.handleStartCheckout` → `startCheckout(platform)`                                                         | `screens/order/BasketContent.tsx`                                               |
-| Checkout initiated from mobile basket                  | `Basket.handleCheckout` → `startCheckout(platform)`                                                                     | `screens/order/Basket.tsx`                                                      |
-| Empty basket guard                                     | `CheckoutService.startCheckout` (items.length === 0 throw)                                                              | `services/checkout/CheckoutService.ts`                                          |
-| Order UUID generated                                   | `generateUUID()` in `startCheckout`                                                                                     | `services/checkout/CheckoutService.ts`                                          |
-| Basket snapshot → LocalOrder                           | `CheckoutService.startCheckout` (spread basket fields)                                                                  | `services/checkout/CheckoutService.ts`                                          |
-| Draft order created on platform (online)               | `CheckoutService.startCheckout` → `OrderServiceFactory.getService(platform).createOrder()`                              | `services/checkout/CheckoutService.ts`, `services/order/OrderServiceFactory.ts` |
-| Platform tax/totals overwrite basket totals (online)   | `CheckoutService.startCheckout` (platform response → LocalOrder)                                                        | `services/checkout/CheckoutService.ts`                                          |
-| Draft order failure → fallback to basket totals        | `CheckoutService.startCheckout` (catch → log warning, use basket)                                                       | `services/checkout/CheckoutService.ts`                                          |
-| platformOrderId stored on local order                  | `OrderRepository.create()` (`platform_order_id` column)                                                                 | `repositories/OrderRepository.ts`                                               |
-| Order header persisted                                 | `OrderRepository.create()`                                                                                              | `repositories/OrderRepository.ts`                                               |
-| Order items persisted with taxRate (platform or local) | `OrderItemRepository.createMany()` (taxRate field)                                                                      | `repositories/OrderItemRepository.ts`                                           |
-| Order creation audited                                 | `auditLogService.log('order:created')`                                                                                  | `services/checkout/CheckoutService.ts`                                          |
-| CheckoutModal opened with orderId                      | `BasketProvider` → `setCurrentOrderId` + `setCheckoutModalVisible`                                                      | `contexts/BasketProvider.tsx`                                                   |
-| Order summary displayed in modal                       | `CheckoutModal` (summaryCard section)                                                                                   | `components/CheckoutModal.tsx`                                                  |
-| Payment method selection                               | `CheckoutModal` (PAYMENT_METHOD_KEYS map)                                                                               | `components/CheckoutModal.tsx`                                                  |
-| Terminal option disabled when not connected            | `CheckoutModal` (`isDisabled = method.id === 'terminal' && !terminalConnected`)                                         | `components/CheckoutModal.tsx`                                                  |
-| Cash → tender step transition                          | `CheckoutModal.handleMethodConfirm` (cash branch → `setStep`)                                                           | `components/CheckoutModal.tsx`                                                  |
-| Cash keypad digit entry                                | `CheckoutModal.handleKeyPress`                                                                                          | `components/CheckoutModal.tsx`                                                  |
-| Cash keypad delete                                     | `CheckoutModal.handleDelete`                                                                                            | `components/CheckoutModal.tsx`                                                  |
-| Quick-tender shortcuts generated                       | `CheckoutModal.quickAmounts()` (deduped)                                                                                | `components/CheckoutModal.tsx`                                                  |
-| Change due calculated                                  | `CheckoutModal` (`changeDue = tenderedAmount - orderTotal`)                                                             | `components/CheckoutModal.tsx`                                                  |
-| Cash payment confirmed                                 | `CheckoutModal.handleCashConfirm` → `onSelectPayment({ method: 'cash', tenderedAmount })`                               | `components/CheckoutModal.tsx`                                                  |
-| Status → processing                                    | `CheckoutService.markPaymentProcessing` → `OrderRepository.updateStatus`                                                | `services/checkout/CheckoutService.ts`                                          |
-| Card/terminal payment via usePayment (Basket)          | `Basket.handlePayment` → `processPayment()`                                                                             | `screens/order/Basket.tsx`, `hooks/usePayment.ts`                               |
-| Payment recorded + basket cleared                      | `CheckoutService.completePayment` → `updatePayment` + `clearBasket`                                                     | `services/checkout/CheckoutService.ts`                                          |
-| Cash drawer flag set                                   | `CheckoutService.completePayment` (`openDrawer` logic)                                                                  | `services/checkout/CheckoutService.ts`                                          |
-| Cash drawer opened                                     | `BasketContent/Basket.handlePayment` → `cashDrawerServiceFactory.getService().open()`                                   | `screens/sale/BasketContent.tsx`, `screens/sale/Basket.tsx`                     |
-| Receipt auto-printed after payment (cash + card)       | `useCheckout.handlePayment` → `PrinterServiceFactory.printReceipt()` (fire-and-forget, if connected + enabled)          | `hooks/useCheckout.ts`                                                          |
-| Payment audited                                        | `auditLogService.log('order:paid')`                                                                                     | `services/checkout/CheckoutService.ts`                                          |
-| Payment failure → order marked failed                  | `CheckoutService.completePayment` (catch → `updateStatus('failed')`)                                                    | `services/checkout/CheckoutService.ts`                                          |
-| Order cancelled                                        | `CheckoutService.cancelOrder` → `OrderRepository.updateStatus`                                                          | `services/checkout/CheckoutService.ts`                                          |
-| Cancellation audited                                   | `auditLogService.log('order:cancelled')`                                                                                | `services/checkout/CheckoutService.ts`                                          |
-| Cancel with no orderId guard                           | `BasketContent/Basket.handleCancelCheckout` (null check)                                                                | `screens/order/BasketContent.tsx`, `screens/order/Basket.tsx`                   |
-| Draft order cancelled on platform                      | `CheckoutService.cancelDraftOrder` → `OrderServiceFactory.getService(platform).updateOrder(platformOrderId, cancelled)` | `services/checkout/CheckoutService.ts`                                          |
-| Local draft row deleted on cancel                      | `CheckoutService.cancelDraftOrder` → `OrderRepository.delete(orderId)`                                                  | `services/checkout/CheckoutService.ts`                                          |
-| Return to basket after draft cancel                    | `BasketProvider.cancelDraftOrder` → `setCurrentOrder(null)`                                                             | `contexts/BasketProvider.tsx`                                                   |
-| Existing draft cancelled before new checkout           | `BasketProvider.startCheckout` (currentOrder?.status === 'draft' guard)                                                 | `contexts/BasketProvider.tsx`                                                   |
-| Basket refreshed after payment                         | `BasketProvider.completePayment` → `refreshBasket()`                                                                    | `contexts/BasketProvider.tsx`                                                   |
-| Unsynced count refreshed after payment                 | `BasketProvider.completePayment` → `refreshUnsyncedCount()`                                                             | `contexts/BasketProvider.tsx`                                                   |
-| Orders loaded for history screen                       | `useOrders.fetchOrders()` → `OrderRepository.findAll()`                                                                 | `hooks/useOrders.ts`                                                            |
-| Order items loaded per order                           | `useOrders.fetchOrders()` → `OrderItemRepository.findByOrderId()`                                                       | `hooks/useOrders.ts`                                                            |
-| Order deleted from history                             | `useOrders.deleteOrder()` → `OrderRepository.delete()` (CASCADE)                                                        | `hooks/useOrders.ts`                                                            |
-| Unsynced orders queried for sync                       | `CheckoutService.getUnsyncedOrders()` → `OrderRepository.findUnsynced()`                                                | `services/checkout/CheckoutService.ts`                                          |
-| Order row mapped to LocalOrder                         | `CheckoutService.mapOrderRowToLocalOrder()` (taxable 0/1→bool, properties JSON parse)                                   | `services/checkout/CheckoutService.ts`                                          |
-| taxRate snapshot preserved on order item               | `OrderItemRepository.createMany()` → `order_items.tax_rate`                                                             | `repositories/OrderItemRepository.ts`                                           |
+| Requirement (summary)                                  | Component / Hook / Service                                                                                              | Source File                                                                         |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Checkout initiated from desktop basket                 | `BasketContent.handleStartCheckout` → `startCheckout(platform)`                                                         | `screens/order/BasketContent.tsx`                                                   |
+| Checkout initiated from mobile basket                  | `Basket.handleCheckout` → `startCheckout(platform)`                                                                     | `screens/order/Basket.tsx`                                                          |
+| Empty basket guard                                     | `CheckoutService.startCheckout` (items.length === 0 throw)                                                              | `services/checkout/CheckoutService.ts`                                              |
+| Order UUID generated                                   | `generateUUID()` in `startCheckout`                                                                                     | `services/checkout/CheckoutService.ts`                                              |
+| Basket snapshot → LocalOrder                           | `CheckoutService.startCheckout` (spread basket fields)                                                                  | `services/checkout/CheckoutService.ts`                                              |
+| Draft order created on platform (online)               | `CheckoutService.startCheckout` → `OrderServiceFactory.getService(platform).createOrder()`                              | `services/checkout/CheckoutService.ts`, `services/order/OrderServiceFactory.ts`     |
+| Platform tax/totals overwrite basket totals (online)   | `CheckoutService.startCheckout` (platform response → LocalOrder)                                                        | `services/checkout/CheckoutService.ts`                                              |
+| Draft order failure → fallback to basket totals        | `CheckoutService.startCheckout` (catch → log warning, use basket)                                                       | `services/checkout/CheckoutService.ts`                                              |
+| platformOrderId stored on local order                  | `OrderRepository.create()` (`platform_order_id` column)                                                                 | `repositories/OrderRepository.ts`                                                   |
+| Order header persisted                                 | `OrderRepository.create()`                                                                                              | `repositories/OrderRepository.ts`                                                   |
+| Order items persisted with taxRate (platform or local) | `OrderItemRepository.createMany()` (taxRate field)                                                                      | `repositories/OrderItemRepository.ts`                                               |
+| Order creation audited                                 | `auditLogService.log('order:created')`                                                                                  | `services/checkout/CheckoutService.ts`                                              |
+| CheckoutModal opened with orderId                      | `BasketProvider` → `setCurrentOrderId` + `setCheckoutModalVisible`                                                      | `contexts/BasketProvider.tsx`                                                       |
+| Order summary displayed in modal                       | `CheckoutModal` (summaryCard section)                                                                                   | `components/CheckoutModal.tsx`                                                      |
+| Payment method list built dynamically                  | `CheckoutModal.buildMethodList(paymentMode, activeProvider, terminalConnected)`                                         | `components/CheckoutModal.tsx`                                                      |
+| Terminal option only on mobile/tablet with SDK         | `CheckoutModal.buildMethodList` (`paymentMode === 'tap_to_pay'` guard)                                                  | `components/CheckoutModal.tsx`                                                      |
+| Terminal label reflects active provider                | `CheckoutModal` (`PROVIDER_LABEL[activeProvider]`)                                                                      | `components/CheckoutModal.tsx`                                                      |
+| Cash-only on desktop / no provider                     | `CheckoutModal.buildMethodList` (`paymentMode === 'cash_only'` → cash only)                                             | `components/CheckoutModal.tsx`                                                      |
+| paymentMode + activeProvider passed to modal           | `useCheckout` → `Basket` / `BasketContent` → `CheckoutModal`                                                            | `hooks/useCheckout.ts`, `screens/sale/Basket.tsx`, `screens/sale/BasketContent.tsx` |
+| Payment mode resolved from device + provider           | `usePayment.getPaymentMode()` (isElectron / isMobile / TAP_TO_PAY_PROVIDERS check)                                      | `hooks/usePayment.ts`                                                               |
+| Cash → tender step transition                          | `CheckoutModal.handleMethodConfirm` (cash branch → `setStep`)                                                           | `components/CheckoutModal.tsx`                                                      |
+| Cash keypad digit entry                                | `CheckoutModal.handleKeyPress`                                                                                          | `components/CheckoutModal.tsx`                                                      |
+| Cash keypad delete                                     | `CheckoutModal.handleDelete`                                                                                            | `components/CheckoutModal.tsx`                                                      |
+| Quick-tender shortcuts generated                       | `CheckoutModal.quickAmounts()` (deduped)                                                                                | `components/CheckoutModal.tsx`                                                      |
+| Change due calculated                                  | `CheckoutModal` (`changeDue = tenderedAmount - orderTotal`)                                                             | `components/CheckoutModal.tsx`                                                      |
+| Cash payment confirmed                                 | `CheckoutModal.handleCashConfirm` → `onSelectPayment({ method: 'cash', tenderedAmount })`                               | `components/CheckoutModal.tsx`                                                      |
+| Status → processing                                    | `CheckoutService.markPaymentProcessing` → `OrderRepository.updateStatus`                                                | `services/checkout/CheckoutService.ts`                                              |
+| Terminal payment via usePayment (Basket)               | `Basket.handlePayment` → `processPayment()`                                                                             | `screens/order/Basket.tsx`, `hooks/usePayment.ts`                                   |
+| Payment recorded + basket cleared                      | `CheckoutService.completePayment` → `updatePayment` + `clearBasket`                                                     | `services/checkout/CheckoutService.ts`                                              |
+| Cash drawer flag set                                   | `CheckoutService.completePayment` (`openDrawer` logic)                                                                  | `services/checkout/CheckoutService.ts`                                              |
+| Cash drawer opened                                     | `BasketContent/Basket.handlePayment` → `cashDrawerServiceFactory.getService().open()`                                   | `screens/sale/BasketContent.tsx`, `screens/sale/Basket.tsx`                         |
+| Receipt auto-printed after payment (cash + terminal)   | `useCheckout.handlePayment` → `PrinterServiceFactory.printReceipt()` (fire-and-forget, if connected + enabled)          | `hooks/useCheckout.ts`                                                              |
+| Payment audited                                        | `auditLogService.log('order:paid')`                                                                                     | `services/checkout/CheckoutService.ts`                                              |
+| Payment failure → order marked failed                  | `CheckoutService.completePayment` (catch → `updateStatus('failed')`)                                                    | `services/checkout/CheckoutService.ts`                                              |
+| Order cancelled                                        | `CheckoutService.cancelOrder` → `OrderRepository.updateStatus`                                                          | `services/checkout/CheckoutService.ts`                                              |
+| Cancellation audited                                   | `auditLogService.log('order:cancelled')`                                                                                | `services/checkout/CheckoutService.ts`                                              |
+| Cancel with no orderId guard                           | `BasketContent/Basket.handleCancelCheckout` (null check)                                                                | `screens/order/BasketContent.tsx`, `screens/order/Basket.tsx`                       |
+| Draft order cancelled on platform                      | `CheckoutService.cancelDraftOrder` → `OrderServiceFactory.getService(platform).updateOrder(platformOrderId, cancelled)` | `services/checkout/CheckoutService.ts`                                              |
+| Local draft row deleted on cancel                      | `CheckoutService.cancelDraftOrder` → `OrderRepository.delete(orderId)`                                                  | `services/checkout/CheckoutService.ts`                                              |
+| Return to basket after draft cancel                    | `BasketProvider.cancelDraftOrder` → `setCurrentOrder(null)`                                                             | `contexts/BasketProvider.tsx`                                                       |
+| Existing draft cancelled before new checkout           | `BasketProvider.startCheckout` (currentOrder?.status === 'draft' guard)                                                 | `contexts/BasketProvider.tsx`                                                       |
+| Basket refreshed after payment                         | `BasketProvider.completePayment` → `refreshBasket()`                                                                    | `contexts/BasketProvider.tsx`                                                       |
+| Unsynced count refreshed after payment                 | `BasketProvider.completePayment` → `refreshUnsyncedCount()`                                                             | `contexts/BasketProvider.tsx`                                                       |
+| Orders loaded for history screen                       | `useOrders.fetchOrders()` → `OrderRepository.findAll()`                                                                 | `hooks/useOrders.ts`                                                                |
+| Order items loaded per order                           | `useOrders.fetchOrders()` → `OrderItemRepository.findByOrderId()`                                                       | `hooks/useOrders.ts`                                                                |
+| Order deleted from history                             | `useOrders.deleteOrder()` → `OrderRepository.delete()` (CASCADE)                                                        | `hooks/useOrders.ts`                                                                |
+| Unsynced orders queried for sync                       | `CheckoutService.getUnsyncedOrders()` → `OrderRepository.findUnsynced()`                                                | `services/checkout/CheckoutService.ts`                                              |
+| Order row mapped to LocalOrder                         | `CheckoutService.mapOrderRowToLocalOrder()` (taxable 0/1→bool, properties JSON parse)                                   | `services/checkout/CheckoutService.ts`                                              |
+| taxRate snapshot preserved on order item               | `OrderItemRepository.createMany()` → `order_items.tax_rate`                                                             | `repositories/OrderItemRepository.ts`                                               |

@@ -65,6 +65,8 @@ export const Basket: React.FC<BasketProps> = ({ onCheckout, platform }) => {
     tax,
     itemCount,
     terminalConnected,
+    paymentMode,
+    activeProvider,
     handleStartCheckout,
     handleCancelCheckout,
     handlePayment,
@@ -371,6 +373,8 @@ export const Basket: React.FC<BasketProps> = ({ onCheckout, platform }) => {
         onCancel={handleCancelCheckout}
         isProcessing={isProcessing}
         terminalConnected={terminalConnected}
+        paymentMode={paymentMode}
+        activeProvider={activeProvider}
         splitMode={splitMode}
         paymentLines={paymentLines}
         onAddPaymentLine={addPaymentLine}

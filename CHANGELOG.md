@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.5.0](https://github.com/n17foo/retailpos/compare/v0.4.0...v0.5.0) (2026-05-10)
+
+### Features
+
+- extend the hardware feature ([5c0ef81](https://github.com/n17foo/retailpos/commit/5c0ef8145fb9a8c6cfef3bcf546db507d25975f2))
+
 ## [0.4.0](https://github.com/n17foo/retailpos/compare/v0.3.1...v0.4.0) (2026-05-09)
 
 ### Features

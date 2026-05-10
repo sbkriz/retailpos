@@ -1,9 +1,11 @@
 import { userRepository } from '../../../repositories/UserRepository';
 import { keyValueRepository } from '../../../repositories/KeyValueRepository';
 import { AuthMethodProvider, AuthMethodInfo, AuthResult, AUTH_METHOD_INFO } from '../AuthMethodInterface';
+import { cardReaderDetection } from '../CardReaderDetection';
 
 const MAGSTRIPE_KEY_PREFIX = 'auth.magstripe.';
 const MAGSTRIPE_ENABLED_KEY = 'auth.magstripe.enabled';
+const MAGSTRIPE_AUTO_DETECT_KEY = 'auth.magstripe.autoDetect';
 
 /**
  * Magnetic stripe card authentication provider.
@@ -14,14 +16,32 @@ const MAGSTRIPE_ENABLED_KEY = 'auth.magstripe.enabled';
  *
  * Requires external hardware — a USB HID or Bluetooth mag-stripe reader
  * that sends keystrokes (most common POS card readers work this way).
+ *
+ * Supports auto-detection of USB HID card readers on Electron.
  */
 export class MagstripeAuthProvider implements AuthMethodProvider {
   readonly type = 'magstripe' as const;
   readonly info: AuthMethodInfo = AUTH_METHOD_INFO.magstripe;
 
   async isAvailable(): Promise<boolean> {
-    // Mag-stripe availability is user-configured (they tell us they have a reader)
-    // Spec requirement 4.3, 5.4.1: Check auth.magstripe.enabled flag
+    // Check if auto-detection is enabled
+    const autoDetect = await keyValueRepository.getObject<boolean>(MAGSTRIPE_AUTO_DETECT_KEY);
+
+    if (autoDetect !== false) {
+      // Try auto-detection (Electron only)
+      try {
+        const readers = await cardReaderDetection.detectReaders();
+        if (readers.length > 0) {
+          // Auto-enable if readers detected
+          await keyValueRepository.setObject(MAGSTRIPE_ENABLED_KEY, true);
+          return true;
+        }
+      } catch {
+        // Auto-detection failed, fall through to manual check
+      }
+    }
+
+    // Fall back to manual configuration
     const enabled = await keyValueRepository.getObject<boolean>(MAGSTRIPE_ENABLED_KEY);
     return enabled === true;
   }
@@ -32,15 +52,19 @@ export class MagstripeAuthProvider implements AuthMethodProvider {
     }
 
     try {
-      // Normalize the card data (trim whitespace, common reader artifacts)
-      const cardData = credential.trim();
+      // Parse and validate card data
+      const employeeId = cardReaderDetection.extractEmployeeId(credential);
+
+      if (!employeeId) {
+        return { success: false, error: 'Invalid card data. Please try again.' };
+      }
 
       // Look up all active users and check their stored card IDs
       const users = await userRepository.findActive();
 
       for (const user of users) {
         const storedCardId = await keyValueRepository.getObject<string>(MAGSTRIPE_KEY_PREFIX + user.id);
-        if (storedCardId && storedCardId === cardData) {
+        if (storedCardId && storedCardId === employeeId) {
           return { success: true, user };
         }
       }
@@ -53,7 +77,14 @@ export class MagstripeAuthProvider implements AuthMethodProvider {
 
   async enroll(userId: string, credential: string): Promise<boolean> {
     try {
-      await keyValueRepository.setObject(MAGSTRIPE_KEY_PREFIX + userId, credential.trim());
+      // Extract employee ID from card data
+      const employeeId = cardReaderDetection.extractEmployeeId(credential);
+
+      if (!employeeId) {
+        return false;
+      }
+
+      await keyValueRepository.setObject(MAGSTRIPE_KEY_PREFIX + userId, employeeId);
       return true;
     } catch {
       return false;
@@ -77,5 +108,15 @@ export class MagstripeAuthProvider implements AuthMethodProvider {
   /** Mark that the store has a mag-stripe reader available */
   async setHardwareAvailable(available: boolean): Promise<void> {
     await keyValueRepository.setObject(MAGSTRIPE_ENABLED_KEY, available);
+  }
+
+  /** Enable/disable auto-detection of card readers */
+  async setAutoDetect(enabled: boolean): Promise<void> {
+    await keyValueRepository.setObject(MAGSTRIPE_AUTO_DETECT_KEY, enabled);
+  }
+
+  /** Get list of detected card readers */
+  async getDetectedReaders() {
+    return await cardReaderDetection.detectReaders();
   }
 }

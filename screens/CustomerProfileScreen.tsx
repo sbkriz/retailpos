@@ -21,7 +21,7 @@ import { useCurrency } from '../hooks/useCurrency';
 import { useCustomerProfile } from '../hooks/useCustomerProfile';
 import { localCustomerService } from '../services/customer/LocalCustomerService';
 import { loyaltyService } from '../services/loyalty/LoyaltyService';
-import { storeCreditService } from '../services/storecredit/StoreCreditService';
+import { storeCreditService } from '../services/customer/StoreCreditService';
 import { useAuthContext } from '../contexts/AuthProvider';
 import type { MoreStackScreenProps } from '../navigation/types';
 

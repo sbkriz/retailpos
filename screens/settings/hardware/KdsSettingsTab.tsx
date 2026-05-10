@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Switch, ActivityIndicator, Alert, ScrollView } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { lightColors, spacing, typography, borderRadius, elevation } from '../../utils/theme';
-import { kdsServiceFactory, KdsSettings, KdsType } from '../../services/kds/KdsServiceFactory';
-import { useLogger } from '../../hooks/useLogger';
+import { lightColors, spacing, typography, borderRadius, elevation } from '../../../utils/theme';
+import { kdsServiceFactory, KdsSettings, KdsType } from '../../../services/kds/KdsServiceFactory';
+import { KDS_VENDOR_PRESETS, KdsVendorType } from '../../../services/kds/KdsVendorPresets';
+import { useLogger } from '../../../hooks/useLogger';
 
 const KDS_TYPES: { value: KdsType; label: string; description: string }[] = [
   { value: 'http', label: 'HTTP / REST', description: 'Send tickets via REST API. Compatible with Square KDS and custom servers.' },
@@ -11,14 +12,17 @@ const KDS_TYPES: { value: KdsType; label: string; description: string }[] = [
   { value: 'electron', label: 'Second Screen', description: 'Display on a second monitor via Electron IPC. Coming soon.' },
 ];
 
-const KdsSettingsTab: React.FC = () => {
+export const KdsSettingsTab: React.FC = () => {
   const logger = useLogger('KdsSettingsTab');
 
   const [enabled, setEnabled] = useState(false);
   const [type, setType] = useState<KdsType>('http');
+  const [vendor, setVendor] = useState<KdsVendorType>('custom');
   const [endpoint, setEndpoint] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [autoReconnect, setAutoReconnect] = useState(true);
+  const [pollIntervalMs, setPollIntervalMs] = useState('3000');
+  const [merchantId, setMerchantId] = useState('');
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'connected' | 'failed'>('idle');
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -29,9 +33,12 @@ const KdsSettingsTab: React.FC = () => {
     if (settings) {
       setEnabled(settings.enabled);
       setType(settings.type);
+      setVendor(settings.vendor);
       setEndpoint(settings.endpoint);
       setApiKey(settings.apiKey);
       setAutoReconnect(settings.autoReconnect);
+      setPollIntervalMs(settings.pollIntervalMs?.toString() || '3000');
+      setMerchantId(settings.merchantId || '');
     }
   }, []);
 
@@ -48,9 +55,12 @@ const KdsSettingsTab: React.FC = () => {
       const settings: KdsSettings = {
         enabled,
         type,
+        vendor,
         endpoint: endpoint.trim(),
         apiKey: apiKey.trim(),
         autoReconnect,
+        pollIntervalMs: parseInt(pollIntervalMs, 10) || 3000,
+        merchantId: merchantId.trim() || undefined,
       };
       const connected = await kdsServiceFactory.configure(settings);
       setDirty(false);
@@ -71,7 +81,7 @@ const KdsSettingsTab: React.FC = () => {
     } finally {
       setSaving(false);
     }
-  }, [enabled, type, endpoint, apiKey, autoReconnect, logger]);
+  }, [enabled, type, vendor, endpoint, apiKey, autoReconnect, pollIntervalMs, merchantId, logger]);
 
   const handleTestConnection = useCallback(async () => {
     if (!endpoint.trim()) {
@@ -156,6 +166,33 @@ const KdsSettingsTab: React.FC = () => {
             ))}
           </View>
 
+          {/* KDS Vendor */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>KDS Vendor</Text>
+            <Text style={styles.hint}>Select your kitchen display system vendor for optimized API endpoints</Text>
+
+            {(Object.keys(KDS_VENDOR_PRESETS) as KdsVendorType[]).map(vendorKey => {
+              const preset = KDS_VENDOR_PRESETS[vendorKey];
+              return (
+                <TouchableOpacity
+                  key={vendorKey}
+                  style={[styles.typeCard, vendor === vendorKey && styles.typeCardActive]}
+                  onPress={() => {
+                    setVendor(vendorKey);
+                    setPollIntervalMs(preset.defaultPollIntervalMs.toString());
+                    markDirty();
+                  }}
+                >
+                  <View style={styles.typeCardContent}>
+                    <Text style={[styles.typeLabel, vendor === vendorKey && styles.typeLabelActive]}>{preset.name}</Text>
+                    <Text style={styles.typeDesc}>{preset.description}</Text>
+                  </View>
+                  {vendor === vendorKey && <MaterialIcons name="check-circle" size={20} color={lightColors.primary} />}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
           {/* Connection details */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Connection Details</Text>
@@ -175,20 +212,58 @@ const KdsSettingsTab: React.FC = () => {
               keyboardType="url"
             />
 
-            <Text style={styles.fieldLabel}>API Key (optional)</Text>
+            {KDS_VENDOR_PRESETS[vendor].requiresApiKey && (
+              <>
+                <Text style={styles.fieldLabel}>API Key *</Text>
+                <TextInput
+                  style={styles.input}
+                  value={apiKey}
+                  onChangeText={v => {
+                    setApiKey(v);
+                    markDirty();
+                  }}
+                  placeholder="Required for this vendor"
+                  placeholderTextColor={lightColors.textSecondary}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  secureTextEntry
+                />
+              </>
+            )}
+
+            {vendor === 'clover' && (
+              <>
+                <Text style={styles.fieldLabel}>Merchant ID *</Text>
+                <TextInput
+                  style={styles.input}
+                  value={merchantId}
+                  onChangeText={v => {
+                    setMerchantId(v);
+                    markDirty();
+                  }}
+                  placeholder="Your Clover merchant ID"
+                  placeholderTextColor={lightColors.textSecondary}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </>
+            )}
+
+            <Text style={styles.fieldLabel}>Poll Interval (ms)</Text>
             <TextInput
               style={styles.input}
-              value={apiKey}
+              value={pollIntervalMs}
               onChangeText={v => {
-                setApiKey(v);
+                setPollIntervalMs(v);
                 markDirty();
               }}
-              placeholder="Leave blank if not required"
+              placeholder="3000"
               placeholderTextColor={lightColors.textSecondary}
-              autoCapitalize="none"
-              autoCorrect={false}
-              secureTextEntry
+              keyboardType="numeric"
             />
+            <Text style={styles.hint}>
+              How often to check for status updates (default: {KDS_VENDOR_PRESETS[vendor].defaultPollIntervalMs}ms)
+            </Text>
 
             <View style={styles.row}>
               <View style={styles.rowLabel}>
@@ -317,5 +392,3 @@ const styles = StyleSheet.create({
   },
   saveButtonText: { color: lightColors.textOnPrimary, fontWeight: '700', fontSize: typography.fontSize.md },
 });
-
-export default KdsSettingsTab;

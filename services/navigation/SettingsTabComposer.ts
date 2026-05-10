@@ -28,13 +28,12 @@ export type SettingsTabKey =
   | 'pos'
   | 'auth'
   | 'payment'
-  | 'printer'
-  | 'scanner'
+  | 'hardware'
+  | 'hardwareStatus'
   | 'ecommerce'
   | 'offline'
   | 'receipt'
   | 'multiregister'
-  | 'kds'
   | 'theme';
 
 export interface ComposedSettingsTab {
@@ -71,13 +70,13 @@ const TAB_DEFINITIONS: Record<SettingsTabKey, TabDefinition> = {
     translationKey: 'settings.tabs.payment',
     icon: '💳',
   },
-  printer: {
-    translationKey: 'settings.tabs.printer',
-    icon: '🖨',
+  hardware: {
+    translationKey: 'settings.tabs.hardware',
+    icon: '🔌',
   },
-  scanner: {
-    translationKey: 'settings.tabs.scanner',
-    icon: '📷',
+  hardwareStatus: {
+    translationKey: 'settings.tabs.hardwareStatus',
+    icon: '📊',
   },
   ecommerce: {
     translationKey: 'settings.tabs.ecommerce',
@@ -95,11 +94,6 @@ const TAB_DEFINITIONS: Record<SettingsTabKey, TabDefinition> = {
     translationKey: 'settings.tabs.multiRegister',
     icon: '🔗',
   },
-  kds: {
-    translationKey: 'settings.tabs.kds',
-    icon: '🍽️',
-    capabilityKey: 'orderSync',
-  },
   theme: {
     translationKey: 'settings.tabs.theme',
     icon: '🎨',
@@ -112,13 +106,12 @@ const TAB_ORDER: SettingsTabKey[] = [
   'pos',
   'auth',
   'payment',
-  'printer',
-  'scanner',
+  'hardware',
+  'hardwareStatus',
   'ecommerce',
   'offline',
   'receipt',
   'multiregister',
-  'kds',
   'theme',
 ];
 

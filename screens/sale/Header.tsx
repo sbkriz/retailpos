@@ -7,18 +7,23 @@ import { usePanelState } from '../../contexts/PanelStateProvider';
 import { QuickActionsMenu, QuickAction } from '../../components/QuickActionsMenu';
 import { useResponsive } from '../../hooks/useResponsive';
 import { useCheckoutContext } from '../../contexts/CheckoutProvider';
+import { useCashDrawerStatus } from '../../hooks/useCashDrawerStatus';
+
+import { CashDrawerServiceInterface } from '../../services/drawer/CashDrawerServiceInterface';
 
 interface HeaderProps {
   username: string;
   cartItemTotal: number;
   onQuickAction?: (actionId: string) => void;
+  drawerService?: CashDrawerServiceInterface | null;
 }
 
-const HeaderInner: React.FC<HeaderProps> = ({ username, cartItemTotal, onQuickAction }) => {
+const HeaderInner: React.FC<HeaderProps> = ({ username, cartItemTotal, onQuickAction, drawerService }) => {
   const { isLeftPanelOpen, setIsLeftPanelOpen } = useCategoryContext();
   const { isRightPanelOpen, setIsRightPanelOpen } = usePanelState();
   const { unsyncedOrdersCount } = useCheckoutContext();
   const { isMobile } = useResponsive();
+  const { isOpen: isDrawerOpen } = useCashDrawerStatus(drawerService || null);
 
   const toggleLeftPanel = () => {
     setIsLeftPanelOpen(!isLeftPanelOpen);
@@ -61,11 +66,17 @@ const HeaderInner: React.FC<HeaderProps> = ({ username, cartItemTotal, onQuickAc
         </View>
       )}
 
-      {/* Center: Username */}
+      {/* Center: Username + Drawer Status */}
       <View style={styles.headerTitleContainer}>
         <Text style={styles.usernameText} numberOfLines={1}>
           Hi, {username}
         </Text>
+        {isDrawerOpen === true && (
+          <View style={styles.drawerWarning}>
+            <MaterialIcons name="warning" size={14} color={lightColors.warning} />
+            <Text style={styles.drawerWarningText}>Drawer Open</Text>
+          </View>
+        )}
       </View>
 
       {/* Right: Cart badge (mobile) + quick actions */}
@@ -125,11 +136,26 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     paddingHorizontal: spacing.sm,
+    gap: 4,
   },
   usernameText: {
     color: lightColors.primaryLight,
     fontSize: typography.fontSize.sm,
     fontWeight: '500',
+  },
+  drawerWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: lightColors.warningBackground,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: borderRadius.xs,
+  },
+  drawerWarningText: {
+    color: lightColors.warning,
+    fontSize: 11,
+    fontWeight: '600',
   },
   headerRightContainer: {
     flexDirection: 'row',

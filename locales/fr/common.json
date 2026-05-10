@@ -244,12 +244,13 @@
       "posConfig": "Config. POS",
       "authentication": "Authentification",
       "payment": "Paiement",
-      "printer": "Imprimante",
-      "scanner": "Scanner",
+      "hardware": "Matériel",
+      "hardwareStatus": "État du Matériel",
       "ecommerce": "E-Commerce",
       "offline": "Hors ligne",
       "receipt": "Reçu",
-      "multiRegister": "Multi-Caisse"
+      "multiRegister": "Multi-Caisse",
+      "theme": "Thème"
     },
     "general": {
       "languageTitle": "Paramètres de langue",

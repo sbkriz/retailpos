@@ -2,9 +2,15 @@
  * Printer configuration interface
  */
 export interface PrinterConfig {
+  id?: string; // Unique identifier for the printer
+  name?: string; // Display name for the printer
   printerName: string;
   connectionType: 'network' | 'usb' | 'bluetooth';
+  type?: 'network' | 'usb' | 'bluetooth'; // Alias for connectionType
+  model?: string; // Printer model (epson, star, citizen, generic)
+  enabled?: boolean; // Whether the printer is enabled
   // Network specific properties
+  host?: string; // Alias for ipAddress
   ipAddress?: string;
   port?: number;
   // USB specific properties
@@ -62,6 +68,10 @@ export interface ReceiptData {
 export interface PrinterStatus {
   isOnline: boolean;
   hasPaper: boolean;
+  paperLow?: boolean;
+  paperOut?: boolean;
+  offline?: boolean;
+  error?: boolean;
   drawerOpen?: boolean;
   errorCode?: number;
   errorMessage?: string;

@@ -8,7 +8,7 @@
 
 import { useState, useCallback } from 'react';
 import { loyaltyService } from '../services/loyalty/LoyaltyService';
-import { storeCreditService } from '../services/storecredit/StoreCreditService';
+import { storeCreditService } from '../services/customer/StoreCreditService';
 import { LoyaltyBalance } from '../services/loyalty/LoyaltyService';
 
 export interface ActiveRedemption {

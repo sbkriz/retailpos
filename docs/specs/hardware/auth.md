@@ -2,8 +2,8 @@
 
 > **System**: RetailPOS – Authentication
 > **Actor**: Cashier, Manager, System
-> **Date**: 2026-04-13
-> **Source**: `services/auth/AuthService.ts`, `services/auth/AuthConfigService.ts`, `services/auth/AuthMethodInterface.ts`, `services/auth/providers/`, `screens/LoginScreen.tsx`
+> **Date**: 2026-05-10
+> **Source**: `services/auth/AuthService.ts`, `services/auth/AuthConfigService.ts`, `services/auth/AuthMethodInterface.ts`, `services/auth/providers/`, `services/auth/CardReaderDetection.ts`, `screens/LoginScreen.tsx`, `screens/settings/hardware/AuthHardwareSettingsTab.tsx`
 
 ---
 
@@ -88,31 +88,79 @@ Authentication can operate in `online` or `offline` mode. Hardware-dependent met
 
 **2.3.3** When `getAuthMethodsForMode(mode)` is called, the system shall return only those methods whose `supportedModes` includes the given mode.
 
-### 2.4 Hardware Methods
+### 2.4 Card Reader Auto-Detection
 
-**2.4.1** When `magstripe` provider's `isAvailable()` is called and no USB or Bluetooth card reader is detected, the system shall return `false`.
+**2.4.1** `CardReaderDetection` shall be a singleton service accessible via `CardReaderDetection.getInstance()`.
 
-**2.4.2** When `rfid_nfc` provider's `isAvailable()` is called and no NFC or RFID reader is detected, the system shall return `false`.
+**2.4.2** When `CardReaderDetection.detectReaders()` is called on Electron platform, the system shall query USB HID devices via Electron IPC and filter for known card reader vendor IDs.
 
-**2.4.3** When a hardware method's `authenticate(credential)` is called with a credential read from the physical device, the system shall validate the credential and return a success or failure result.
+**2.4.3** The system shall recognize six card reader vendors: MagTek (0x0801), ID TECH (0x0c27), Cherry (0x046a), HID Global (0x076b), Gemalto (0x08e6), and Identiv (0x04e6).
+
+**2.4.4** When a USB HID device matches a known vendor ID, the system shall create a `DetectedCardReader` record containing: `deviceId`, `vendorId`, `productId`, `vendorName`, `productName` (optional), and `serialNumber` (optional).
+
+**2.4.5** When `CardReaderDetection.detectReaders()` is called on non-Electron platforms (web, mobile), the system shall return an empty array and log an info message.
+
+**2.4.6** When `CardReaderDetection.getDetectedReaders()` is called, the system shall return the list of card readers from the most recent detection scan.
+
+**2.4.7** When `CardReaderDetection.hasDetectedReaders()` is called, the system shall return `true` if at least one card reader was detected in the most recent scan.
+
+### 2.5 Magstripe Data Parsing
+
+**2.5.1** When `CardReaderDetection.parseMagstripeData(raw)` is called with Track 2 format data (`;cardNumber=YYMM`), the system shall extract and return: `track: 2`, `cardNumber`, and `expiryDate`.
+
+**2.5.2** When `CardReaderDetection.parseMagstripeData(raw)` is called with Track 1 format data (`%BcardNumber^NAME^YYMM`), the system shall extract and return: `track: 1`, `cardNumber`, `name`, and `expiryDate`.
+
+**2.5.3** When `CardReaderDetection.parseMagstripeData(raw)` is called with data that does not match Track 1 or Track 2 format, the system shall return `null`.
+
+**2.5.4** When `CardReaderDetection.validateCardNumber(cardNumber)` is called, the system shall validate the card number using the Luhn algorithm and return `true` if valid, `false` otherwise.
+
+**2.5.5** When `CardReaderDetection.extractEmployeeId(cardData)` is called, the system shall attempt to parse the data as Track 1 or Track 2 format and return the card number as employee ID. If parsing fails, it shall return the trimmed raw data.
+
+### 2.6 Auth Hardware Settings UI
+
+**2.6.1** When `AuthHardwareSettingsTab` mounts, the system shall call `cardReaderDetection.detectReaders()` to scan for connected card readers.
+
+**2.6.2** When the user taps "Detect Card Readers", the system shall call `cardReaderDetection.detectReaders()` and display a loading indicator during the scan.
+
+**2.6.3** When card readers are detected, the system shall display a list showing: vendor icon, vendor name, product name (or product ID), and serial number (if available).
+
+**2.6.4** When no card readers are detected, the system shall display an empty state with icon, message "No card readers detected", and hint to connect a USB card reader.
+
+**2.6.5** The settings tab shall display a list of supported card reader vendors: MagTek, ID TECH, Cherry, HID Global, Gemalto, and Identiv.
+
+**2.6.6** The settings tab shall include an "Auto-Detect Card Readers" toggle (future feature placeholder).
+
+### 2.7 Hardware Methods
+
+**2.7.1** When `magstripe` provider's `isAvailable()` is called and no USB or Bluetooth card reader is detected, the system shall return `false`.
+
+**2.7.2** When `rfid_nfc` provider's `isAvailable()` is called and no NFC or RFID reader is detected, the system shall return `false`.
+
+**2.7.3** When a hardware method's `authenticate(credential)` is called with a credential read from the physical device, the system shall validate the credential and return a success or failure result.
+
+**2.7.4** When `MagstripeAuthProvider` receives card data, it shall use `CardReaderDetection.parseMagstripeData()` to extract the employee ID and `validateCardNumber()` to verify card validity before authentication.
 
 ### 2.5 Platform Auth
 
-**2.5.1** When `platform_auth` provider's `isAvailable()` is called in `offline` mode, the system shall return `false`.
+### 2.8 Platform Auth
 
-**2.5.2** When `platform_auth` provider's `isAvailable()` is called in `online` mode with internet connectivity, the system shall return `true`.
+**2.8.1** When `platform_auth` provider's `isAvailable()` is called in `offline` mode, the system shall return `false`.
 
-### 2.6 Biometric
+**2.8.2** When `platform_auth` provider's `isAvailable()` is called in `online` mode with internet connectivity, the system shall return `true`.
 
-**2.6.1** When `biometric` provider's `isAvailable()` is called and the OS reports no enrolled biometric credentials, the system shall return `false`.
+### 2.9 Biometric
 
-**2.6.2** When `biometric` provider's `isAvailable()` is called and the OS reports enrolled biometric credentials, the system shall return `true`.
+**2.9.1** When `biometric` provider's `isAvailable()` is called and the OS reports no enrolled biometric credentials, the system shall return `false`.
 
-### 2.7 Audit Logging
+**2.9.2** When `biometric` provider's `isAvailable()` is called and the OS reports enrolled biometric credentials, the system shall return `true`.
 
-**2.7.1** When `LoginScreen` receives a successful authentication result, the system shall call `auditLogService.log('auth:login', { userId, userName })`.
+### 2.10 Audit Logging
 
-**2.7.2** When `LoginScreen` receives a failed authentication result, the system shall call `auditLogService.log('auth:failed', { details: 'method={method} error={error}' })`.
+**2.10.1** When `LoginScreen` receives a successful authentication result, the system shall call `auditLogService.log('auth:login', { userId, userName })`.
+
+**2.10.2** When `LoginScreen` receives a failed authentication result, the system shall call `auditLogService.log('auth:failed', { details: 'method={method} error={error}' })`.
+
+**2.10.3** When a card reader is detected, the system shall log an info message with vendor name and device ID.
 
 ---
 
@@ -156,22 +204,32 @@ Authentication can operate in `online` or `offline` mode. Hardware-dependent met
 
 ## 6. Component Traceability
 
-| Requirement (summary)                                      | Component / Service                                               | Source File                            |
-| ---------------------------------------------------------- | ----------------------------------------------------------------- | -------------------------------------- |
-| Six providers registered at construction                   | `AuthService` constructor                                         | `services/auth/AuthService.ts`         |
-| `authenticate(method, credential)` with availability check | `AuthService.authenticate`                                        | `services/auth/AuthService.ts`         |
-| `authenticateWithPrimary` with PIN fallback                | `AuthService.authenticateWithPrimary`                             | `services/auth/AuthService.ts`         |
-| `getAvailableProviders` always includes PIN                | `AuthService.getAvailableProviders`                               | `services/auth/AuthService.ts`         |
-| `getAuthMethodsForMode` filters by `supportedModes`        | `AuthService.getAuthMethodsForMode`                               | `services/auth/AuthService.ts`         |
-| Config persisted on every setter call                      | `AuthConfigService.setPrimaryMethod` / `setAllowedMethods` / etc. | `services/auth/AuthConfigService.ts`   |
-| `load()` restores config at startup                        | `AuthConfigService.load`                                          | `services/auth/AuthConfigService.ts`   |
-| `disableMethod('pin')` is a no-op                          | `AuthConfigService.disableMethod`                                 | `services/auth/AuthConfigService.ts`   |
-| Per-method config storage                                  | `AuthConfigService.setMethodConfig` / `getMethodConfig`           | `services/auth/AuthConfigService.ts`   |
-| Provider interface contract                                | `AuthMethodProvider`                                              | `services/auth/AuthMethodInterface.ts` |
-| `AuthMethodInfo` shape                                     | `AuthMethodInfo`                                                  | `services/auth/AuthMethodInterface.ts` |
-| Magstripe requires physical card reader                    | `MagstripeAuthProvider.isAvailable`                               | `services/auth/providers/`             |
-| RFID/NFC requires physical reader                          | `RfidNfcAuthProvider.isAvailable`                                 | `services/auth/providers/`             |
-| `platform_auth` online-only                                | `PlatformAuthProvider.isAvailable`                                | `services/auth/providers/`             |
-| Biometric requires OS enrollment                           | `BiometricAuthProvider.isAvailable`                               | `services/auth/providers/`             |
-| `auth:login` audit log on success                          | `LoginScreen` success handler                                     | `screens/LoginScreen.tsx`              |
-| `auth:failed` audit log on failure                         | `LoginScreen` failure handler                                     | `screens/LoginScreen.tsx`              |
+| Requirement (summary)                                      | Component / Service                                               | Source File                                             |
+| ---------------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------- |
+| Six providers registered at construction                   | `AuthService` constructor                                         | `services/auth/AuthService.ts`                          |
+| `authenticate(method, credential)` with availability check | `AuthService.authenticate`                                        | `services/auth/AuthService.ts`                          |
+| `authenticateWithPrimary` with PIN fallback                | `AuthService.authenticateWithPrimary`                             | `services/auth/AuthService.ts`                          |
+| `getAvailableProviders` always includes PIN                | `AuthService.getAvailableProviders`                               | `services/auth/AuthService.ts`                          |
+| `getAuthMethodsForMode` filters by `supportedModes`        | `AuthService.getAuthMethodsForMode`                               | `services/auth/AuthService.ts`                          |
+| Config persisted on every setter call                      | `AuthConfigService.setPrimaryMethod` / `setAllowedMethods` / etc. | `services/auth/AuthConfigService.ts`                    |
+| `load()` restores config at startup                        | `AuthConfigService.load`                                          | `services/auth/AuthConfigService.ts`                    |
+| `disableMethod('pin')` is a no-op                          | `AuthConfigService.disableMethod`                                 | `services/auth/AuthConfigService.ts`                    |
+| Per-method config storage                                  | `AuthConfigService.setMethodConfig` / `getMethodConfig`           | `services/auth/AuthConfigService.ts`                    |
+| Provider interface contract                                | `AuthMethodProvider`                                              | `services/auth/AuthMethodInterface.ts`                  |
+| `AuthMethodInfo` shape                                     | `AuthMethodInfo`                                                  | `services/auth/AuthMethodInterface.ts`                  |
+| Card reader detection singleton                            | `CardReaderDetection.getInstance`                                 | `services/auth/CardReaderDetection.ts`                  |
+| USB HID card reader detection (Electron)                   | `CardReaderDetection.detectReaders`                               | `services/auth/CardReaderDetection.ts`                  |
+| Six vendor IDs recognized                                  | `CARD_READER_VENDORS`                                             | `services/auth/CardReaderDetection.ts`                  |
+| Track 1 and Track 2 parsing                                | `CardReaderDetection.parseMagstripeData`                          | `services/auth/CardReaderDetection.ts`                  |
+| Luhn validation                                            | `CardReaderDetection.validateCardNumber`                          | `services/auth/CardReaderDetection.ts`                  |
+| Employee ID extraction                                     | `CardReaderDetection.extractEmployeeId`                           | `services/auth/CardReaderDetection.ts`                  |
+| Auth hardware settings UI                                  | `AuthHardwareSettingsTab`                                         | `screens/settings/hardware/AuthHardwareSettingsTab.tsx` |
+| Card reader detection UI                                   | `AuthHardwareSettingsTab.handleDetect`                            | `screens/settings/hardware/AuthHardwareSettingsTab.tsx` |
+| Detected readers list display                              | `AuthHardwareSettingsTab.renderReaderItem`                        | `screens/settings/hardware/AuthHardwareSettingsTab.tsx` |
+| Magstripe requires physical card reader                    | `MagstripeAuthProvider.isAvailable`                               | `services/auth/providers/`                              |
+| Magstripe uses CardReaderDetection                         | `MagstripeAuthProvider.authenticate`                              | `services/auth/providers/`                              |
+| RFID/NFC requires physical reader                          | `RfidNfcAuthProvider.isAvailable`                                 | `services/auth/providers/`                              |
+| `platform_auth` online-only                                | `PlatformAuthProvider.isAvailable`                                | `services/auth/providers/`                              |
+| Biometric requires OS enrollment                           | `BiometricAuthProvider.isAvailable`                               | `services/auth/providers/`                              |
+| `auth:login` audit log on success                          | `LoginScreen` success handler                                     | `screens/LoginScreen.tsx`                               |
+| `auth:failed` audit log on failure                         | `LoginScreen` failure handler                                     | `screens/LoginScreen.tsx`                               |

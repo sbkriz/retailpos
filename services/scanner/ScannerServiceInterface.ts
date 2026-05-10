@@ -1,7 +1,17 @@
 /**
+ * Scanner driver types
+ */
+export type ScannerDriverType = 'bluetooth' | 'usb' | 'camera' | 'qr_hardware' | 'mock';
+
+/**
  * Interface for all scanner services (Bluetooth, USB, etc.)
  */
 export interface ScannerServiceInterface {
+  /**
+   * Which driver is backing this instance
+   */
+  readonly driverType?: ScannerDriverType;
+
   /**
    * Connect to the scanner device
    * @param deviceId The ID or address of the scanner device

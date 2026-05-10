@@ -25,11 +25,13 @@ export class WebSocketDisplayService implements CustomerDisplayServiceInterface 
       this.config = config;
       this.ws = new WebSocket(config.endpoint!);
 
+      const timeoutMs = config.connectionTimeoutMs ?? 5000;
+
       return await new Promise<boolean>(resolve => {
         const timeout = setTimeout(() => {
-          this.logger.warn({ message: 'WebSocket display connection timed out' });
+          this.logger.warn({ message: `WebSocket display connection timed out after ${timeoutMs}ms` });
           resolve(false);
-        }, 5000);
+        }, timeoutMs);
 
         this.ws!.onopen = () => {
           clearTimeout(timeout);

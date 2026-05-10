@@ -24,6 +24,7 @@ export type AuditAction =
   | 'shift:opened'
   | 'shift:closed'
   | 'drawer:opened'
+  | 'drawer:closed'
   | 'sync:started'
   | 'sync:completed'
   | 'sync:failed'
@@ -56,7 +57,11 @@ export type AuditAction =
   | 'vendor_return:confirmed'
   | 'vendor_return:cancelled'
   | 'barcode_labels:printed'
-  | 'barcode_labels:exported';
+  | 'barcode_labels:exported'
+  | 'hardware:connected'
+  | 'hardware:disconnected'
+  | 'hardware:error'
+  | 'hardware:configured';
 
 export interface AuditEntry {
   id: string;

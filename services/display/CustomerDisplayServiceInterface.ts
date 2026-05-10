@@ -79,6 +79,8 @@ export interface DisplayConnectionConfig {
   baudRate?: number;
   /** Display width in characters (default 20 for 2×20 VFD) */
   characterWidth?: number;
+  /** Connection timeout in milliseconds (default 5000) */
+  connectionTimeoutMs?: number;
 }
 
 // ── Helper ────────────────────────────────────────────────────────────────

@@ -2,8 +2,8 @@
 
 > **System**: RetailPOS – Thermal Printer & Receipt Printing
 > **Actor**: Cashier, Manager, System
-> **Date**: 2026-04-13
-> **Source**: `services/printer/PrinterTypes.ts`, `services/printer/BasePrinterService.ts`, `services/printer/PrinterServiceFactory.ts`, `services/printer/UnifiedPrinterService.ts`, `services/printer/ElectronPrinterService.ts`, `services/printer/ReceiptConfigService.ts`, `services/printer/DailyReportService.ts`, `screens/PrinterScreen.tsx`
+> **Date**: 2026-05-10
+> **Source**: `services/printer/PrinterTypes.ts`, `services/printer/BasePrinterService.ts`, `services/printer/PrinterServiceFactory.ts`, `services/printer/UnifiedPrinterService.ts`, `services/printer/ElectronPrinterService.ts`, `services/printer/MobilePrinterDiscovery.ts`, `services/printer/ReceiptConfigService.ts`, `services/printer/DailyReportService.ts`, `components/PrinterDiscoveryModal.tsx`, `screens/PrinterScreen.tsx`
 
 ---
 
@@ -83,13 +83,57 @@ Receipt layout is driven by `ReceiptConfigService`, which persists branding, foo
 
 **2.2.2** When `PrinterServiceFactory.discoverPrinters()` is called on mobile/tablet, the system shall return the persisted `availablePrinters` list — no active discovery is performed.
 
+### 2.3 Mobile Printer Discovery
+
+**2.3.1** `MobilePrinterDiscovery` shall be a singleton service accessible via `MobilePrinterDiscovery.getInstance()`.
+
+**2.3.2** When `MobilePrinterDiscovery.discover(timeoutMs)` is called, the system shall scan the local network for printers using mDNS/Bonjour for the specified timeout (default 10 seconds) and return an array of discovered `PrinterConfig` objects.
+
+**2.3.3** The system shall scan for two mDNS service types: `_printer._tcp` and `_ipp._tcp` to discover network printers.
+
+**2.3.4** When an mDNS service is resolved, the system shall parse it into a `PrinterConfig` with: `id` (generated from host and port), `name` (from service name), `type: 'network'`, `host` (from service addresses), `port` (from service port, default 9100), and `model` (inferred from service name).
+
+**2.3.5** The system shall infer printer model from service name: names containing "epson" or "tm-" → `'epson'`, "star" or "tsp" → `'star'`, "citizen" or "ct-s" → `'citizen'`, otherwise → `'generic'`.
+
+**2.3.6** When `MobilePrinterDiscovery.addManualPrinter(host, port, name)` is called, the system shall create a `PrinterConfig` for the specified network printer and add it to the discovered printers list.
+
+**2.3.7** When `MobilePrinterDiscovery.testConnection(printer)` is called, the system shall attempt to connect to the printer and return `true` if successful, `false` otherwise.
+
+**2.3.8** When `MobilePrinterDiscovery.stopDiscovery()` is called, the system shall stop any ongoing mDNS scan.
+
+**2.3.9** When `MobilePrinterDiscovery.isDiscovering()` is called, the system shall return `true` if a discovery scan is in progress, `false` otherwise.
+
+**2.3.10** When `MobilePrinterDiscovery.getDiscoveredPrinters()` is called, the system shall return the list of printers from the most recent discovery scan.
+
+### 2.4 Printer Discovery Modal
+
+**2.4.1** When `PrinterDiscoveryModal` is opened, the system shall display controls for "Start Discovery" and "Add Manually".
+
+**2.4.2** When the user taps "Start Discovery", the system shall call `mobilePrinterDiscovery.discover(10000)` and display a loading indicator with message "Scanning network for printers...".
+
+**2.4.3** When discovery completes with results, the system shall display a list of discovered printers showing: printer icon, name, IP address and port, model, and action buttons (Test, Select).
+
+**2.4.4** When discovery completes with no results, the system shall show an alert offering to add a printer manually.
+
+**2.4.5** When the user taps "Add Manually", the system shall show a form with fields: IP Address (required), Port (default 9100), and Printer Name (optional).
+
+**2.4.6** When the user submits the manual entry form, the system shall validate the IP address and port, call `mobilePrinterDiscovery.addManualPrinter()`, and add the printer to the list.
+
+**2.4.7** When the user taps "Test" on a printer, the system shall call `mobilePrinterDiscovery.testConnection(printer)` and show a success or failure alert.
+
+**2.4.8** When the user taps "Select" on a printer, the system shall call the `onSelectPrinter` callback with the printer config and close the modal.
+
+**2.4.9** When no printers are discovered and discovery is not running, the system shall display an empty state with icon, message "No printers discovered yet", and hint to start discovery.
+
 ### 2.3 Printing a Receipt
 
-**2.3.1** When `PrinterServiceFactory.printReceipt(data)` is called and `activePrinterService` is set, the system shall delegate to `activePrinterService.printReceipt(data)`.
+### 2.5 Printing a Receipt
 
-**2.3.2** When `PrinterServiceFactory.printReceipt(data)` is called and no printer is connected, the system shall throw `'Not connected to a printer'`.
+**2.5.1** When `PrinterServiceFactory.printReceipt(data)` is called and `activePrinterService` is set, the system shall delegate to `activePrinterService.printReceipt(data)`.
 
-**2.3.3** When `UnifiedPrinterService.printReceipt(data)` is called, the system shall:
+**2.5.2** When `PrinterServiceFactory.printReceipt(data)` is called and no printer is connected, the system shall throw `'Not connected to a printer'`.
+
+**2.5.3** When `UnifiedPrinterService.printReceipt(data)` is called, the system shall:
 
 1. Call `printerInstance.init()` to reset the printer state.
 2. Print the header (business name, address, phone, tax ID) from `ReceiptConfigService` — center-aligned, business name bold.
@@ -100,61 +144,61 @@ Receipt layout is driven by `ReceiptConfigService`, which persists branding, foo
 7. Print footer lines from `ReceiptConfigService` — center-aligned.
 8. Call `printerInstance.cutPaper()` if `config.options.cutPaper` is `true` and the printer model supports cut.
 
-**2.3.4** When `ElectronPrinterService.printReceipt(data)` is called, the system shall build the ESC/POS byte buffer via `formatReceiptBuffer(data)`, optionally append the drawer-kick command if `config.options.openCashDrawer` is `true`, and send the combined buffer via `api.printerSendRawData(base64, printerConfig)`.
+**2.5.4** When `ElectronPrinterService.printReceipt(data)` is called, the system shall build the ESC/POS byte buffer via `formatReceiptBuffer(data)`, optionally append the drawer-kick command if `config.options.openCashDrawer` is `true`, and send the combined buffer via `api.printerSendRawData(base64, printerConfig)`.
 
-**2.3.5** When `formatReceiptBuffer(data)` is called, the system shall produce a `Uint8Array` of ESC/POS commands encoding the full receipt layout — identical structure to **2.3.3** but as raw bytes rather than SDK calls.
+**2.5.5** When `formatReceiptBuffer(data)` is called, the system shall produce a `Uint8Array` of ESC/POS commands encoding the full receipt layout — identical structure to **2.5.3** but as raw bytes rather than SDK calls.
 
-### 2.4 Cash Drawer via Printer
+### 2.6 Cash Drawer via Printer
 
-**2.4.1** When `BasePrinterService.openDrawer(pin?)` is called, the system shall send the ESC/POS `DRAWER_KICK_PIN2` (default) or `DRAWER_KICK_PIN5` command bytes via `sendBytes()`.
+**2.6.1** When `BasePrinterService.openDrawer(pin?)` is called, the system shall send the ESC/POS `DRAWER_KICK_PIN2` (default) or `DRAWER_KICK_PIN5` command bytes via `sendBytes()`.
 
-**2.4.2** When `openDrawer()` is called and `isConnected()` returns `false`, the system shall return `false` without sending any command.
+**2.6.2** When `openDrawer()` is called and `isConnected()` returns `false`, the system shall return `false` without sending any command.
 
-**2.4.3** When `ElectronPrinterService.sendBytes(data)` is called, the system shall base64-encode the byte array and call `api.printerSendRawData(base64, printerConfig)` via Electron IPC.
+**2.6.3** When `ElectronPrinterService.sendBytes(data)` is called, the system shall base64-encode the byte array and call `api.printerSendRawData(base64, printerConfig)` via Electron IPC.
 
-**2.4.4** When `UnifiedPrinterService.sendBytes(data)` is called, the system shall base64-encode the byte array and call `printerInstance.printRawData(base64, ...)` with the appropriate connection parameters.
+**2.6.4** When `UnifiedPrinterService.sendBytes(data)` is called, the system shall base64-encode the byte array and call `printerInstance.printRawData(base64, ...)` with the appropriate connection parameters.
 
-### 2.5 Printer Status
+### 2.7 Printer Status
 
-**2.5.1** When `PrinterServiceFactory.getPrinterStatus()` is called and a printer is connected, the system shall delegate to `activePrinterService.getStatus()` and return the `PrinterStatus`.
+**2.7.1** When `PrinterServiceFactory.getPrinterStatus()` is called and a printer is connected, the system shall delegate to `activePrinterService.getStatus()` and return the `PrinterStatus`.
 
-**2.5.2** When `PrinterServiceFactory.getPrinterStatus()` is called and no printer is connected, the system shall return `{ isOnline: false, hasPaper: false, errorMessage: 'No printer connected' }`.
+**2.7.2** When `PrinterServiceFactory.getPrinterStatus()` is called and no printer is connected, the system shall return `{ isOnline: false, hasPaper: false, errorMessage: 'No printer connected' }`.
 
-**2.5.3** When `ElectronPrinterService.getStatus()` is called, the system shall call `api.printerGetStatus(printerConfig)` via IPC and update `_isConnected` based on the response.
+**2.7.3** When `ElectronPrinterService.getStatus()` is called, the system shall call `api.printerGetStatus(printerConfig)` via IPC and update `_isConnected` based on the response.
 
-### 2.6 Receipt Configuration
+### 2.8 Receipt Configuration
 
-**2.6.1** When `ReceiptConfigService.initialize()` is called, the system shall load the persisted `ReceiptConfig` from `keyValueRepository` under `'receipt_config'`, merging with defaults. Subsequent calls shall be no-ops.
+**2.8.1** When `ReceiptConfigService.initialize()` is called, the system shall load the persisted `ReceiptConfig` from `keyValueRepository` under `'receipt_config'`, merging with defaults. Subsequent calls shall be no-ops.
 
-**2.6.2** When `ReceiptConfigService.updateConfig(updates)` is called, the system shall deep-merge the updates into the current config and persist the result immediately.
+**2.8.2** When `ReceiptConfigService.updateConfig(updates)` is called, the system shall deep-merge the updates into the current config and persist the result immediately.
 
-**2.6.3** When `ReceiptConfigService.setPrinterModel(modelType)` is called, the system shall apply the preset for that model type and adjust `characterWidth` downward by 33% if `paperWidth === 58`.
+**2.8.3** When `ReceiptConfigService.setPrinterModel(modelType)` is called, the system shall apply the preset for that model type and adjust `characterWidth` downward by 33% if `paperWidth === 58`.
 
-**2.6.4** When `ReceiptConfigService.formatLine(left, right)` is called, the system shall pad the left string with spaces so the combined line fills `characterWidth` characters, truncating the left string with `'...'` if necessary.
+**2.8.4** When `ReceiptConfigService.formatLine(left, right)` is called, the system shall pad the left string with spaces so the combined line fills `characterWidth` characters, truncating the left string with `'...'` if necessary.
 
-### 2.7 Daily Report & Shift Management
+### 2.9 Daily Report & Shift Management
 
-**2.7.1** When `DailyReportService.openShift(cashierName, cashierId, openingCash)` is called and no shift is open, the system shall create a `ShiftData` record with `status: 'open'` and persist it to `keyValueRepository` under `'current_shift'`.
+**2.9.1** When `DailyReportService.openShift(cashierName, cashierId, openingCash)` is called and no shift is open, the system shall create a `ShiftData` record with `status: 'open'` and persist it to `keyValueRepository` under `'current_shift'`.
 
-**2.7.2** When `DailyReportService.openShift()` is called while a shift is already open, the system shall throw `'A shift is already open. Please close it first.'`
+**2.9.2** When `DailyReportService.openShift()` is called while a shift is already open, the system shall throw `'A shift is already open. Please close it first.'`
 
-**2.7.3** When `DailyReportService.closeShift(closingCash)` is called, the system shall set `endTime`, `closingCash`, and `status: 'closed'` on the current shift, append it to the shift history in `keyValueRepository`, and clear `current_shift`.
+**2.9.3** When `DailyReportService.closeShift(closingCash)` is called, the system shall set `endTime`, `closingCash`, and `status: 'closed'` on the current shift, append it to the shift history in `keyValueRepository`, and clear `current_shift`.
 
-**2.7.4** When `DailyReportService.generateDailyReport(orders, shift?)` is called, the system shall filter orders to those within the shift's time range and matching `cashierId`, then calculate `totalSales`, `totalTax`, `totalDiscount`, `netSales`, `averageOrderValue`, `paymentBreakdown`, `itemsSold`, `refunds`, and `refundAmount` using safe money arithmetic.
+**2.9.4** When `DailyReportService.generateDailyReport(orders, shift?)` is called, the system shall filter orders to those within the shift's time range and matching `cashierId`, then calculate `totalSales`, `totalTax`, `totalDiscount`, `netSales`, `averageOrderValue`, `paymentBreakdown`, `itemsSold`, `refunds`, and `refundAmount` using safe money arithmetic.
 
-**2.7.5** When `DailyReportService.formatDailyReportForPrint(report, currencySymbol)` is called, the system shall return a `string[]` of formatted lines ready for printing, including: header, shift info, sales summary, payment breakdown, cash drawer reconciliation (if opening cash is set), and refund summary (if refunds > 0).
+**2.9.5** When `DailyReportService.formatDailyReportForPrint(report, currencySymbol)` is called, the system shall return a `string[]` of formatted lines ready for printing, including: header, shift info, sales summary, payment breakdown, cash drawer reconciliation (if opening cash is set), and refund summary (if refunds > 0).
 
-### 2.8 PrinterScreen — UI Flow
+### 2.10 PrinterScreen — UI Flow
 
-**2.8.1** When `PrinterScreen` mounts, the system shall call `printerService.getAvailablePrinters()` and populate the printer list. If a printer is already connected, it shall be shown as selected.
+**2.10.1** When `PrinterScreen` mounts, the system shall call `printerService.getAvailablePrinters()` and populate the printer list. If a printer is already connected, it shall be shown as selected.
 
-**2.8.2** When the cashier taps a printer in the list, the system shall call `printerService.connectToPrinter(printerName)` and show a success or failure alert.
+**2.10.2** When the cashier taps a printer in the list, the system shall call `printerService.connectToPrinter(printerName)` and show a success or failure alert.
 
-**2.8.3** When the cashier taps "Print Receipt" and a printer is connected and the cart is non-empty, the system shall build a `ReceiptData` from the current cart items and call `printerService.printReceipt(receiptData)`.
+**2.10.3** When the cashier taps "Print Receipt" and a printer is connected and the cart is non-empty, the system shall build a `ReceiptData` from the current cart items and call `printerService.printReceipt(receiptData)`.
 
-**2.8.4** When `printReceipt` succeeds, `PrinterScreen` shall show a success alert with options to clear the cart or keep items.
+**2.10.4** When `printReceipt` succeeds, `PrinterScreen` shall show a success alert with options to clear the cart or keep items.
 
-**2.8.5** When `printReceipt` fails, `PrinterScreen` shall show an error alert.
+**2.10.5** When `printReceipt` fails, `PrinterScreen` shall show an error alert.
 
 ---
 
@@ -222,6 +266,15 @@ Receipt layout is driven by `ReceiptConfigService`, which persists branding, foo
 | `discoverPrinters` — Electron IPC or persisted list     | `PrinterServiceFactory.discoverPrinters`           | `services/printer/PrinterServiceFactory.ts`  |
 | `printReceipt` delegates to active service              | `PrinterServiceFactory.printReceipt`               | `services/printer/PrinterServiceFactory.ts`  |
 | `getPrinterStatus` delegates to active service          | `PrinterServiceFactory.getPrinterStatus`           | `services/printer/PrinterServiceFactory.ts`  |
+| Mobile printer discovery singleton                      | `MobilePrinterDiscovery.getInstance`               | `services/printer/MobilePrinterDiscovery.ts` |
+| mDNS network printer discovery                          | `MobilePrinterDiscovery.discover`                  | `services/printer/MobilePrinterDiscovery.ts` |
+| Manual printer entry                                    | `MobilePrinterDiscovery.addManualPrinter`          | `services/printer/MobilePrinterDiscovery.ts` |
+| Printer connection test                                 | `MobilePrinterDiscovery.testConnection`            | `services/printer/MobilePrinterDiscovery.ts` |
+| mDNS service parsing                                    | `MobilePrinterDiscovery.parseMdnsService`          | `services/printer/MobilePrinterDiscovery.ts` |
+| Printer discovery modal UI                              | `PrinterDiscoveryModal`                            | `components/PrinterDiscoveryModal.tsx`       |
+| Discovery controls and status                           | `PrinterDiscoveryModal.handleDiscover`             | `components/PrinterDiscoveryModal.tsx`       |
+| Manual printer entry form                               | `PrinterDiscoveryModal` manual entry               | `components/PrinterDiscoveryModal.tsx`       |
+| Discovered printer list                                 | `PrinterDiscoveryModal.renderPrinterItem`          | `components/PrinterDiscoveryModal.tsx`       |
 | ESC/POS command constants                               | `ESC_POS_COMMANDS`                                 | `services/printer/BasePrinterService.ts`     |
 | `formatReceiptBuffer` — ESC/POS byte buffer             | `AbstractPrinterService.formatReceiptBuffer`       | `services/printer/BasePrinterService.ts`     |
 | `openDrawer(pin)` — ESC/POS drawer-kick                 | `AbstractPrinterService.openDrawer`                | `services/printer/BasePrinterService.ts`     |

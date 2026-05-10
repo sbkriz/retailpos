@@ -26,6 +26,13 @@ export class PrinterDrawerDriver implements CashDrawerServiceInterface {
       const result = await this.printer.openDrawer(this.pin);
       if (result) {
         this.logger.info('Cash drawer opened via printer');
+
+        // Audit log the drawer open event
+        const { auditLogService } = await import('../audit/AuditLogService');
+        await auditLogService.log('drawer:opened', {
+          details: `Cash drawer opened via printer (pin ${this.pin})`,
+          metadata: { pin: this.pin, method: 'printer' },
+        });
       }
       return result;
     } catch (error) {

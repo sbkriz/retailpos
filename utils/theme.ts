@@ -48,6 +48,7 @@ export const lightColors = {
   warningBackground: '#fff3cd',
   warningText: '#856404',
   successBackground: '#d4edda',
+  errorBackground: '#ffebee',
   successText: '#155724',
 
   // Overlay colors

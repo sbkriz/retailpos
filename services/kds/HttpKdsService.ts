@@ -1,5 +1,6 @@
 import { KdsServiceInterface, KdsOrder, KdsConnectionConfig, KdsDriverType, KdsStatusUpdate } from './KdsServiceInterface';
 import { LoggerFactory } from '../logger/LoggerFactory';
+import { formatEndpoint } from './KdsVendorPresets';
 
 /**
  * HTTP-based KDS service.
@@ -7,7 +8,7 @@ import { LoggerFactory } from '../logger/LoggerFactory';
  * Compatible with Square KDS, custom Node/Express KDS servers, and most
  * cloud-based kitchen display systems that expose a REST API.
  *
- * Status updates are polled via GET /api/kds/updates?since={timestamp}.
+ * Status updates are polled via vendor-specific endpoints with configurable intervals.
  */
 export class HttpKdsService implements KdsServiceInterface {
   readonly driverType: KdsDriverType = 'http';
@@ -21,14 +22,23 @@ export class HttpKdsService implements KdsServiceInterface {
   async connect(config: KdsConnectionConfig): Promise<boolean> {
     try {
       this.config = config;
-      // Verify the endpoint is reachable
-      const response = await fetch(`${config.endpoint}/api/kds/health`, {
+
+      if (!config.vendorPreset) {
+        this.logger.error('No vendor preset configured for KDS');
+        return false;
+      }
+
+      // Verify the endpoint is reachable using vendor-specific health endpoint
+      const healthUrl = `${config.endpoint}${config.vendorPreset.endpoints.health}`;
+      const response = await fetch(healthUrl, {
         headers: this.buildHeaders(),
       });
       this.connected = response.ok;
       if (this.connected) {
-        this.logger.info(`Connected to KDS at ${config.endpoint}`);
-        this.startPolling();
+        this.logger.info(`Connected to ${config.vendorPreset.name} at ${config.endpoint}`);
+        if (config.vendorPreset.supportsPolling) {
+          this.startPolling();
+        }
       }
       return this.connected;
     } catch (error) {
@@ -50,9 +60,14 @@ export class HttpKdsService implements KdsServiceInterface {
   }
 
   async sendOrder(order: KdsOrder): Promise<boolean> {
-    if (!this.config?.endpoint) return false;
+    if (!this.config?.endpoint || !this.config.vendorPreset) return false;
     try {
-      const response = await fetch(`${this.config.endpoint}/api/kds/orders`, {
+      const endpoint = formatEndpoint(this.config.vendorPreset.endpoints.sendOrder, {
+        merchantId: this.config.merchantId,
+      });
+      const url = `${this.config.endpoint}${endpoint}`;
+
+      const response = await fetch(url, {
         method: 'POST',
         headers: this.buildHeaders(),
         body: JSON.stringify(order),
@@ -71,9 +86,15 @@ export class HttpKdsService implements KdsServiceInterface {
   }
 
   async recallOrder(orderId: string): Promise<boolean> {
-    if (!this.config?.endpoint) return false;
+    if (!this.config?.endpoint || !this.config.vendorPreset) return false;
     try {
-      const response = await fetch(`${this.config.endpoint}/api/kds/orders/${orderId}/recall`, {
+      const endpoint = formatEndpoint(this.config.vendorPreset.endpoints.recallOrder, {
+        orderId,
+        merchantId: this.config.merchantId,
+      });
+      const url = `${this.config.endpoint}${endpoint}`;
+
+      const response = await fetch(url, {
         method: 'POST',
         headers: this.buildHeaders(),
       });
@@ -84,9 +105,15 @@ export class HttpKdsService implements KdsServiceInterface {
   }
 
   async cancelOrder(orderId: string): Promise<boolean> {
-    if (!this.config?.endpoint) return false;
+    if (!this.config?.endpoint || !this.config.vendorPreset) return false;
     try {
-      const response = await fetch(`${this.config.endpoint}/api/kds/orders/${orderId}`, {
+      const endpoint = formatEndpoint(this.config.vendorPreset.endpoints.cancelOrder, {
+        orderId,
+        merchantId: this.config.merchantId,
+      });
+      const url = `${this.config.endpoint}${endpoint}`;
+
+      const response = await fetch(url, {
         method: 'DELETE',
         headers: this.buildHeaders(),
       });
@@ -110,7 +137,9 @@ export class HttpKdsService implements KdsServiceInterface {
 
   private startPolling(): void {
     this.lastPollTimestamp = Date.now();
-    this.pollIntervalId = setInterval(() => this.poll(), 3000);
+    const intervalMs = this.config?.pollIntervalMs ?? this.config?.vendorPreset?.defaultPollIntervalMs ?? 3000;
+    this.pollIntervalId = setInterval(() => this.poll(), intervalMs);
+    this.logger.info(`Started polling KDS updates every ${intervalMs}ms`);
   }
 
   private stopPolling(): void {
@@ -121,9 +150,15 @@ export class HttpKdsService implements KdsServiceInterface {
   }
 
   private async poll(): Promise<void> {
-    if (!this.config?.endpoint || !this.connected) return;
+    if (!this.config?.endpoint || !this.config.vendorPreset || !this.connected) return;
     try {
-      const response = await fetch(`${this.config.endpoint}/api/kds/updates?since=${this.lastPollTimestamp}`, {
+      const endpoint = formatEndpoint(this.config.vendorPreset.endpoints.getUpdates, {
+        timestamp: this.lastPollTimestamp,
+        merchantId: this.config.merchantId,
+      });
+      const url = `${this.config.endpoint}${endpoint}`;
+
+      const response = await fetch(url, {
         headers: this.buildHeaders(),
       });
       if (!response.ok) return;

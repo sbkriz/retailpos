@@ -3,6 +3,7 @@ import { NoOpKdsService } from './NoOpKdsService';
 import { HttpKdsService } from './HttpKdsService';
 import { LoggerFactory } from '../logger/LoggerFactory';
 import { keyValueRepository } from '../../repositories/KeyValueRepository';
+import { KdsVendorType, KDS_VENDOR_PRESETS } from './KdsVendorPresets';
 
 export type KdsType = 'http' | 'websocket' | 'electron' | 'none';
 
@@ -11,17 +12,22 @@ const KDS_SETTINGS_KEY = 'kdsSettings';
 export interface KdsSettings {
   enabled: boolean;
   type: KdsType;
+  vendor: KdsVendorType;
   endpoint: string;
   apiKey: string;
   autoReconnect: boolean;
+  pollIntervalMs: number;
+  merchantId?: string; // For Clover and other multi-tenant KDS systems
 }
 
 const DEFAULT_KDS_SETTINGS: KdsSettings = {
   enabled: false,
   type: 'none',
+  vendor: 'custom',
   endpoint: '',
   apiKey: '',
   autoReconnect: true,
+  pollIntervalMs: 3000,
 };
 
 /**
@@ -100,10 +106,15 @@ export class KdsServiceFactory {
       return true;
     }
 
+    const vendorPreset = KDS_VENDOR_PRESETS[settings.vendor];
+
     const config: KdsConnectionConfig = {
       endpoint: settings.endpoint,
       apiKey: settings.apiKey,
       autoReconnect: settings.autoReconnect,
+      pollIntervalMs: settings.pollIntervalMs || vendorPreset.defaultPollIntervalMs,
+      vendorPreset: vendorPreset,
+      merchantId: settings.merchantId,
     };
 
     switch (settings.type) {

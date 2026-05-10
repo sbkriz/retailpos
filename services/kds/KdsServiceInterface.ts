@@ -100,4 +100,10 @@ export interface KdsConnectionConfig {
   apiKey?: string;
   /** Reconnect automatically on disconnect */
   autoReconnect?: boolean;
+  /** Polling interval in milliseconds (for HTTP KDS) */
+  pollIntervalMs?: number;
+  /** Vendor-specific preset configuration */
+  vendorPreset?: import('./KdsVendorPresets').KdsVendorPreset;
+  /** Merchant ID (for multi-tenant KDS like Clover) */
+  merchantId?: string;
 }

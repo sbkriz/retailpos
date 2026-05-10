@@ -1,16 +1,13 @@
 import { LoggerFactory } from '../logger/LoggerFactory';
 import { ScannerServiceInterface } from './ScannerServiceInterface';
+import { scannerSettingsService } from './ScannerSettingsService';
 
 /**
  * USB scanner service implementation
  * Note: USB communication in React Native requires platform-specific native modules
  */
-/** Milliseconds between keystrokes — real scanners type at <50 ms; humans can't sustain <80 ms */
-const SCAN_INTERVAL_MS = 80;
-/** Minimum barcode length — filters stray Enter presses */
-const MIN_BARCODE_LENGTH = 3;
-
 export class USBScannerService implements ScannerServiceInterface {
+  readonly driverType = 'usb' as const;
   private connected: boolean = false;
   private deviceId: string | null = null;
   private scanListeners: Map<string, (data: string) => void> = new Map();
@@ -18,6 +15,7 @@ export class USBScannerService implements ScannerServiceInterface {
   private inputBuffer: string = '';
   private lastKeyTime: number = 0;
   private logger: ReturnType<typeof LoggerFactory.prototype.createLogger>;
+
   constructor() {
     this.logger = LoggerFactory.getInstance().createLogger('USBScannerService');
   }
@@ -91,14 +89,20 @@ export class USBScannerService implements ScannerServiceInterface {
     if (!this.keydownHandler && typeof window !== 'undefined') {
       this.inputBuffer = '';
       this.lastKeyTime = 0;
+
+      // Load configuration from settings service
+      const config = scannerSettingsService.getUsbConfig();
+      const suffixKey = config.suffixChar === 'Tab' ? 'Tab' : 'Enter';
+
       this.keydownHandler = (e: KeyboardEvent) => {
         const now = Date.now();
-        if (now - this.lastKeyTime > SCAN_INTERVAL_MS && this.inputBuffer.length > 0) {
+        if (now - this.lastKeyTime > config.scanIntervalMs && this.inputBuffer.length > 0) {
           this.inputBuffer = '';
         }
         this.lastKeyTime = now;
-        if (e.key === 'Enter') {
-          if (this.inputBuffer.length >= MIN_BARCODE_LENGTH) {
+
+        if (e.key === suffixKey) {
+          if (this.inputBuffer.length >= config.minBarcodeLength && this.inputBuffer.length <= config.maxBarcodeLength) {
             const barcode = this.inputBuffer.trim();
             this.inputBuffer = '';
             this.scanListeners.forEach(cb => cb(barcode));

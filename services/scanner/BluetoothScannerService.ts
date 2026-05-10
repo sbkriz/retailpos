@@ -2,26 +2,29 @@ import { ScannerServiceInterface } from './ScannerServiceInterface';
 import { BleManager, Device, Subscription } from 'react-native-ble-plx';
 import { LoggerFactory } from '../logger/LoggerFactory';
 import { decodeBase64 } from '../../utils/base64';
+import { scannerSettingsService } from './ScannerSettingsService';
 
 /**
  * Bluetooth scanner service implementation using BLE
  */
-/** Default UUIDs — Microchip RN4020 BLE serial profile (common on entry-level scanners) */
-const DEFAULT_SERVICE_UUID = '49535343-FE7D-4AE5-8FA9-9FAFD205E455';
-const DEFAULT_CHARACTERISTIC_UUID = '49535343-8841-43F4-A8D4-ECBE34729BB3';
-
 export class BluetoothScannerService implements ScannerServiceInterface {
+  readonly driverType = 'bluetooth' as const;
   private bleManager: BleManager;
   private connectedDevice: Device | null = null;
   private scanListeners: Map<string, (data: string) => void> = new Map();
   private bleSubscriptions: Map<string, Subscription> = new Map();
-  private serviceUUID: string = DEFAULT_SERVICE_UUID;
-  private characteristicUUID: string = DEFAULT_CHARACTERISTIC_UUID;
+  private serviceUUID: string = '';
+  private characteristicUUID: string = '';
   private logger: ReturnType<typeof LoggerFactory.prototype.createLogger>;
 
   constructor() {
     this.bleManager = new BleManager();
     this.logger = LoggerFactory.getInstance().createLogger('BluetoothScannerService');
+
+    // Load UUIDs from settings service
+    const config = scannerSettingsService.getBluetoothConfig();
+    this.serviceUUID = config.serviceUUID;
+    this.characteristicUUID = config.characteristicUUID;
   }
 
   /**
@@ -31,8 +34,8 @@ export class BluetoothScannerService implements ScannerServiceInterface {
    * @param characteristicUUID GATT characteristic UUID for barcode data
    */
   configure(serviceUUID: string, characteristicUUID: string): void {
-    this.serviceUUID = serviceUUID || DEFAULT_SERVICE_UUID;
-    this.characteristicUUID = characteristicUUID || DEFAULT_CHARACTERISTIC_UUID;
+    this.serviceUUID = serviceUUID;
+    this.characteristicUUID = characteristicUUID;
     this.logger.info(`BLE UUIDs configured: service=${this.serviceUUID} char=${this.characteristicUUID}`);
   }
 
@@ -60,9 +63,24 @@ export class BluetoothScannerService implements ScannerServiceInterface {
       // Store the connected device
       this.connectedDevice = device;
 
+      // Audit log the connection
+      const { auditLogService } = await import('../audit/AuditLogService');
+      await auditLogService.log('hardware:connected', {
+        details: `BLE scanner connected: ${device.name || deviceId}`,
+        metadata: { deviceType: 'scanner', connectionType: 'bluetooth', deviceId, deviceName: device.name },
+      });
+
       return true;
     } catch (error) {
       this.logger.error({ message: 'Error connecting to Bluetooth device' }, error instanceof Error ? error : new Error(String(error)));
+
+      // Audit log the error
+      const { auditLogService } = await import('../audit/AuditLogService');
+      await auditLogService.log('hardware:error', {
+        details: `Failed to connect BLE scanner: ${error instanceof Error ? error.message : String(error)}`,
+        metadata: { deviceType: 'scanner', connectionType: 'bluetooth', deviceId },
+      });
+
       return false;
     }
   }
@@ -80,9 +98,19 @@ export class BluetoothScannerService implements ScannerServiceInterface {
       this.scanListeners.clear();
 
       if (this.connectedDevice) {
+        const deviceId = this.connectedDevice.id;
+        const deviceName = this.connectedDevice.name;
+
         await this.bleManager.cancelDeviceConnection(this.connectedDevice.id);
         this.connectedDevice = null;
         this.logger.info('Disconnected from Bluetooth scanner');
+
+        // Audit log the disconnection
+        const { auditLogService } = await import('../audit/AuditLogService');
+        await auditLogService.log('hardware:disconnected', {
+          details: `BLE scanner disconnected: ${deviceName || deviceId}`,
+          metadata: { deviceType: 'scanner', connectionType: 'bluetooth', deviceId, deviceName },
+        });
       }
     } catch (error) {
       this.logger.error(
@@ -184,12 +212,8 @@ export class BluetoothScannerService implements ScannerServiceInterface {
             }
 
             if (device && device.name) {
-              // Filter for devices that look like scanners
-              if (
-                device.name.toLowerCase().includes('scanner') ||
-                device.name.toLowerCase().includes('barcode') ||
-                device.name.toLowerCase().includes('reader')
-              ) {
+              // Filter using configured device name patterns
+              if (scannerSettingsService.matchesDevicePattern(device.name)) {
                 devices.push({
                   id: device.id,
                   name: device.name,

@@ -2,8 +2,8 @@
 
 > **System**: RetailPOS – Cash Drawer
 > **Actor**: Cashier, System
-> **Date**: 2026-04-13
-> **Source**: `services/drawer/CashDrawerServiceInterface.ts`, `services/drawer/CashDrawerServiceFactory.ts`, `services/drawer/PrinterCashDrawerService.ts`, `services/drawer/ElectronDrawerDriver.ts`, `services/checkout/CheckoutService.ts`, `contexts/BasketProvider.tsx`
+> **Date**: 2026-05-10
+> **Source**: `services/drawer/CashDrawerServiceInterface.ts`, `services/drawer/CashDrawerServiceFactory.ts`, `services/drawer/PrinterCashDrawerService.ts`, `services/drawer/ElectronDrawerDriver.ts`, `services/checkout/CheckoutService.ts`, `contexts/BasketProvider.tsx`, `screens/settings/hardware/CashDrawerSettingsTab.tsx`, `hooks/useCashDrawerStatus.ts`
 
 ---
 
@@ -81,11 +81,49 @@ The drawer is opened as a fire-and-forget side effect of cash payment completion
 
 **2.4.2** When `NoOpDrawerDriver.isOpen()` is called, the system shall return `undefined` — drawer state is unknown when no hardware is present.
 
-### 2.5 Checkout Integration
+### 2.5 Drawer Settings UI
 
-**2.5.1** When `CheckoutService.completePayment()` is called with `paymentMethod === 'cash'` and `posConfig.values.drawerOpenOnCash` is `true`, the system shall set `openDrawer: true` in the payment completion result.
+**2.5.1** When `CashDrawerSettingsTab` mounts, the system shall load drawer settings from `keyValueRepository` under key `'cashDrawerSettings'` and populate the UI fields.
 
-**2.5.2** When the basket UI (`BasketContent` or `Basket`) receives a payment completion result with `openDrawer: true`, the system shall call `cashDrawerServiceFactory.getService().open()` as a fire-and-forget operation — the result is not awaited and does not affect the checkout outcome.
+**2.5.2** The settings shall include: `pin` (2 or 5) for the RJ-11 drawer kick pin, and `openOnCash` (boolean) to control automatic opening on cash payments.
+
+**2.5.3** When the user changes the pin selection, the system shall mark the form as dirty and show the Save button.
+
+**2.5.4** When the user toggles "Automatically open drawer on cash payments", the system shall mark the form as dirty and show the Save button.
+
+**2.5.5** When the user taps Save, the system shall persist the settings to `keyValueRepository` and show a success alert.
+
+**2.5.6** The pin selector shall display two options: Pin 2 (default, most common) and Pin 5, with helper text indicating "Most cash drawers use Pin 2".
+
+### 2.6 Drawer Status Monitoring
+
+**2.6.1** `useCashDrawerStatus` hook shall accept a `drawerService` and `pollIntervalMs` (default 5000ms) and return `{ isOpen, isPolling, refresh }`.
+
+**2.6.2** When the hook mounts with a valid drawer service (not `'none'` driver), the system shall immediately call `drawerService.isOpen()` and then poll at the specified interval.
+
+**2.6.3** When the hook mounts with a `'none'` driver or `null` service, the system shall set `isOpen = undefined` and `isPolling = false` without starting the poll.
+
+**2.6.4** When `drawerService.isOpen()` throws an error, the system shall log the error and set `isOpen = undefined` — polling shall continue.
+
+**2.6.5** When the hook unmounts, the system shall clear the polling interval.
+
+**2.6.6** When `refresh()` is called, the system shall immediately check the drawer status without waiting for the next poll interval.
+
+### 2.7 Checkout Integration
+
+**2.7.1** When `CheckoutService.completePayment()` is called with `paymentMethod === 'cash'` and `posConfig.values.drawerOpenOnCash` is `true`, the system shall set `openDrawer: true` in the payment completion result.
+
+**2.7.2** When the basket UI (`BasketContent` or `Basket`) receives a payment completion result with `openDrawer: true`, the system shall call `cashDrawerServiceFactory.getService().open()` as a fire-and-forget operation — the result is not awaited and does not affect the checkout outcome.
+
+### 2.8 Audit Logging
+
+**2.8.1** When `PrinterDrawerDriver.open()` successfully sends the drawer kick command, the system shall call `auditLogService.log('drawer:opened', { driver: 'printer', pin })`.
+
+**2.8.2** When `ElectronDrawerDriver.open()` successfully opens the drawer via IPC, the system shall call `auditLogService.log('drawer:opened', { driver: 'electron', pin })`.
+
+**2.8.3** When a drawer `open()` call fails, the system shall call `auditLogService.log('hardware:error', { device: 'cash_drawer', error })`.
+
+**2.8.4** When the drawer is detected as closed after being open, the system shall call `auditLogService.log('drawer:closed', { timestamp })`.
 
 ---
 
@@ -115,25 +153,36 @@ The drawer is opened as a fire-and-forget side effect of cash payment completion
 
 **5.4** If `reset()` is called while a drawer `open()` call is in flight, the in-flight call shall complete against the previously resolved driver; the next `getService()` call after `reset()` will re-resolve.
 
-**5.5** The `drawer:opened` audit action is defined in `AuditLogService` but is not yet emitted by any driver — this is a known gap. Until wired up, drawer open events are not recorded in the audit log.
+**5.5** If the drawer status changes from open to closed, the `useCashDrawerStatus` hook shall detect this on the next poll and update `isOpen` accordingly — the `drawer:closed` audit log is emitted by the driver or service layer, not by the hook.
 
 ---
 
 ## 6. Component Traceability
 
-| Requirement (summary)                                 | Component / Service                               | Source File                                     |
-| ----------------------------------------------------- | ------------------------------------------------- | ----------------------------------------------- |
-| Factory singleton, priority-based resolution          | `CashDrawerServiceFactory.getService`             | `services/drawer/CashDrawerServiceFactory.ts`   |
-| `reset()` invalidates cached driver                   | `CashDrawerServiceFactory.reset`                  | `services/drawer/CashDrawerServiceFactory.ts`   |
-| `open()` / `isOpen()` interface contract              | `CashDrawerServiceInterface`                      | `services/drawer/CashDrawerServiceInterface.ts` |
-| Printer driver: checks connection before kick         | `PrinterDrawerDriver.open`                        | `services/drawer/PrinterCashDrawerService.ts`   |
-| Printer driver: ESC/POS drawer-kick (pin 2 or 5)      | `PrinterDrawerDriver.open` → `printer.openDrawer` | `services/drawer/PrinterCashDrawerService.ts`   |
-| Printer driver: status via `printer.getStatus()`      | `PrinterDrawerDriver.isOpen`                      | `services/drawer/PrinterCashDrawerService.ts`   |
-| Electron driver: IPC `drawerOpen`                     | `ElectronDrawerDriver.open`                       | `services/drawer/ElectronDrawerDriver.ts`       |
-| Electron driver: IPC `drawerIsOpen`                   | `ElectronDrawerDriver.isOpen`                     | `services/drawer/ElectronDrawerDriver.ts`       |
-| Electron driver: graceful fallback if API unavailable | `ElectronDrawerDriver.open` / `isOpen`            | `services/drawer/ElectronDrawerDriver.ts`       |
-| NoOp driver: `open()` always `true`                   | `NoOpDrawerDriver.open`                           | `services/drawer/CashDrawerServiceFactory.ts`   |
-| NoOp driver: `isOpen()` always `undefined`            | `NoOpDrawerDriver.isOpen`                         | `services/drawer/CashDrawerServiceFactory.ts`   |
-| `openDrawer: true` when cash + config enabled         | `CheckoutService.completePayment`                 | `services/checkout/CheckoutService.ts`          |
-| Fire-and-forget `open()` from basket UI               | `BasketContent` / `Basket` payment handler        | `contexts/BasketProvider.tsx`                   |
-| `drawer:opened` audit action defined (not yet called) | `AuditLogService` action definitions              | `services/audit/AuditLogService.ts`             |
+| Requirement (summary)                                 | Component / Service                               | Source File                                           |
+| ----------------------------------------------------- | ------------------------------------------------- | ----------------------------------------------------- |
+| Factory singleton, priority-based resolution          | `CashDrawerServiceFactory.getService`             | `services/drawer/CashDrawerServiceFactory.ts`         |
+| `reset()` invalidates cached driver                   | `CashDrawerServiceFactory.reset`                  | `services/drawer/CashDrawerServiceFactory.ts`         |
+| `open()` / `isOpen()` interface contract              | `CashDrawerServiceInterface`                      | `services/drawer/CashDrawerServiceInterface.ts`       |
+| Printer driver: checks connection before kick         | `PrinterDrawerDriver.open`                        | `services/drawer/PrinterCashDrawerService.ts`         |
+| Printer driver: ESC/POS drawer-kick (pin 2 or 5)      | `PrinterDrawerDriver.open` → `printer.openDrawer` | `services/drawer/PrinterCashDrawerService.ts`         |
+| Printer driver: status via `printer.getStatus()`      | `PrinterDrawerDriver.isOpen`                      | `services/drawer/PrinterCashDrawerService.ts`         |
+| Printer driver: audit logging                         | `PrinterDrawerDriver.open` → `auditLogService`    | `services/drawer/PrinterCashDrawerService.ts`         |
+| Electron driver: IPC `drawerOpen`                     | `ElectronDrawerDriver.open`                       | `services/drawer/ElectronDrawerDriver.ts`             |
+| Electron driver: IPC `drawerIsOpen`                   | `ElectronDrawerDriver.isOpen`                     | `services/drawer/ElectronDrawerDriver.ts`             |
+| Electron driver: graceful fallback if API unavailable | `ElectronDrawerDriver.open` / `isOpen`            | `services/drawer/ElectronDrawerDriver.ts`             |
+| Electron driver: audit logging                        | `ElectronDrawerDriver.open` → `auditLogService`   | `services/drawer/ElectronDrawerDriver.ts`             |
+| NoOp driver: `open()` always `true`                   | `NoOpDrawerDriver.open`                           | `services/drawer/CashDrawerServiceFactory.ts`         |
+| NoOp driver: `isOpen()` always `undefined`            | `NoOpDrawerDriver.isOpen`                         | `services/drawer/CashDrawerServiceFactory.ts`         |
+| Drawer settings UI                                    | `CashDrawerSettingsTab`                           | `screens/settings/hardware/CashDrawerSettingsTab.tsx` |
+| Settings: pin selector (2 or 5)                       | `CashDrawerSettingsTab` pin buttons               | `screens/settings/hardware/CashDrawerSettingsTab.tsx` |
+| Settings: auto-open on cash toggle                    | `CashDrawerSettingsTab` checkbox                  | `screens/settings/hardware/CashDrawerSettingsTab.tsx` |
+| Settings: save to keyValueRepository                  | `CashDrawerSettingsTab.handleSave`                | `screens/settings/hardware/CashDrawerSettingsTab.tsx` |
+| Status monitoring hook                                | `useCashDrawerStatus`                             | `hooks/useCashDrawerStatus.ts`                        |
+| Status polling (5s default)                           | `useCashDrawerStatus` interval                    | `hooks/useCashDrawerStatus.ts`                        |
+| Status refresh on demand                              | `useCashDrawerStatus.refresh`                     | `hooks/useCashDrawerStatus.ts`                        |
+| `openDrawer: true` when cash + config enabled         | `CheckoutService.completePayment`                 | `services/checkout/CheckoutService.ts`                |
+| Fire-and-forget `open()` from basket UI               | `BasketContent` / `Basket` payment handler        | `contexts/BasketProvider.tsx`                         |
+| `drawer:opened` audit action                          | `AuditLogService` + driver implementations        | `services/audit/AuditLogService.ts`                   |
+| `drawer:closed` audit action                          | `AuditLogService` + driver implementations        | `services/audit/AuditLogService.ts`                   |
+| `hardware:error` audit action                         | `AuditLogService` + driver implementations        | `services/audit/AuditLogService.ts`                   |

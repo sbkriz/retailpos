@@ -5,7 +5,7 @@ import { lightColors, spacing, typography, borderRadius, elevation } from '../..
 import { getCurrencyOptions } from '../../utils/currency';
 import { useTranslate } from '../../hooks/useTranslate';
 import { loyaltyService } from '../../services/loyalty/LoyaltyService';
-import { storeCreditService } from '../../services/storecredit/StoreCreditService';
+import { storeCreditService } from '../../services/customer/StoreCreditService';
 
 const POSConfigSettingsTab: React.FC = () => {
   const { t } = useTranslate();

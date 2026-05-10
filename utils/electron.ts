@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 /**
  * Extended window type for Electron environment
  */
-interface ElectronWindow extends Window {
+export interface ElectronWindow extends Window {
   isElectron?: boolean;
   electronAPI?: ElectronAPI;
 }

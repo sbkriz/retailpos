@@ -1,26 +1,27 @@
 import { ReceiptData, PrinterStatus } from './PrinterTypes';
 import { receiptConfigService } from './ReceiptConfigService';
+import { getCommandSet, getCommandSetForModel } from './PrinterCommandSets';
 
 /**
- * ESC/POS Command constants for Epson printers
- * These are the actual byte sequences for printer control
+ * ESC/POS Command constants for Epson printers (backward compatibility)
+ * @deprecated Use getCommandSet() instead for printer-specific commands
  */
 export const ESC_POS_COMMANDS = {
-  INIT: [0x1b, 0x40], // Initialize printer
-  CUT: [0x1d, 0x56, 0x41, 0x10], // Full cut with feed
-  DRAWER_KICK_PIN2: [0x1b, 0x70, 0x00, 0x19, 0xfa], // Open cash drawer (pin 2)
-  DRAWER_KICK_PIN5: [0x1b, 0x70, 0x01, 0x19, 0xfa], // Open cash drawer (pin 5)
-  FEED: [0x1b, 0x64, 0x10], // Feed paper 16 lines
-  ALIGN_CENTER: [0x1b, 0x61, 0x01], // Center align
-  ALIGN_LEFT: [0x1b, 0x61, 0x00], // Left align
-  ALIGN_RIGHT: [0x1b, 0x61, 0x02], // Right align
-  BOLD_ON: [0x1b, 0x45, 0x01], // Bold text on
-  BOLD_OFF: [0x1b, 0x45, 0x00], // Bold text off
-  DOUBLE_HEIGHT: [0x1b, 0x21, 0x10], // Double height text
-  NORMAL_SIZE: [0x1b, 0x21, 0x00], // Normal text size
-  FONT_A: [0x1b, 0x4d, 0x00], // Font A (default)
-  FONT_B: [0x1b, 0x4d, 0x01], // Font B (smaller)
-  NEWLINE: [0x0a], // Line feed
+  INIT: [0x1b, 0x40],
+  CUT: [0x1d, 0x56, 0x41, 0x10],
+  DRAWER_KICK_PIN2: [0x1b, 0x70, 0x00, 0x19, 0xfa],
+  DRAWER_KICK_PIN5: [0x1b, 0x70, 0x01, 0x19, 0xfa],
+  FEED: [0x1b, 0x64, 0x10],
+  ALIGN_CENTER: [0x1b, 0x61, 0x01],
+  ALIGN_LEFT: [0x1b, 0x61, 0x00],
+  ALIGN_RIGHT: [0x1b, 0x61, 0x02],
+  BOLD_ON: [0x1b, 0x45, 0x01],
+  BOLD_OFF: [0x1b, 0x45, 0x00],
+  DOUBLE_HEIGHT: [0x1b, 0x21, 0x10],
+  NORMAL_SIZE: [0x1b, 0x21, 0x00],
+  FONT_A: [0x1b, 0x4d, 0x00],
+  FONT_B: [0x1b, 0x4d, 0x01],
+  NEWLINE: [0x0a],
 };
 
 // Helper function to convert string to byte array (React Native compatible)
@@ -145,70 +146,75 @@ export abstract class AbstractPrinterService implements BasePrinterService {
     const config = receiptConfigService.getConfig();
     const divider = receiptConfigService.getDividerLine();
     const doubleDivider = receiptConfigService.getDoubleDividerLine();
+
+    // Get printer-specific command set
+    const commandSet = getCommandSetForModel(config.printerModel.type);
+    const CMD = getCommandSet(commandSet);
+
     let commands: number[] = [];
 
     // Initialize printer
-    commands.push(...ESC_POS_COMMANDS.INIT);
+    commands.push(...CMD.INIT);
 
     // Center align for header
-    commands.push(...ESC_POS_COMMANDS.ALIGN_CENTER);
+    commands.push(...CMD.ALIGN_CENTER);
 
     // Store name — from ReceiptConfigService
-    commands.push(...ESC_POS_COMMANDS.BOLD_ON);
-    commands.push(...ESC_POS_COMMANDS.DOUBLE_HEIGHT);
+    commands.push(...CMD.BOLD_ON);
+    commands.push(...CMD.DOUBLE_HEIGHT);
     commands.push(...stringToBytes(config.header.businessName));
-    commands.push(...ESC_POS_COMMANDS.NEWLINE);
-    commands.push(...ESC_POS_COMMANDS.BOLD_OFF);
-    commands.push(...ESC_POS_COMMANDS.NORMAL_SIZE);
+    commands.push(...CMD.NEWLINE);
+    commands.push(...CMD.BOLD_OFF);
+    commands.push(...CMD.NORMAL_SIZE);
 
     if (config.header.addressLine1) {
       commands.push(...stringToBytes(config.header.addressLine1));
-      commands.push(...ESC_POS_COMMANDS.NEWLINE);
+      commands.push(...CMD.NEWLINE);
     }
     if (config.header.addressLine2) {
       commands.push(...stringToBytes(config.header.addressLine2));
-      commands.push(...ESC_POS_COMMANDS.NEWLINE);
+      commands.push(...CMD.NEWLINE);
     }
     if (config.header.phone) {
       commands.push(...stringToBytes(`Tel: ${config.header.phone}`));
-      commands.push(...ESC_POS_COMMANDS.NEWLINE);
+      commands.push(...CMD.NEWLINE);
     }
     if (config.header.taxId) {
       commands.push(...stringToBytes(`Tax ID: ${config.header.taxId}`));
-      commands.push(...ESC_POS_COMMANDS.NEWLINE);
+      commands.push(...CMD.NEWLINE);
     }
-    commands.push(...ESC_POS_COMMANDS.NEWLINE);
+    commands.push(...CMD.NEWLINE);
 
     // Divider line
     commands.push(...stringToBytes(divider));
-    commands.push(...ESC_POS_COMMANDS.NEWLINE);
+    commands.push(...CMD.NEWLINE);
 
     // Return to left alignment for details
-    commands.push(...ESC_POS_COMMANDS.ALIGN_LEFT);
+    commands.push(...CMD.ALIGN_LEFT);
 
     // Order info
     commands.push(...stringToBytes(`Order #: ${data.orderId}`));
-    commands.push(...ESC_POS_COMMANDS.NEWLINE);
+    commands.push(...CMD.NEWLINE);
     commands.push(...stringToBytes(`Date: ${data.date.toLocaleString()}`));
-    commands.push(...ESC_POS_COMMANDS.NEWLINE);
+    commands.push(...CMD.NEWLINE);
     commands.push(...stringToBytes(`Cashier: ${data.cashierName}`));
-    commands.push(...ESC_POS_COMMANDS.NEWLINE);
+    commands.push(...CMD.NEWLINE);
 
     if (data.customerName) {
       commands.push(...stringToBytes(`Customer: ${data.customerName}`));
-      commands.push(...ESC_POS_COMMANDS.NEWLINE);
+      commands.push(...CMD.NEWLINE);
     }
 
     // Divider line
     commands.push(...stringToBytes(divider));
-    commands.push(...ESC_POS_COMMANDS.NEWLINE);
+    commands.push(...CMD.NEWLINE);
 
     // Order items
     for (const item of data.items) {
       const itemTotal = item.quantity * item.price;
       if (item.quantity > 1) {
         commands.push(...stringToBytes(item.name));
-        commands.push(...ESC_POS_COMMANDS.NEWLINE);
+        commands.push(...CMD.NEWLINE);
         commands.push(
           ...stringToBytes(
             receiptConfigService.formatLine(`  ${item.quantity} x ${cs}${item.price.toFixed(2)}`, `${cs}${itemTotal.toFixed(2)}`)
@@ -217,41 +223,41 @@ export abstract class AbstractPrinterService implements BasePrinterService {
       } else {
         commands.push(...stringToBytes(receiptConfigService.formatLine(item.name, `${cs}${itemTotal.toFixed(2)}`)));
       }
-      commands.push(...ESC_POS_COMMANDS.NEWLINE);
+      commands.push(...CMD.NEWLINE);
     }
 
     // Divider line
     commands.push(...stringToBytes(divider));
-    commands.push(...ESC_POS_COMMANDS.NEWLINE);
+    commands.push(...CMD.NEWLINE);
 
     // Align right for totals
-    commands.push(...ESC_POS_COMMANDS.ALIGN_RIGHT);
+    commands.push(...CMD.ALIGN_RIGHT);
 
     // Totals
     commands.push(...stringToBytes(`Subtotal: ${cs}${data.subtotal.toFixed(2)}`));
-    commands.push(...ESC_POS_COMMANDS.NEWLINE);
+    commands.push(...CMD.NEWLINE);
     commands.push(...stringToBytes(`Tax: ${cs}${data.tax.toFixed(2)}`));
-    commands.push(...ESC_POS_COMMANDS.NEWLINE);
+    commands.push(...CMD.NEWLINE);
 
     // Total — bold
-    commands.push(...ESC_POS_COMMANDS.BOLD_ON);
+    commands.push(...CMD.BOLD_ON);
     commands.push(...stringToBytes(doubleDivider));
-    commands.push(...ESC_POS_COMMANDS.NEWLINE);
+    commands.push(...CMD.NEWLINE);
     commands.push(...stringToBytes(`Total: ${cs}${data.total.toFixed(2)}`));
-    commands.push(...ESC_POS_COMMANDS.NEWLINE);
-    commands.push(...ESC_POS_COMMANDS.BOLD_OFF);
+    commands.push(...CMD.NEWLINE);
+    commands.push(...CMD.BOLD_OFF);
     commands.push(...stringToBytes(doubleDivider));
-    commands.push(...ESC_POS_COMMANDS.NEWLINE);
+    commands.push(...CMD.NEWLINE);
 
     // Payment method — left aligned for split tender breakdown
-    commands.push(...ESC_POS_COMMANDS.ALIGN_LEFT);
+    commands.push(...CMD.ALIGN_LEFT);
 
     // Split tender: show payment breakdown
     if (data.paymentMethod === 'split' && data.paymentLines && data.paymentLines.length > 0) {
       commands.push(...stringToBytes('Payment Method: Split Tender'));
-      commands.push(...ESC_POS_COMMANDS.NEWLINE);
+      commands.push(...CMD.NEWLINE);
       commands.push(...stringToBytes(divider));
-      commands.push(...ESC_POS_COMMANDS.NEWLINE);
+      commands.push(...CMD.NEWLINE);
 
       for (const line of data.paymentLines) {
         let methodLabel = line.method;
@@ -265,36 +271,36 @@ export abstract class AbstractPrinterService implements BasePrinterService {
           methodLabel = 'Loyalty Points';
         }
         commands.push(...stringToBytes(receiptConfigService.formatLine(methodLabel, `${cs}${line.amount.toFixed(2)}`)));
-        commands.push(...ESC_POS_COMMANDS.NEWLINE);
+        commands.push(...CMD.NEWLINE);
       }
       commands.push(...stringToBytes(divider));
-      commands.push(...ESC_POS_COMMANDS.NEWLINE, ...ESC_POS_COMMANDS.NEWLINE);
+      commands.push(...CMD.NEWLINE, ...CMD.NEWLINE);
     } else {
       // Single payment method — center aligned
-      commands.push(...ESC_POS_COMMANDS.ALIGN_CENTER);
+      commands.push(...CMD.ALIGN_CENTER);
       commands.push(...stringToBytes(`Payment Method: ${data.paymentMethod}`));
-      commands.push(...ESC_POS_COMMANDS.NEWLINE, ...ESC_POS_COMMANDS.NEWLINE);
+      commands.push(...CMD.NEWLINE, ...CMD.NEWLINE);
     }
 
     // Footer — from ReceiptConfigService (center aligned)
-    commands.push(...ESC_POS_COMMANDS.ALIGN_CENTER);
+    commands.push(...CMD.ALIGN_CENTER);
     if (config.footer.line1) {
       commands.push(...stringToBytes(config.footer.line1));
-      commands.push(...ESC_POS_COMMANDS.NEWLINE);
+      commands.push(...CMD.NEWLINE);
     }
     if (config.footer.line2) {
       commands.push(...stringToBytes(config.footer.line2));
-      commands.push(...ESC_POS_COMMANDS.NEWLINE);
+      commands.push(...CMD.NEWLINE);
     }
     if (config.footer.line3) {
       commands.push(...stringToBytes(config.footer.line3));
-      commands.push(...ESC_POS_COMMANDS.NEWLINE);
+      commands.push(...CMD.NEWLINE);
     }
-    commands.push(...ESC_POS_COMMANDS.NEWLINE, ...ESC_POS_COMMANDS.NEWLINE);
+    commands.push(...CMD.NEWLINE, ...CMD.NEWLINE);
 
     // Cut receipt (if supported by model)
     if (config.options.cutPaper && config.printerModel.supportsCut) {
-      commands.push(...ESC_POS_COMMANDS.CUT);
+      commands.push(...CMD.CUT);
     }
 
     return new Uint8Array(commands);

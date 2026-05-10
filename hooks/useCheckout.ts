@@ -28,7 +28,7 @@ import { PaymentSelection } from '../components/CheckoutModal';
 import { PaymentLine } from '../services/order/order';
 import { generateUUID } from '../utils/uuid';
 import { loyaltyService } from '../services/loyalty/LoyaltyService';
-import { storeCreditService } from '../services/storecredit/StoreCreditService';
+import { storeCreditService } from '../services/customer/StoreCreditService';
 import { toCents } from '../utils/money';
 import { useLogger } from './useLogger';
 import { useManagerApproval } from './useManagerApproval';

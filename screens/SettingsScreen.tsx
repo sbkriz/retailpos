@@ -7,8 +7,8 @@ import { FloatingSaveBar } from '../components/FloatingSaveBar';
 import { useTranslate } from '../hooks/useTranslate';
 import { useAuthContext } from '../contexts/AuthProvider';
 import PaymentSettingsTab from './settings/PaymentSettingsTab';
-import PrinterSettingsTab from './settings/PrinterSettingsTab';
-import ScannerSettingsTab from './settings/ScannerSettingsTab';
+import { HardwareSettingsScreen } from './settings/HardwareSettingsScreen';
+import { HardwareStatusScreen } from './HardwareStatusScreen';
 import EcommerceSettingsTab from './settings/EcommerceSettingsTab';
 import GenericSettingsTab from './settings/GenericSettingsTab';
 import OfflineManagementTab from './settings/OfflineManagementTab';
@@ -16,7 +16,6 @@ import ReceiptSettingsTab from './settings/ReceiptSettingsTab';
 import POSConfigSettingsTab from './settings/POSConfigSettingsTab';
 import AuthMethodSettingsTab from './settings/AuthMethodSettingsTab';
 import InstoreApiSettingsTab from './settings/InstoreApiSettingsTab';
-import KdsSettingsTab from './settings/KdsSettingsTab';
 import ThemeSettingsTab from './settings/ThemeSettingsTab';
 import { composeSettingsTabs } from '../services/navigation/SettingsTabComposer';
 import { getPlatformCapabilities } from '../utils/platformCapabilities';
@@ -84,10 +83,27 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ onGoBack }) => {
     switch (activeTab) {
       case 'payment':
         return <PaymentSettingsTab />;
-      case 'printer':
-        return <PrinterSettingsTab />;
-      case 'scanner':
-        return <ScannerSettingsTab />;
+      case 'hardware':
+        return <HardwareSettingsScreen />;
+      case 'hardwareStatus':
+        return (
+          <HardwareStatusScreen
+            onNavigateToSettings={tabKey => {
+              // Map hardware status tab keys to settings tab keys
+              const tabMap: Record<string, SettingsTab> = {
+                printer: 'hardware',
+                scanner: 'hardware',
+                drawer: 'hardware',
+                kds: 'hardware',
+                display: 'hardware',
+              };
+              const targetTab = tabMap[tabKey];
+              if (targetTab) {
+                setActiveTab(targetTab);
+              }
+            }}
+          />
+        );
       case 'ecommerce':
         return <EcommerceSettingsTab />;
       case 'generic':
@@ -102,8 +118,6 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ onGoBack }) => {
         return <ReceiptSettingsTab />;
       case 'multiregister':
         return <InstoreApiSettingsTab />;
-      case 'kds':
-        return <KdsSettingsTab />;
       case 'theme':
         return <ThemeSettingsTab />;
     }

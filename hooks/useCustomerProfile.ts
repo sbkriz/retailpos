@@ -8,7 +8,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { localCustomerService, CustomerOrderSummary } from '../services/customer/LocalCustomerService';
 import { loyaltyService, LoyaltyBalance } from '../services/loyalty/LoyaltyService';
-import { storeCreditService } from '../services/storecredit/StoreCreditService';
+import { storeCreditService } from '../services/customer/StoreCreditService';
 import { LocalCustomer } from '../repositories/LocalCustomerRepository';
 
 export interface CustomerProfileData {

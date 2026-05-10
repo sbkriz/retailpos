@@ -1,6 +1,6 @@
 # RetailPOS — Architecture Overview
 
-> High-level technical reference. For implementation patterns and code examples see `docs/steering/architecture-patterns.md`. For domain vocabulary see `docs/steering/ubiquitous-language.md`.
+> High-level technical reference. For implementation patterns and code examples see `docs/guidelines/architecture-patterns.md`. For domain vocabulary see `docs/guidelines/ubiquitous-language.md`.
 
 ---
 

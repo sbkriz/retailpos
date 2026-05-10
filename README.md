@@ -44,7 +44,7 @@ RetailPOS follows a strict four-layer architecture with unidirectional dependenc
 
 **Cross-cutting**: Contexts provide global state (Basket, Auth, Category) shared across screens.
 
-Key architectural decisions are documented in [`docs/adr/`](docs/adr/) and the full technical reference is in [`ARCHITECTURE.md`](ARCHITECTURE.md). Implementation patterns with code examples are in [`docs/steering/architecture-patterns.md`](docs/steering/architecture-patterns.md).
+Key architectural decisions are documented in [`docs/adr/`](docs/adr/) and the full technical reference is in [`ARCHITECTURE.md`](ARCHITECTURE.md). Implementation patterns with code examples are in [`docs/guidelines/architecture-patterns.md`](docs/guidelines/architecture-patterns.md).
 
 ---
 
@@ -233,26 +233,26 @@ retailpos/
 
 ## Documentation
 
-| Document                                                                           | Purpose                                                  |
-| ---------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| [`ARCHITECTURE.md`](ARCHITECTURE.md)                                               | Technical architecture, patterns, database schema        |
-| [`AGENT.md`](AGENT.md)                                                             | Quick-start context guide for developers and AI agents   |
-| [`docs/adr/`](docs/adr/)                                                           | Architecture Decision Records (15 ADRs)                  |
-| [`docs/specs/`](docs/specs/)                                                       | EARS requirements specs for all features                 |
-| [`docs/specs/EARS-GUIDE.md`](docs/specs/EARS-GUIDE.md)                             | How to write EARS specs                                  |
-| [`docs/steering/`](docs/steering/)                                                 | **Canonical development rules** (see below)              |
-| [`docs/steering/ubiquitous-language.md`](docs/steering/ubiquitous-language.md)     | Domain vocabulary — single source of truth for all terms |
-| [`docs/steering/architecture-patterns.md`](docs/steering/architecture-patterns.md) | Implementation patterns with code examples               |
-| [`docs/steering/coding-standards.md`](docs/steering/coding-standards.md)           | TypeScript, naming, file structure, common tasks         |
-| [`docs/steering/ux-standards.md`](docs/steering/ux-standards.md)                   | Theme system, component structure, accessibility         |
-| [`docs/steering/testing-guidelines.md`](docs/steering/testing-guidelines.md)       | Test structure, mocks, running tests                     |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md)                                               | Contribution guidelines                                  |
-| [`CHANGELOG.md`](CHANGELOG.md)                                                     | Version history                                          |
-| [`SECURITY.md`](SECURITY.md)                                                       | Security policy                                          |
+| Document                                                                               | Purpose                                                  |
+| -------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md)                                                   | Technical architecture, patterns, database schema        |
+| [`AGENT.md`](AGENT.md)                                                                 | Quick-start context guide for developers and AI agents   |
+| [`docs/adr/`](docs/adr/)                                                               | Architecture Decision Records (15 ADRs)                  |
+| [`docs/specs/`](docs/specs/)                                                           | EARS requirements specs for all features                 |
+| [`docs/specs/EARS-GUIDE.md`](docs/specs/EARS-GUIDE.md)                                 | How to write EARS specs                                  |
+| [`docs/guidelines/`](docs/guidelines/)                                                 | **Canonical development rules** (see below)              |
+| [`docs/guidelines/ubiquitous-language.md`](docs/guidelines/ubiquitous-language.md)     | Domain vocabulary — single source of truth for all terms |
+| [`docs/guidelines/architecture-patterns.md`](docs/guidelines/architecture-patterns.md) | Implementation patterns with code examples               |
+| [`docs/guidelines/coding-standards.md`](docs/guidelines/coding-standards.md)           | TypeScript, naming, file structure, common tasks         |
+| [`docs/guidelines/ux-standards.md`](docs/guidelines/ux-standards.md)                   | Theme system, component structure, accessibility         |
+| [`docs/guidelines/testing-guidelines.md`](docs/guidelines/testing-guidelines.md)       | Test structure, mocks, running tests                     |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md)                                                   | Contribution guidelines                                  |
+| [`CHANGELOG.md`](CHANGELOG.md)                                                         | Version history                                          |
+| [`SECURITY.md`](SECURITY.md)                                                           | Security policy                                          |
 
 ### Steering Docs (Canonical Rules)
 
-The `docs/steering/` directory contains the **single source of truth** for development standards:
+The `docs/guidelines/` directory contains the **single source of truth** for development standards:
 
 - **ubiquitous-language.md** — Domain vocabulary used across specs, code, tests, and ADRs. Use terms exactly as defined.
 - **architecture-patterns.md** — Service layer, repository pattern, context providers, factories, background jobs (with code examples).
@@ -306,9 +306,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). In brief:
 
 1. Fork and create a feature branch
 2. Read [AGENT.md](AGENT.md) for project orientation
-3. Follow the canonical rules in [`docs/steering/`](docs/steering/)
-4. Use domain vocabulary from [`docs/steering/ubiquitous-language.md`](docs/steering/ubiquitous-language.md)
-5. Match existing patterns from [`docs/steering/architecture-patterns.md`](docs/steering/architecture-patterns.md)
+3. Follow the canonical rules in [`docs/guidelines/`](docs/guidelines/)
+4. Use domain vocabulary from [`docs/guidelines/ubiquitous-language.md`](docs/guidelines/ubiquitous-language.md)
+5. Match existing patterns from [`docs/guidelines/architecture-patterns.md`](docs/guidelines/architecture-patterns.md)
 6. Run `yarn lint` and `yarn test` before submitting
 7. Submit a pull request with conventional commit messages
 

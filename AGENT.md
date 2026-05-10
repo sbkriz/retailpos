@@ -1,6 +1,6 @@
 # AGENT.md — RetailPOS Context Guide
 
-> This file is the **first thing an AI agent or new developer reads**. It orients you to the project and tells you where the detailed rules live. Do not add implementation detail here — it belongs in `docs/steering/`.
+> This file is the **first thing an AI agent or new developer reads**. It orients you to the project and tells you where the detailed rules live. Do not add implementation detail here — it belongs in `docs/guidelines/`.
 
 ---
 
@@ -82,7 +82,7 @@ utils/              # money.ts, theme.ts, platforms.ts, platformCapabilities.ts,
 
 ## Non-Negotiable Rules (quick reference)
 
-Full rules with examples: `docs/steering/coding-standards.md`
+Full rules with examples: `docs/guidelines/coding-standards.md`
 
 1. No `any` types. No `.js` files.
 2. No barrel/index re-export files — import source files directly.
@@ -101,13 +101,13 @@ Full rules with examples: `docs/steering/coding-standards.md`
 
 ## Where to find detailed guidance
 
-| Topic                               | Document                                 |
-| ----------------------------------- | ---------------------------------------- |
-| Domain vocabulary (canonical terms) | `docs/steering/ubiquitous-language.md`   |
-| Coding standards & naming           | `docs/steering/coding-standards.md`      |
-| Architecture patterns (with code)   | `docs/steering/architecture-patterns.md` |
-| UX / theme / component structure    | `docs/steering/ux-standards.md`          |
-| Testing setup & mock patterns       | `docs/steering/testing-guidelines.md`    |
-| Architecture overview               | `ARCHITECTURE.md`                        |
-| Feature requirements (EARS specs)   | `docs/specs/[domain]/`                   |
-| Architecture decisions              | `docs/adr/ADR-NNN-*.md`                  |
+| Topic                               | Document                                   |
+| ----------------------------------- | ------------------------------------------ |
+| Domain vocabulary (canonical terms) | `docs/guidelines/ubiquitous-language.md`   |
+| Coding standards & naming           | `docs/guidelines/coding-standards.md`      |
+| Architecture patterns (with code)   | `docs/guidelines/architecture-patterns.md` |
+| UX / theme / component structure    | `docs/guidelines/ux-standards.md`          |
+| Testing setup & mock patterns       | `docs/guidelines/testing-guidelines.md`    |
+| Architecture overview               | `ARCHITECTURE.md`                          |
+| Feature requirements (EARS specs)   | `docs/specs/[domain]/`                     |
+| Architecture decisions              | `docs/adr/ADR-NNN-*.md`                    |
